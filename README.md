@@ -55,3 +55,18 @@ React 19 · TypeScript · Vite · Vitest + Testing Library · ESLint · Prettier
 ## Working agreement
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Deployment
+
+Hosted on Vercel. `vercel.json` pins the build (`npm ci` → `npm run build` → `dist/`) and adds the SPA rewrite so client-side routes resolve.
+
+- Every push to `main` ships to production.
+- Every pull request gets its own preview URL.
+
+Environment variables must be added in the Vercel project (Settings → Environment Variables) for each environment. Only variables prefixed `VITE_` reach the browser bundle — never put secrets there.
+
+Local production check before shipping:
+
+```bash
+npm run build && npm run preview
+```
