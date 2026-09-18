@@ -83,6 +83,7 @@ tests/                Python test suite
 - [Threat model](docs/threat-model.md)
 - [Architecture and trust anchor](docs/architecture.md)
 - [Roadmap to Phase 1](docs/roadmap.md)
+- [Decision log](docs/decisions.md)
 - [Working agreement](CONTRIBUTING.md)
 
 ## Dashboard

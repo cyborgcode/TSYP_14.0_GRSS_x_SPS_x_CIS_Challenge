@@ -1,45 +1,106 @@
 # Roadmap to Phase 1
 
-Deadline **8 November 2026**. Phase 1 is worth 30% of the final score; Phase 2 is 70%.
+**Phase 1 deadline: Sunday 8 November 2026 — 51 days from 18 September.**
+Preselection announced 10 November. Phase 2 final deadline 11 December 2026.
 
-## Deliverable status
+$$\text{Final Score} = 0.30 \times S_{\text{Phase 1}} + 0.70 \times S_{\text{Phase 2}}$$
+
+Phase 1 is only 30% of the final score, but it is a gate: only 7 teams advance. Treat it as
+pass/fail first and score-maximising second.
+
+## Where we stand
 
 | # | Deliverable | Points | Status |
 | --- | --- | --- | --- |
 | 1 | Threat model & segment analysis | 15 | Drafted — `docs/threat-model.md` |
-| 2 | Platform / architecture / trust anchor | 15 | Implemented — `core/trust.py`, `docs/architecture.md` |
+| 2 | Platform / architecture / trust anchor | 15 | Implemented — `core/trust.py` |
 | 3 | Signal / image processing | 15 | Baseline features implemented — `core/features.py` |
 | 4 | AI or statistical detection | 20 | Statistical detector implemented — `core/detectors.py` |
-| 5 | Adversarial validation & response | 20 | **Not started** — evasion sweep required |
-| 6 | Documentation on official reference datasets | 5 (+10 feasibility) | **Blocked** — datasets not yet obtained |
+| 5 | Adversarial validation & response | 20 | **Not started** |
+| 6 | Documentation on official datasets | 5 | **Blocked — datasets not obtained** |
+| — | Feasibility, affordability, local execution | 10 | Satisfied — stdlib anchor, laptop runtime |
 
-## Critical path
+Everything currently runs on synthetic observables. **Synthetic results are not submittable
+results.** Deliverable 6 blocks 3, 4 and 5 from being reportable, which is why data
+acquisition is the critical path.
 
-1. **Obtain the official reference datasets.** Everything currently runs on synthetic
-   observables. Results on synthetic data cannot be reported as results. This blocks
-   deliverable 6 and weakens 3–5. Record each dataset in `data/README.md`.
-2. **Adversarial validation (20 points).** Sweep attack strength downward until detection
-   fails, and report the detectability floor per attack. An adversary who has read our
-   detector is explicitly in the threat model, so the evasion case must be measured, not
-   asserted.
-3. **Replace synthetic generation with dataset replay** behind the same `Observables`
-   interface, so the detector and harness carry over unchanged.
-4. **Harden the trust anchor** — move the key out of the source, document key handling.
-5. **Anonymity pass before submission.** No names, unit names, logos or identifying
-   repository metadata. Commit authorship is already neutral; re-check before packaging.
+## The 51 days
 
-## Parallel work split (5 members max)
+| Sprint | Dates | Theme | Exit criterion |
+| --- | --- | --- | --- |
+| **S0** | Fri 18 Sep – Sun 27 Sep | Foundations & data acquisition | Official datasets in hand and logged in `data/README.md` |
+| **S1** | Mon 28 Sep – Sun 11 Oct | Real data end to end | Detector runs on replayed official data, not the generator |
+| **S2** | Mon 12 Oct – Sun 25 Oct | Detection quality & adversarial validation | Evasion sweep produces a detectability floor per attack |
+| **S3** | Mon 26 Oct – Fri 6 Nov | Report, reproducibility, anonymity | Anonymous report complete, clean clone reproduces every number |
+| **Freeze** | Sat 7 Nov – Sun 8 Nov | Submit | Submission sent, no code changes |
 
-| Owner | Scope |
-| --- | --- |
-| _tbd_ | Datasets + replay adapter (blocks everyone, start first) |
-| _tbd_ | Threat model + report writing |
-| _tbd_ | Features and signal processing |
-| _tbd_ | Detector + evaluation |
-| _tbd_ | Adversarial validation + dashboard demo |
+Nothing lands in the freeze window that was not already working on 6 November.
 
-## Phase 2 (11 December 2026)
+## Roles
 
-Finalists present a 7-minute live or replayable attack demonstration plus 3 minutes of Q&A.
-The `dashboard/` app is that demonstration surface: replay a sealed record, inject an attack
-live, show the detector firing and the chain verification failing on a tampered log.
+Five members maximum. One owner per area — the owner is accountable for the deliverable,
+not necessarily the only person writing the code.
+
+| Role | Owns | Deliverables | First task |
+| --- | --- | --- | --- |
+| **Data & Replay** | Official datasets, replay adapter behind `Observables` | 6 | Obtain datasets, write `data/README.md` rows |
+| **Threat Model & Report** | `docs/threat-model.md`, the anonymous report | 1 | Extend the attack catalogue with dataset-grounded parameters |
+| **Signal Processing** | `core/features.py` | 3 | Validate the six features against real observables |
+| **Detection** | `core/detectors.py`, `core/evaluate.py` | 4 | Add a second detector family and compare on ROC |
+| **Adversarial & Demo** | Evasion sweep, `dashboard/` | 5 | Build the attack-strength sweep harness |
+
+Data & Replay blocks everyone. If that role slips, the whole plan slips — escalate on day 1
+of a slip, not at the sprint boundary.
+
+## Sprint backlogs
+
+### S0 — Foundations & data acquisition (18–27 Sep)
+
+- Obtain the official reference datasets; log source, version and licence in `data/README.md`
+- Write the replay adapter interface so it drops in behind `core.observables.Observables`
+- Each owner reads `docs/threat-model.md` and `docs/architecture.md` and files one issue
+  challenging something in them
+- Fill the ownership table in `CONTRIBUTING.md`
+- Move the trust-anchor key out of `core/cli.py` into the environment
+
+### S1 — Real data end to end (28 Sep – 11 Oct)
+
+- Replay adapter delivers official data through the existing interface
+- Re-measure Pd / Pfa / latency / AUC on real data — expect the synthetic numbers to fall
+- Ground the attack parameters in the dataset's own units instead of the current defaults
+- Second detector family implemented and compared against the statistical baseline
+- Dashboard replays a sealed record end to end
+
+### S2 — Detection quality & adversarial validation (12–25 Oct)
+
+- **Evasion sweep**: reduce attack strength until detection fails; report the floor per
+  attack with a curve, not a single number
+- Test the coordinated-transmitter case that defeats the spread-collapse signature
+- Test the slow-onset case that stays inside the robust baseline's drift
+- Document the response policy: what the system does when it alarms
+- Measure and report latency, memory and security overhead
+
+### S3 — Report, reproducibility, anonymity (26 Oct – 6 Nov)
+
+- Write the anonymous report against the scoring rubric, section per deliverable
+- Reproducibility pass: fresh clone, fresh environment, every reported number regenerated
+  by a single documented command
+- **Anonymity pass**: no names, unit names, logos, or identifying repository metadata;
+  re-check commit authorship, README, report metadata and any screenshots
+- Submit to a repository with a neutral name
+
+## Risks
+
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| Datasets unavailable or late | Blocks 3 deliverables | Escalate to the organisers by 25 Sep; keep the synthetic path as a fallback and say so explicitly in the report |
+| Detection collapses on real data | Deliverable 4 at risk | S1 exists precisely to find this early, with S2 as recovery room |
+| Evasion sweep left to the end | 20 points lost | Sweep harness is an S1 task, not an S2 one |
+| Anonymity slip | Disqualification risk | Dedicated S3 task plus a pre-submission checklist |
+
+## Phase 2 (if we advance)
+
+10 November to 11 December: a working prototype plus a 7-minute live or replayable attack
+demonstration and 3 minutes of Q&A, in English, non-anonymous. `dashboard/` is that demo
+surface — sealed record replay, live attack injection, detector firing, chain verification
+failing on a tampered log. Rehearse the pitch at least three times against a clock.
