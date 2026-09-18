@@ -1,4 +1,4 @@
-# tsyp
+# Ground Truth Under Attack — Track 1: Secure Ground-Link Testbed
 
 > One-line description of the project — fill this in.
 
@@ -10,7 +10,7 @@
 ## Getting started
 
 ```bash
-git clone https://github.com/cyborgcode/tsyp.git
+git clone <repository-url>
 cd tsyp
 npm install
 cp .env.example .env
