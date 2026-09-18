@@ -33,3 +33,6 @@ out/
 target/
 coverage/
 .next/
+
+# TypeScript incremental build info
+*.tsbuildinfo

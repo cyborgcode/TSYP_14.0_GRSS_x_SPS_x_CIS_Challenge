@@ -37,8 +37,8 @@ Subject in the imperative, under 72 characters, no trailing period.
 
 ## Code ownership
 
-| Area | Owner |
-| --- | --- |
+| Area      | Owner     |
+| --------- | --------- |
 | _fill in_ | _fill in_ |
 
 ## Definition of done
