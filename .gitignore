@@ -39,3 +39,13 @@ coverage/
 
 # Vercel
 .vercel
+
+# Python
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Reference datasets (never commit raw data)
+data/
+!data/README.md

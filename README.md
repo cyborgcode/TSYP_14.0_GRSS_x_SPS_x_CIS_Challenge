@@ -1,72 +1,94 @@
 # Ground Truth Under Attack — Track 1: Secure Ground-Link Testbed
 
-> One-line description of the project — fill this in.
+A verifiable defensive prototype for the Earth-observation ground segment: it seals receiver
+observables under a software trust anchor, injects controlled interference, and detects the
+attack while reporting detection quality, false alarms and latency.
+
+## Why
+
+Earth-observation products drive decisions in agriculture, insurance, water management and
+disaster response. Jamming, spoofing and replay can make a pipeline produce plausible but
+untrustworthy output — and the failure is silent: the pipeline keeps running while a
+corrupted observation reaches the analyst. This testbed makes that failure visible.
 
 ## Requirements
 
-- Node.js 22 (`.nvmrc` provided — `nvm use`)
-- npm 10+
+- Python 3.11+
+- Node.js 22 (dashboard only — `.nvmrc` provided)
 
 ## Getting started
 
 ```bash
 git clone <repository-url>
-cd tsyp
-npm install
-cp .env.example .env
-npm run dev
+cd <repository>
+pip install -e ".[dev]"
 ```
 
-The dev server runs on http://localhost:5173.
-
-## Scripts
-
-| Command                | Purpose                                              |
-| ---------------------- | ---------------------------------------------------- |
-| `npm run dev`          | Start the dev server with hot reload                 |
-| `npm run build`        | Type-check and produce a production build in `dist/` |
-| `npm run preview`      | Serve the production build locally                   |
-| `npm run lint`         | Run ESLint                                           |
-| `npm run format`       | Rewrite files with Prettier                          |
-| `npm run format:check` | Verify formatting (runs in CI)                       |
-| `npm run typecheck`    | Run the TypeScript compiler                          |
-| `npm test`             | Run the test suite once                              |
-| `npm run test:watch`   | Run tests in watch mode                              |
-
-Run these before every push — CI runs the same chain:
+Run the standard scenario:
 
 ```bash
-npm run format:check && npm run lint && npm run typecheck && npm test && npm run build
+python -m core.cli --attack spoofing
 ```
+
+Swap in any attack from the catalogue:
+
+```bash
+python -m core.cli --attack jamming
+python -m core.cli --attack meaconing
+python -m core.cli --attack spoofing --onset 200 --duration 80 --pfa 0.005
+```
+
+Run the test suite:
+
+```bash
+python -m pytest
+```
+
+## Results on the standard scenario
+
+600 epochs, 8 channels, attack from epoch 300 for 120 epochs, detector calibrated to a 1%
+target false-alarm rate on a clean 250-epoch prefix:
+
+| Attack | Pd | Pfa | ROC AUC | Driving feature |
+| --- | --- | --- | --- | --- |
+| Jamming | 1.000 | 0.010 | 1.000 | `cn0_mean` |
+| Spoofing | 1.000 | 0.015 | 0.996 | `cn0_mean` |
+| Meaconing | 1.000 | 0.010 | 1.000 | `residual_common_mode` |
+
+Post-hoc edits to the sealed log are caught by the trust anchor in every run.
+
+**These figures are from synthetic observables.** They demonstrate that the harness works
+end to end; they are not submittable results. The official reference datasets must replace
+the generator before anything is reported — see `docs/roadmap.md`.
 
 ## Repository layout
 
 ```
-.github/workflows/   CI pipeline
-docs/                project documentation and notes
-src/                 application source
-tests/               automated tests
+core/                 detection pipeline
+  observables.py      nominal link model
+  attacks.py          controlled adversarial injection
+  features.py         per-epoch interpretable features
+  detectors.py        robust baseline + CUSUM, calibrated operating point
+  trust.py            HMAC-SHA256 hash-chained observation log
+  evaluate.py         Pd, Pfa, latency, ROC AUC
+  cli.py              end-to-end scenario runner
+dashboard/            React app — Phase 2 replay and demo surface
+docs/                 threat model, architecture, roadmap
+data/                 reference datasets (gitignored)
+tests/                Python test suite
 ```
 
-## Stack
+## Documentation
 
-React 19 · TypeScript · Vite · Vitest + Testing Library · ESLint · Prettier
+- [Threat model](docs/threat-model.md)
+- [Architecture and trust anchor](docs/architecture.md)
+- [Roadmap to Phase 1](docs/roadmap.md)
+- [Working agreement](CONTRIBUTING.md)
 
-## Working agreement
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Deployment
-
-Hosted on Vercel. `vercel.json` pins the build (`npm ci` → `npm run build` → `dist/`) and adds the SPA rewrite so client-side routes resolve.
-
-- Every push to `main` ships to production.
-- Every pull request gets its own preview URL.
-
-Environment variables must be added in the Vercel project (Settings → Environment Variables) for each environment. Only variables prefixed `VITE_` reach the browser bundle — never put secrets there.
-
-Local production check before shipping:
+## Dashboard
 
 ```bash
-npm run build && npm run preview
+cd dashboard
+npm install
+npm run dev
 ```
