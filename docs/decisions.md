@@ -46,3 +46,49 @@ reproducible. Tie-breaks in this challenge are decided on the lower false-alarm 
 operating point has to be stated and defensible.
 
 **Rules out.** Reporting any Pd without the Pfa it was measured at.
+
+---
+
+## 2026-09-26 — Defend the satellite-to-station data link, not navigation signals
+
+**Supersedes** the navigation-signal scope implied by the first Track 1 prototype.
+
+**Decision.** The ground-link segment we defend is the downlink carrying telemetry from
+spacecraft to station. The first prototype watched the station's navigation receiver; that
+code is removed.
+
+**Why.** The team's reading of the track is that the data moving between satellite and
+station must be protected and tampering by a man in the middle detected. The satellite ↔
+station link is the core of "ground link", and it gives the clearest demonstration of the
+challenge's silent-failure problem.
+
+**Rules out.** Navigation-signal spoofing as the primary scenario. Scope is still to be
+confirmed with the organisers; if they expect navigation signals too, the station's
+feature layer is where it would attach.
+
+---
+
+## 2026-09-26 — Two independent defensive layers
+
+**Decision.** Cryptography (AES-256-GCM with anti-replay) and link-behaviour anomaly
+detection run side by side and are evaluated separately.
+
+**Why.** Measured, not assumed: relay, delay and jamming deliver genuine frames and pass
+every cryptographic check; tampering changes bytes but not physics and is invisible to the
+detector (ROC AUC 0.507). Neither layer covers the catalogue alone.
+
+**Rules out.** Presenting either layer as sufficient on its own.
+
+---
+
+## 2026-09-26 — Hybrid detector over Isolation Forest alone
+
+**Decision.** The detector merges an Isolation Forest with a robust per-feature gate, each
+normalised on a clean calibration pass.
+
+**Why.** Isolation Forest alone caught the delay attack on 28% of frames: a value beyond the
+training range is isolated no faster than the most extreme training point, so single-feature
+deviations saturate. The hybrid catches it on 100% at the same false-alarm rate.
+
+**Rules out.** Reporting Isolation Forest results without the gate, or vice versa, as the
+headline detector.

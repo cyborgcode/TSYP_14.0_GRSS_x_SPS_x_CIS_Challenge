@@ -10,17 +10,16 @@ pass/fail first and score-maximising second.
 
 ## Where we stand
 
-| # | Deliverable | Points | Status |
-| --- | --- | --- | --- |
-| 1 | Threat model & segment analysis | 15 | Drafted — `docs/threat-model.md` |
-| 2 | Platform / architecture / trust anchor | 15 | Implemented — `core/trust.py` |
-| 3 | Signal / image processing | 15 | Baseline features implemented — `core/features.py` |
-| 4 | AI or statistical detection | 20 | Statistical detector implemented — `core/detectors.py` |
-| 5 | Adversarial validation & response | 20 | **Not started** |
-| 6 | Documentation on official datasets | 5 | **Blocked — datasets not obtained** |
-| — | Feasibility, affordability, local execution | 10 | Satisfied — stdlib anchor, laptop runtime |
+| # | Deliverable | Points | Status | Doc |
+| --- | --- | --- | --- | --- |
+| 1 | Threat model & segment analysis | 15 | Drafted — six-attack catalogue | [1](1-threat-model.md) |
+| 2 | Platform / architecture / trust anchor | 15 | Implemented — AES-GCM link + HMAC audit log | [2](2-architecture-trust-anchor.md) |
+| 3 | Signal / image processing | 15 | Implemented — six orbit-residual features | [3](3-signal-processing.md) |
+| 4 | AI or statistical detection | 20 | Implemented — hybrid Isolation Forest + robust gate | [4](4-detection.md) |
+| 5 | Adversarial validation & response | 20 | **Standard scenario done; evasion sweep not started** | [5](5-adversarial-validation.md) |
+| 6 | Documentation on official datasets | 5 (+10 feasibility) | **Blocked — datasets not obtained** | [6](6-datasets-reproducibility.md) |
 
-Everything currently runs on synthetic observables. **Synthetic results are not submittable
+Everything currently runs on synthetic satellite-to-station traffic. **Synthetic results are not submittable
 results.** Deliverable 6 blocks 3, 4 and 5 from being reportable, which is why data
 acquisition is the critical path.
 
@@ -43,10 +42,10 @@ not necessarily the only person writing the code.
 
 | Role | Owns | Deliverables | First task |
 | --- | --- | --- | --- |
-| **Data & Replay** | Official datasets, replay adapter behind `Observables` | 6 | Obtain datasets, write `data/README.md` rows |
-| **Threat Model & Report** | `docs/threat-model.md`, the anonymous report | 1 | Extend the attack catalogue with dataset-grounded parameters |
-| **Signal Processing** | `core/features.py` | 3 | Validate the six features against real observables |
-| **Detection** | `core/detectors.py`, `core/evaluate.py` | 4 | Add a second detector family and compare on ROC |
+| **Data & Replay** | Official datasets, replay adapter producing `Reception` records | 6 | Obtain datasets, write `data/README.md` rows |
+| **Threat Model & Report** | `docs/1-threat-model.md`, the anonymous report | 1 | Extend the attack catalogue with dataset-grounded parameters |
+| **Signal Processing** | `groundlink/channel.py`, `groundlink/station.py` | 3 | Validate the six features against real link data |
+| **Detection** | `groundlink/detector.py`, `groundlink/evaluate.py` | 4 | Compare against a second detector family on ROC |
 | **Adversarial & Demo** | Evasion sweep, `dashboard/` | 5 | Build the attack-strength sweep harness |
 
 Data & Replay blocks everyone. If that role slips, the whole plan slips — escalate on day 1
@@ -57,11 +56,10 @@ of a slip, not at the sprint boundary.
 ### S0 — Foundations & data acquisition (18–27 Sep)
 
 - Obtain the official reference datasets; log source, version and licence in `data/README.md`
-- Write the replay adapter interface so it drops in behind `core.observables.Observables`
-- Each owner reads `docs/threat-model.md` and `docs/architecture.md` and files one issue
-  challenging something in them
+- Write the replay adapter so official data arrives as `Reception` records (`groundlink/simulate.py`)
+- Each owner reads `docs/START-HERE.md` and their own deliverable doc, and files one issue
+  challenging something in it
 - Fill the ownership table in `CONTRIBUTING.md`
-- Move the trust-anchor key out of `core/cli.py` into the environment
 
 ### S1 — Real data end to end (28 Sep – 11 Oct)
 

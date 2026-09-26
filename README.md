@@ -1,90 +1,84 @@
 # Ground Truth Under Attack — Track 1: Secure Ground-Link Testbed
 
-A verifiable defensive prototype for the Earth-observation ground segment: it seals receiver
-observables under a software trust anchor, injects controlled interference, and detects the
-attack while reporting detection quality, false alarms and latency.
+Protects the radio link that carries data from a satellite down to its ground station, and
+detects when someone interferes with it — including the attacks that encryption alone can't
+see.
 
-## Why
+**New to the project? Read [docs/START-HERE.md](docs/START-HERE.md) first.**
 
-Earth-observation products drive decisions in agriculture, insurance, water management and
-disaster response. Jamming, spoofing and replay can make a pipeline produce plausible but
-untrustworthy output — and the failure is silent: the pipeline keeps running while a
-corrupted observation reaches the analyst. This testbed makes that failure visible.
+## The idea in one paragraph
 
-## Requirements
+Every frame the satellite sends is encrypted and sealed with AES-256-GCM, so any altered,
+forged or replayed frame is rejected. But an attacker can also *forward*, *delay* or *jam*
+genuine frames — every cryptographic check still passes, and the station quietly accepts
+data from a path the attacker controls. So a second, independent layer compares how each
+frame physically arrived (timing, power, Doppler) with what the satellite's orbit predicts,
+and a machine-learning detector flags anything that doesn't fit.
 
-- Python 3.11+
-- Node.js 22 (dashboard only — `.nvmrc` provided)
-
-## Getting started
+## Quick start
 
 ```bash
-git clone <repository-url>
-cd <repository>
+python -m venv .venv
+source .venv/bin/activate
 pip install -e ".[dev]"
-```
-
-Run the standard scenario:
-
-```bash
-python -m core.cli --attack spoofing
-```
-
-Swap in any attack from the catalogue:
-
-```bash
-python -m core.cli --attack jamming
-python -m core.cli --attack meaconing
-python -m core.cli --attack spoofing --onset 200 --duration 80 --pfa 0.005
-```
-
-Run the test suite:
-
-```bash
+python -m groundlink.cli
 python -m pytest
 ```
 
-## Results on the standard scenario
+Run a single attack, or change the attack window and false-alarm target:
 
-600 epochs, 8 channels, attack from epoch 300 for 120 epochs, detector calibrated to a 1%
-target false-alarm rate on a clean 250-epoch prefix:
+```bash
+python -m groundlink.cli --attack relay
+python -m groundlink.cli --attack delay --attack jamming --start 100 --end 150 --pfa 0.005
+```
 
-| Attack | Pd | Pfa | ROC AUC | Driving feature |
+## Standard scenario — what it shows
+
+| Attack | Crypto catches | ML catches | Together | False alarms |
 | --- | --- | --- | --- | --- |
-| Jamming | 1.000 | 0.010 | 1.000 | `cn0_mean` |
-| Spoofing | 1.000 | 0.015 | 0.996 | `cn0_mean` |
-| Meaconing | 1.000 | 0.010 | 1.000 | `residual_common_mode` |
+| Tamper | ✅ 100% | ❌ 0% | 100% | 1.2% |
+| Inject | ✅ 100% | ✅ 100% | 100% | 1.2% |
+| Replay | ✅ 100% | ✅ 100% | 100% | 1.2% |
+| Relay | ❌ 0% | ✅ 100% | 100% | 1.2% |
+| Delay | ❌ 0% | ✅ 100% | 100% | 1.2% |
+| Jamming | ❌ 0% | ✅ 100% | 100% | 1.2% |
 
-Post-hoc edits to the sealed log are caught by the trust anchor in every run.
-
-**These figures are from synthetic observables.** They demonstrate that the harness works
-end to end; they are not submittable results. The official reference datasets must replace
-the generator before anything is reported — see `docs/roadmap.md`.
+**These figures are from synthetic traffic** and are not submittable results. The official
+reference datasets must replace the simulator before anything is reported.
 
 ## Repository layout
 
 ```
-core/                 detection pipeline
-  observables.py      nominal link model
-  attacks.py          controlled adversarial injection
-  features.py         per-epoch interpretable features
-  detectors.py        robust baseline + CUSUM, calibrated operating point
-  trust.py            HMAC-SHA256 hash-chained observation log
-  evaluate.py         Pd, Pfa, latency, ROC AUC
-  cli.py              end-to-end scenario runner
-dashboard/            React app — Phase 2 replay and demo surface
-docs/                 threat model, architecture, roadmap
-data/                 reference datasets (gitignored)
-tests/                Python test suite
+groundlink/
+  frames.py        frame header layout
+  security.py      AES-256-GCM sealing, anti-replay, freshness   ← layer 1
+  channel.py       orbit geometry: range, Doppler, power
+  simulate.py      clean satellite-to-station traffic
+  attacks.py       six attacks with ground-truth labels
+  station.py       runs both layers on every frame, extracts features
+  detector.py      hybrid anomaly detector                       ← layer 2
+  audit.py         tamper-evident station log
+  evaluate.py      detection metrics
+  cli.py           standard scenario runner
+tests/             58 tests
+docs/              one document per deliverable, plus roadmap and decisions
+dashboard/         React app — the Phase 2 live-demo surface
+data/              official datasets (gitignored)
 ```
 
-## Documentation
+## Deliverables
 
-- [Threat model](docs/threat-model.md)
-- [Architecture and trust anchor](docs/architecture.md)
-- [Roadmap to Phase 1](docs/roadmap.md)
-- [Decision log](docs/decisions.md)
-- [Working agreement](CONTRIBUTING.md)
+| # | Deliverable | Points | Document |
+| --- | --- | --- | --- |
+| 1 | Threat Model & Segment Analysis | 15 | [docs/1-threat-model.md](docs/1-threat-model.md) |
+| 2 | Platform / Architecture & Trust Anchor | 15 | [docs/2-architecture-trust-anchor.md](docs/2-architecture-trust-anchor.md) |
+| 3 | Signal / Image Processing | 15 | [docs/3-signal-processing.md](docs/3-signal-processing.md) |
+| 4 | AI or Statistical Detection | 20 | [docs/4-detection.md](docs/4-detection.md) |
+| 5 | Adversarial Validation & Response | 20 | [docs/5-adversarial-validation.md](docs/5-adversarial-validation.md) |
+| 6 | Documentation & Official Datasets | 5–10 | [docs/6-datasets-reproducibility.md](docs/6-datasets-reproducibility.md) |
+
+Also: [roadmap](docs/roadmap.md) · [decision log](docs/decisions.md) ·
+[working agreement](CONTRIBUTING.md)
 
 ## Dashboard
 

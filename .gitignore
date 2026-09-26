@@ -47,5 +47,5 @@ coverage/
 .ruff_cache/
 
 # Reference datasets (never commit raw data)
-data/
+data/*
 !data/README.md

@@ -1,9 +1,11 @@
-"""Software trust anchor for the observation record.
+"""Tamper-evident record of what the station received.
 
-The challenge accepts a software or emulated trust anchor. Each epoch is committed to a
-hash chain and authenticated with HMAC-SHA256 under a key held by the receiver, so any
-edit, reorder, truncation or splice of the logged observations is detectable after the
-fact. Only the standard library is used, which keeps the anchor reproducible on a laptop.
+Provenance needs a processing history that cannot be quietly rewritten after the fact.
+Every frame report is committed to a hash chain and authenticated with HMAC-SHA256, so any
+later edit, reorder, truncation or splice of the station's log is detected and located.
+
+This is separate from link security: AES-GCM protects frames in flight between spacecraft
+and station; this log protects the station's own record once they have landed.
 """
 
 from __future__ import annotations
