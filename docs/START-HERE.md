@@ -97,7 +97,7 @@ groundlink/          ← all the Python code
   evaluate.py          scoring: how much we catch, how often we're wrong
   cli.py               runs the whole scenario with one command
 
-tests/               ← 58 automatic checks that the code does what it says
+tests/               ← 59 automatic checks that the code does what it says
 docs/                ← one document per competition deliverable (see section 8)
 dashboard/           ← web page for the Phase 2 live demo (placeholder for now)
 data/                ← where the official competition datasets will go
@@ -210,8 +210,8 @@ scoring code were kept; everything else is new. The reasoning is recorded in
 
 1. Run it (section 6) and look at the output yourself.
 2. Read the deliverable document for the area you'll own.
-3. Put your name against a role in [CONTRIBUTING.md](../CONTRIBUTING.md). There are five
-   roles, one per person.
+3. Find your role in [roles.md](roles.md). It lists what you own, what's already built,
+   your tasks, and the questions judges will ask you.
 4. Read [roadmap.md](roadmap.md) for the dates. **Phase 1 is due 8 November 2026.**
 5. Read "How we meet" in [CONTRIBUTING.md](../CONTRIBUTING.md): Monday planning, daily
    written stand-up, Friday demo.

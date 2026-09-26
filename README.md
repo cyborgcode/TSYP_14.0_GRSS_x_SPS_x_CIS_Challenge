@@ -60,7 +60,7 @@ groundlink/
   audit.py         tamper-evident station log
   evaluate.py      detection metrics
   cli.py           standard scenario runner
-tests/             58 tests
+tests/             59 tests
 docs/              one document per deliverable, plus roadmap and decisions
 dashboard/         React app — the Phase 2 live-demo surface
 data/              official datasets (gitignored)
@@ -77,7 +77,7 @@ data/              official datasets (gitignored)
 | 5 | Adversarial Validation & Response | 20 | [docs/5-adversarial-validation.md](docs/5-adversarial-validation.md) |
 | 6 | Documentation & Official Datasets | 5–10 | [docs/6-datasets-reproducibility.md](docs/6-datasets-reproducibility.md) |
 
-Also: [roadmap](docs/roadmap.md) · [decision log](docs/decisions.md) ·
+Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log](docs/decisions.md) ·
 [working agreement](CONTRIBUTING.md)
 
 ## Dashboard

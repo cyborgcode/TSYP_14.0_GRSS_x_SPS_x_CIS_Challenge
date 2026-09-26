@@ -82,3 +82,19 @@ def test_a_rejected_frame_does_not_advance_the_replay_window():
 
 def test_truncated_input_is_malformed():
     assert LinkVerifier(KEY).verify(b"\x00" * 10, 0.0).status is Status.MALFORMED
+
+
+def test_a_plain_hash_is_forgeable_but_the_keyed_seal_is_not():
+    """Why the seal must be keyed: an attacker can recompute an unkeyed hash."""
+    import hashlib
+
+    genuine, forged = b"temp=21.4C", b"temp=99.9C"
+
+    # Unkeyed SHA-256: the man in the middle simply recomputes the digest.
+    forged_digest = hashlib.sha256(forged).hexdigest()
+    assert hashlib.sha256(forged).hexdigest() == forged_digest
+
+    # Keyed seal: without the key the attacker cannot produce a tag the station accepts.
+    wire = bytearray(seal(0, 0.0, genuine))
+    wire[HEADER_SIZE : HEADER_SIZE + len(forged)] = forged
+    assert LinkVerifier(KEY).verify(bytes(wire), 0.01).status is Status.AUTH_FAIL

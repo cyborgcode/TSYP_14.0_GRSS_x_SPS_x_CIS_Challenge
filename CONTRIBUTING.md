@@ -37,16 +37,16 @@ Subject in the imperative, under 72 characters, no trailing period.
 
 ## Code ownership
 
-One owner per area, accountable for the deliverable. See [the roadmap](docs/roadmap.md) for
-what each role owns.
+One owner per role, accountable for the deliverable. Full task lists and Q&A prep per role
+are in [docs/roles.md](docs/roles.md).
 
-| Area | Deliverable | Owner |
-| --- | --- | --- |
-| Data & replay | 6 | _fill in_ |
-| Threat model & report | 1 | _fill in_ |
-| Signal processing | 3 | _fill in_ |
-| Detection & evaluation | 4 | _fill in_ |
-| Adversarial validation & demo | 5 | _fill in_ |
+| # | Role | Owns | Deliverable |
+| --- | --- | --- | --- |
+| 1 | The Intake Clerk | `data/`, dataset loader | 6 (data) |
+| 2 | The Cryptographic Wax Seal | `groundlink/security.py`, `frames.py`, `audit.py` | 2 |
+| 3 | The Smart Security Guard | `groundlink/detector.py`, `station.py`, `channel.py` | 3, 4 |
+| 4 | The Inside Hacker / Tester | `groundlink/attacks.py`, `tests/`, evasion sweep | 5 |
+| 5 | The Project Manager & Director | README, `docs/`, CI, anonymity, report | 1, 6 |
 
 ## How we meet
 

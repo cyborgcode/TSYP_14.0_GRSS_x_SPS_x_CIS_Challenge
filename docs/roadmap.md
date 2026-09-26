@@ -37,19 +37,18 @@ Nothing lands in the freeze window that was not already working on 6 November.
 
 ## Roles
 
-Five members maximum. One owner per area — the owner is accountable for the deliverable,
-not necessarily the only person writing the code.
+Five roles, one per member. Task lists and Q&A prep are in [roles.md](roles.md).
 
 | Role | Owns | Deliverables | First task |
 | --- | --- | --- | --- |
-| **Data & Replay** | Official datasets, replay adapter producing `Reception` records | 6 | Obtain datasets, write `data/README.md` rows |
-| **Threat Model & Report** | `docs/1-threat-model.md`, the anonymous report | 1 | Extend the attack catalogue with dataset-grounded parameters |
-| **Signal Processing** | `groundlink/channel.py`, `groundlink/station.py` | 3 | Validate the six features against real link data |
-| **Detection** | `groundlink/detector.py`, `groundlink/evaluate.py` | 4 | Compare against a second detector family on ROC |
-| **Adversarial & Demo** | Evasion sweep, `dashboard/` | 5 | Build the attack-strength sweep harness |
+| **1 · Intake Clerk** | Datasets, loader producing `Reception` records | 6 | Obtain the official datasets |
+| **2 · Cryptographic Wax Seal** | AES-GCM link security, audit log | 2 | Nonce-reuse-on-reboot design |
+| **3 · Smart Security Guard** | Features and anomaly detector | 3, 4 | Second model family for comparison |
+| **4 · Inside Hacker / Tester** | Attacks, tests, evasion sweep | 5 | Evasion sweep harness |
+| **5 · Project Manager & Director** | Repo, docs, CI, anonymity, report | 1, 6 | Confirm track scope with organisers |
 
-Data & Replay blocks everyone. If that role slips, the whole plan slips — escalate on day 1
-of a slip, not at the sprint boundary.
+The Intake Clerk blocks everyone. If that role slips, the whole plan slips, so escalate on
+day 1 of a slip, not at the sprint boundary.
 
 ## Sprint backlogs
 
