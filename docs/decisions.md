@@ -92,3 +92,18 @@ deviations saturate. The hybrid catches it on 100% at the same false-alarm rate.
 
 **Rules out.** Reporting Isolation Forest results without the gate, or vice versa, as the
 headline detector.
+
+---
+
+## 2026-09-26 — Correction: Isolation Forest delay figure
+
+**Corrects** the "28% of frames" figure in the hybrid-detector entry above, which came from a
+single training run.
+
+Re-measured across 10 independent training and calibration seeds on the same attacked pass,
+Isolation Forest alone catches the delay attack on **17–35% of frames (median 26%)**. The
+hybrid detector catches 100% on all 10 seeds. The decision stands; the figure was
+seed-dependent and is now reported as a range.
+
+**Rule going forward.** Detector figures in the report come from multiple seeds and are
+stated as a range or with a spread, never from one run.

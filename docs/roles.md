@@ -86,7 +86,7 @@ over time. When something doesn't fit the pattern, it raises a red flag.
 - `station.py`: turns each frame into six measurements compared against the orbit
   prediction (timing, power, Doppler, gaps).
 - `detector.py`: Isolation Forest **plus** a per-measurement gate. The forest alone missed
-  72% of delayed frames: it can't score one far-out value higher than the most extreme
+  roughly three-quarters of delayed frames (65–83% across 10 training seeds): it can't score one far-out value higher than the most extreme
   normal one. The gate fixes that. See `docs/decisions.md`.
 - Trained on clean traffic only, with the threshold calibrated for a 1% false-alarm target.
 

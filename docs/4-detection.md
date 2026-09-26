@@ -16,7 +16,8 @@ Two scorers, each covering the other's blind spot:
 | **Robust per-feature gate** (largest median/IQR deviation) | A single feature far out of range | Subtle multi-feature combinations |
 
 The gap is not theoretical. With Isolation Forest alone, the delay attack — latency +80 ms,
-every other feature normal — was caught on only **28%** of frames. With the hybrid, 100%.
+every other feature normal — was caught on only **17–35%** of frames (median 26%, across
+10 training seeds). With the hybrid, 100% on every seed.
 
 ## Calibration
 
