@@ -57,7 +57,7 @@ SHA-256 is still in the design: inside HMAC for the station's audit log (`audit.
 - `security.py`: AES-256-GCM seal on every frame, header protected too, anti-replay,
   freshness check.
 - `audit.py`: HMAC-SHA256 hash chain over the station's log.
-- 13 tests in `tests/test_security.py`.
+-  tests in `tests/test_security.py`.
 
 **Your tasks.**
 - [ ] Understand every line of `security.py`. You'll defend it live in Phase 2.
