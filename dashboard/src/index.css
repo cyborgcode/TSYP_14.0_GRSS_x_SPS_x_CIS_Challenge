@@ -1319,7 +1319,6 @@ button {
   fill: none;
   stroke-width: 9;
   stroke-linecap: round;
-  transition: d 0.2s;
 }
 .gauge__needle {
   stroke: var(--text-0);

@@ -53,9 +53,14 @@ function Gauge({ label, value, id }: { label: string; value: number; id: string 
         <path d={arc(cx, cy, r, 0, 0.55)} className="gauge__zone" stroke={COLORS.ok} />
         <path d={arc(cx, cy, r, 0.55, 0.8)} className="gauge__zone" stroke={COLORS.warn} />
         <path d={arc(cx, cy, r, 0.8, 1)} className="gauge__zone" stroke={COLORS.bad} />
-        {v > 0.005 && (
-          <path d={arc(cx, cy, r, 0, v)} className="gauge__active" stroke={`url(#g-${id})`} />
-        )}
+        {/* Fixed full-sweep path revealed by its dash length, so the arc always stays on the dial. */}
+        <path
+          d={arc(cx, cy, r, 0, 1)}
+          pathLength={1}
+          className="gauge__active"
+          stroke={`url(#g-${id})`}
+          style={{ strokeDasharray: `${v} 1`, opacity: v > 0.005 ? 1 : 0 }}
+        />
         <line x1={cx} y1={cy} x2={nx} y2={ny} className="gauge__needle" />
         <circle cx={cx} cy={cy} r="4" className="gauge__hub" />
         <text x={cx} y={cy + 30} className="gauge__value">
