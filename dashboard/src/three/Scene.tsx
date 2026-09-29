@@ -505,10 +505,18 @@ function CameraRig({
         : POSES[m].offset.clone().multiplyScalar(aspectScale);
 
   const go = (m: Mode) => {
-    if (!controls.current) return;
+    const c = controls.current;
+    if (!c) return;
+    // Spend leftover drag momentum now, so it cannot rotate the camera once the flight ends.
+    c.enableDamping = false;
+    c.update();
+    c.enableDamping = true;
+    // Disabled right away: an enabled update would clamp the camera to the new mode's
+    // distance limits before the flight starts.
+    c.enabled = false;
     anim.current = {
       fromPos: camera.position.clone(),
-      fromTarget: controls.current.target.clone(),
+      fromTarget: c.target.clone(),
       t0: performance.now(),
       dur: reduced ? 0 : m === 'attack' || modeRef.current === 'attack' ? 1.0 : 1.35,
     };
@@ -548,6 +556,8 @@ function CameraRig({
       const p = a.dur === 0 ? 1 : easeInOutCubic((performance.now() - a.t0) / (a.dur * 1000));
       c.target.lerpVectors(a.fromTarget, fp, p);
       camera.position.lerpVectors(a.fromPos, fp.clone().add(offsetFor(m)), p);
+      // The controls are off during the flight, so aim the camera here or it keeps its old heading.
+      camera.lookAt(c.target);
       c.enabled = false;
       if (p >= 1) {
         anim.current = null;
