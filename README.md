@@ -100,6 +100,5 @@ npm install
 npm run dev
 ```
 
-Every push to `main` that passes CI is deployed to production by the `Deploy to Vercel` job in
-`.github/workflows/ci.yml`. It needs three repository secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`
-and `VERCEL_PROJECT_ID`. Until they are set, the job is skipped with a warning.
+Production deploys are triggered manually by the Vercel project owner; automatic Git deploys are
+off in `vercel.json`.
