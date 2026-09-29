@@ -97,6 +97,41 @@ export function foilBumpTexture(): THREE.CanvasTexture {
   return foil;
 }
 
+let foilColor: THREE.CanvasTexture | null = null;
+/** Gold MLI albedo: warm gold with brighter and darker panels where the foil folds. */
+export function foilColorTexture(): THREE.CanvasTexture {
+  if (foilColor) return foilColor;
+  const { c, ctx } = canvas(256, 256);
+  ctx.fillStyle = '#d4a445';
+  ctx.fillRect(0, 0, 256, 256);
+  const rand = mulberry32(11);
+  for (let i = 0; i < 140; i++) {
+    const x = rand() * 256;
+    const y = rand() * 256;
+    const r = 12 + rand() * 46;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const tone = rand();
+    const color = tone > 0.6 ? '255, 214, 120' : tone > 0.3 ? '176, 122, 36' : '232, 180, 84';
+    g.addColorStop(0, `rgba(${color}, ${0.25 + rand() * 0.35})`);
+    g.addColorStop(1, `rgba(${color}, 0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  // Tape seams between MLI blankets.
+  ctx.strokeStyle = 'rgba(120, 82, 24, 0.55)';
+  ctx.lineWidth = 2;
+  for (const v of [85, 170]) {
+    ctx.beginPath();
+    ctx.moveTo(v, 0);
+    ctx.lineTo(v, 256);
+    ctx.stroke();
+  }
+  foilColor = new THREE.CanvasTexture(c);
+  foilColor.colorSpace = THREE.SRGBColorSpace;
+  foilColor.wrapS = foilColor.wrapT = THREE.RepeatWrapping;
+  return foilColor;
+}
+
 let dot: THREE.CanvasTexture | null = null;
 export function dotSprite(): THREE.CanvasTexture {
   if (dot) return dot;

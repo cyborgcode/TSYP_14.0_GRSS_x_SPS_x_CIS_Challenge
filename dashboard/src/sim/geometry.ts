@@ -1,17 +1,21 @@
-// Pass geometry for one EO satellite over the testbed station.
+// Pass geometry for one EO satellite over the Zaghouan ground station.
 //
-// Physics uses the real orbit (786 km, sun-synchronous class) at X-band; the 3D scene uses a
+// Physics uses the real orbit (542.8 km sun-synchronous LEO) at X-band; the 3D scene uses a
 // stylised orbit radius so both bodies stay readable. The two are tied by central angle, so
 // the satellite rises, culminates and sets in the scene exactly when the real pass does.
 
 import { clamp } from './noise';
 
 export const EARTH_RADIUS_KM = 6371;
-export const ALTITUDE_KM = 786;
+export const ALTITUDE_KM = 542.8;
 export const ORBIT_RADIUS_KM = EARTH_RADIUS_KM + ALTITUDE_KM;
-export const ORBIT_PERIOD_S = 100.6 * 60;
-export const CARRIER_HZ = 8.025e9; // X-band downlink
+const MU_KM3_S2 = 398_600.4418;
+/** Kepler's third law for a circular orbit. */
+export const ORBIT_PERIOD_S = 2 * Math.PI * Math.sqrt(ORBIT_RADIUS_KM ** 3 / MU_KM3_S2);
+export const CARRIER_HZ = 8477.8e6; // X-band downlink
 export const C_KM_S = 299_792.458;
+/** Receiver noise floor in the channel: RSSI = noise floor + SNR. */
+export const NOISE_FLOOR_DBM = -100;
 
 /** Link-budget parameters (illustrative X-band EO downlink, 13 m class station). */
 export const LINK = { eirpDbw: 18, lossesDb: 2, gOverTDbK: 31, bandwidthHz: 300e6 };

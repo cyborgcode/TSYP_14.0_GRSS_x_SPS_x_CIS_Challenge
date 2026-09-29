@@ -1,244 +1,187 @@
+import {
+  CategoryScale,
+  Chart,
+  LineController,
+  LineElement,
+  LinearScale,
+  PointElement,
+  type ScriptableLineSegmentContext,
+} from 'chart.js';
+import { useEffect, useRef } from 'react';
+
 import { useEngine, useEngineCtx } from '../engineContext';
 import { HISTORY, type TelemetryPoint } from '../sim/engine';
-import { symlog } from '../sim/noise';
-import { GATES } from '../sim/signals';
-import { fmtDb, fmtHz, fmtUs } from './format';
+import { GATES, type Sample } from '../sim/signals';
+import { fmtDb } from './format';
 import { Panel } from './Panel';
 import { Spectrum } from './Spectrum';
-import { COLORS, FONT_DATA, FONT_UI, hatch, useCanvasLoop } from './useCanvas';
+import { COLORS, FONT_DATA } from './useCanvas';
 
-type Kind = 'doppler' | 'snr' | 'timing';
+Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale);
+
+type Kind = 'carrier' | 'rssi';
 
 interface Spec {
   title: string;
   subtitle: string;
-  /** Value to plot (already on the axis scale) or null for "no frames". */
-  y: (p: TelemetryPoint) => number | null | undefined;
+  value: (x: Sample) => number;
+  model: (x: Sample) => number;
   out: (p: TelemetryPoint) => boolean;
-  range: [number, number];
-  gate?: number;
-  ticks: { v: number; label: string }[];
-  model?: boolean;
+  format: (x: Sample) => string;
+  tick: (v: number, span: number) => string;
+  /** Fixed axis range, or null to follow the data. */
+  range: [number, number] | null;
 }
 
+const rssiOut = (x: Sample) => Math.abs(x.rssiDbm - x.rssiModelDbm) > GATES.snrBandDb;
+
 const SPECS: Record<Kind, Spec> = {
-  doppler: {
-    title: 'Doppler residual',
-    subtitle: 'measured − orbit model · log scale',
-    y: (p) => (p.x ? symlog(p.x.dopplerHz, 10) : undefined),
+  carrier: {
+    title: 'Carrier frequency',
+    subtitle: 'measured vs orbit-predicted · MHz',
+    value: (x) => x.carrierMHz,
+    model: (x) => x.carrierModelMHz,
     out: (p) => Boolean(p.gates?.doppler),
-    range: [-2.6, 2.6],
-    gate: symlog(GATES.dopplerHz, 10),
-    ticks: [
-      { v: symlog(1000, 10), label: '+1k' },
-      { v: symlog(60, 10), label: '+60' },
-      { v: 0, label: '0' },
-      { v: symlog(-60, 10), label: '−60' },
-      { v: symlog(-1000, 10), label: '−1k' },
-    ],
+    format: (x) => `${x.carrierMHz.toFixed(3)} MHz`,
+    tick: (v, span) => v.toFixed(span < 1 ? 2 : 1),
+    range: null,
   },
-  snr: {
-    title: 'SNR vs link budget',
-    subtitle: 'measured vs elevation model',
-    y: (p) => (p.x ? p.x.snrDb : undefined),
-    out: (p) => Boolean(p.gates?.snr),
-    range: [-2, 30],
-    ticks: [
-      { v: 30, label: '30' },
-      { v: 20, label: '20' },
-      { v: 10, label: '10' },
-      { v: 0, label: '0' },
-    ],
-    model: true,
-  },
-  timing: {
-    title: 'Timing skew',
-    subtitle: 'vs GNSS-disciplined clock · log scale',
-    y: (p) => (p.x ? (p.x.timingUs === null ? null : symlog(p.x.timingUs, 1)) : undefined),
-    out: (p) => Boolean(p.gates?.timing || p.gates?.noFrames),
-    range: [-3.3, 3.3],
-    gate: symlog(GATES.timingUs, 1),
-    ticks: [
-      { v: symlog(1000, 1), label: '+1 ms' },
-      { v: symlog(8, 1), label: '+8' },
-      { v: 0, label: '0' },
-      { v: symlog(-8, 1), label: '−8' },
-    ],
+  rssi: {
+    title: 'RSSI signal strength',
+    subtitle: 'measured vs link budget · dBm',
+    value: (x) => x.rssiDbm,
+    model: (x) => x.rssiModelDbm,
+    out: (p) => Boolean(p.x && (rssiOut(p.x) || p.gates?.noFrames)),
+    format: (x) => `${x.rssiDbm.toFixed(1)} dBm`,
+    tick: (v) => `${Math.round(v)}`,
+    range: [-105, -60],
   },
 };
 
-function Chart({ kind }: { kind: Kind }) {
+const REFRESH_MS = 100;
+
+/** Chart.js stream of one telemetry channel, redrawn at 10 Hz while it is on screen. */
+function LiveChart({ kind }: { kind: Kind }) {
   const { engine } = useEngineCtx();
-  const spec = SPECS[kind];
+  const canvas = useRef<HTMLCanvasElement>(null);
 
-  const ref = useCanvasLoop((ctx, w, h) => {
-    const left = 40;
-    const right = 8;
-    const top = 6;
-    const bottom = 6;
-    const pw = w - left - right;
-    const ph = h - top - bottom;
-    const [lo, hi] = spec.range;
-    const Y = (v: number) => top + (1 - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * ph;
-    const X = (i: number) => left + (i / (HISTORY - 1)) * pw;
+  useEffect(() => {
+    const el = canvas.current;
+    if (!el) return;
+    const spec = SPECS[kind];
+    const measured: (number | null)[] = new Array(HISTORY).fill(null);
+    const model: (number | null)[] = new Array(HISTORY).fill(null);
+    const outFlags: boolean[] = new Array(HISTORY).fill(false);
+    let last = -1;
 
-    // Grid and ticks.
-    ctx.font = `600 11px ${FONT_DATA}`;
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    for (const t of spec.ticks) {
-      const y = Y(t.v);
-      ctx.strokeStyle = COLORS.line;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(left, y);
-      ctx.lineTo(w - right, y);
-      ctx.stroke();
-      ctx.fillStyle = COLORS.text2;
-      ctx.fillText(t.label, left - 6, y);
-    }
+    const chart = new Chart(el, {
+      type: 'line',
+      data: {
+        labels: Array.from({ length: HISTORY }, (_, i) => i),
+        datasets: [
+          {
+            data: model,
+            borderColor: 'rgba(236, 242, 248, 0.45)',
+            borderDash: [6, 5],
+            borderWidth: 1.2,
+            pointRadius: 0,
+            spanGaps: false,
+          },
+          {
+            data: measured,
+            borderColor: COLORS.accent,
+            borderWidth: 1.8,
+            tension: 0.25,
+            spanGaps: false,
+            pointRadius: (c) => (c.dataIndex === last ? 3.5 : 0),
+            pointBackgroundColor: (c) => (outFlags[c.dataIndex] ? COLORS.bad : COLORS.accent),
+            pointBorderWidth: 0,
+            segment: {
+              borderColor: (c: ScriptableLineSegmentContext) =>
+                outFlags[c.p0DataIndex] || outFlags[c.p1DataIndex] ? COLORS.bad : COLORS.accent,
+            },
+          },
+        ],
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        events: [],
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: { display: false },
+          y: {
+            min: spec.range?.[0],
+            max: spec.range?.[1],
+            border: { display: false },
+            grid: { color: COLORS.line },
+            ticks: {
+              color: COLORS.text2,
+              font: { family: FONT_DATA, size: 11, weight: 600 },
+              maxTicksLimit: 5,
+              callback(v) {
+                // More decimals when the axis spans little, so ticks never repeat.
+                return spec.tick(Number(v), this.max - this.min);
+              },
+            },
+          },
+        },
+      },
+    });
 
-    const history = engine.history;
-    const offset = HISTORY - history.length;
-
-    // Acceptance region between the detection gates.
-    if (spec.gate !== undefined) {
-      const g = spec.gate;
-      ctx.fillStyle = 'rgba(76, 201, 240, 0.06)';
-      ctx.fillRect(left, Y(g), pw, Y(-g) - Y(g));
-      ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = COLORS.text2;
-      for (const v of [g, -g]) {
-        ctx.beginPath();
-        ctx.moveTo(left, Y(v));
-        ctx.lineTo(w - right, Y(v));
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-      ctx.font = `500 11px ${FONT_UI}`;
-      ctx.fillStyle = COLORS.text2;
-      ctx.textAlign = 'left';
-      ctx.fillText('detection gate', left + 6, Y(g) - 8);
-    }
-
-    // SNR model line and ±4 dB band.
-    if (spec.model) {
-      ctx.beginPath();
-      let started = false;
-      const upper: [number, number][] = [];
-      const lower: [number, number][] = [];
+    const update = () => {
+      const history = engine.history;
+      const offset = HISTORY - history.length;
+      measured.fill(null);
+      model.fill(null);
+      outFlags.fill(false);
+      let lo = Infinity;
+      let hi = -Infinity;
       history.forEach((p, i) => {
         if (!p.x) return;
-        upper.push([X(i + offset), Y(p.x.snrModelDb + GATES.snrBandDb)]);
-        lower.push([X(i + offset), Y(p.x.snrModelDb - GATES.snrBandDb)]);
+        const k = i + offset;
+        const v = spec.value(p.x);
+        const m = spec.model(p.x);
+        measured[k] = v;
+        model[k] = m;
+        outFlags[k] = spec.out(p);
+        lo = Math.min(lo, v, m);
+        hi = Math.max(hi, v, m);
       });
-      if (upper.length > 1) {
-        ctx.fillStyle = 'rgba(76, 201, 240, 0.06)';
-        ctx.beginPath();
-        upper.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-        [...lower].reverse().forEach(([x, y]) => ctx.lineTo(x, y));
-        ctx.closePath();
-        ctx.fill();
-      }
-      ctx.beginPath();
-      history.forEach((p, i) => {
-        if (!p.x) {
-          started = false;
-          return;
-        }
-        const x = X(i + offset);
-        const y = Y(p.x.snrModelDb);
-        if (started) ctx.lineTo(x, y);
-        else ctx.moveTo(x, y);
-        started = true;
-      });
-      ctx.setLineDash([6, 5]);
-      ctx.strokeStyle = 'rgba(236, 242, 248, 0.5)';
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-      ctx.setLineDash([]);
-      const lastWithX = [...history].reverse().find((p) => p.x);
-      if (lastWithX?.x) {
-        ctx.font = `500 11px ${FONT_UI}`;
-        ctx.fillStyle = 'rgba(236, 242, 248, 0.6)';
-        ctx.textAlign = 'left';
-        ctx.fillText('model', left + 6, Y(lastWithX.x.snrModelDb + GATES.snrBandDb) - 8);
-      }
-    }
-
-    // Gaps: loss of signal between passes (grey), frames lost to jamming (amber hatch).
-    let gapStart = -1;
-    let gapKind: 'los' | 'lost' | null = null;
-    const flushGap = (end: number) => {
-      if (gapStart < 0 || !gapKind) return;
-      const x0 = X(gapStart + offset);
-      const x1 = X(end + offset);
-      if (gapKind === 'lost') hatch(ctx, x0, top, Math.max(2, x1 - x0), ph, COLORS.warn);
-      else {
-        ctx.fillStyle = 'rgba(125, 142, 163, 0.08)';
-        ctx.fillRect(x0, top, Math.max(2, x1 - x0), ph);
-        if (x1 - x0 > 30) {
-          ctx.fillStyle = COLORS.text2;
-          ctx.font = `700 11px ${FONT_UI}`;
-          ctx.textAlign = 'center';
-          ctx.fillText('LOS', (x0 + x1) / 2, top + ph / 2);
+      last = history[history.length - 1]?.x ? HISTORY - 1 : -1;
+      if (!spec.range && Number.isFinite(lo)) {
+        const pad = Math.max(0.15, (hi - lo) * 0.1);
+        const y = chart.options.scales?.y;
+        if (y) {
+          y.min = lo - pad;
+          y.max = hi + pad;
         }
       }
-      gapStart = -1;
-      gapKind = null;
+      chart.update('none');
     };
-    history.forEach((p, i) => {
-      const kindHere: 'los' | 'lost' | null = !p.x
-        ? 'los'
-        : kind === 'timing' && p.x.timingUs === null
-          ? 'lost'
-          : null;
-      if (kindHere !== gapKind) {
-        flushGap(i);
-        if (kindHere) {
-          gapStart = i;
-          gapKind = kindHere;
-        }
-      }
-    });
-    flushGap(history.length - 1);
 
-    // Data line, red wherever it leaves the gate.
-    ctx.lineWidth = 1.8;
-    ctx.lineJoin = 'round';
-    for (let i = 1; i < history.length; i++) {
-      const a = history[i - 1];
-      const b = history[i];
-      const ya = spec.y(a);
-      const yb = spec.y(b);
-      if (ya == null || yb == null) continue;
-      ctx.strokeStyle = spec.out(a) || spec.out(b) ? COLORS.bad : COLORS.accent;
-      ctx.beginPath();
-      ctx.moveTo(X(i - 1 + offset), Y(ya));
-      ctx.lineTo(X(i + offset), Y(yb));
-      ctx.stroke();
-    }
-
-    const last = history[history.length - 1];
-    const yl = last ? spec.y(last) : null;
-    if (last && yl != null) {
-      const x = X(history.length - 1 + offset);
-      const y = Y(yl);
-      const color = spec.out(last) ? COLORS.bad : COLORS.accent;
-      const glow = ctx.createRadialGradient(x, y, 0, x, y, 10);
-      glow.addColorStop(0, `${color}aa`);
-      glow.addColorStop(1, `${color}00`);
-      ctx.fillStyle = glow;
-      ctx.fillRect(x - 10, y - 10, 20, 20);
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  });
+    let visible = true;
+    const io =
+      typeof IntersectionObserver === 'undefined'
+        ? null
+        : new IntersectionObserver(([e]) => (visible = e.isIntersecting));
+    io?.observe(el);
+    update();
+    const id = window.setInterval(() => {
+      if (visible && !document.hidden) update();
+    }, REFRESH_MS);
+    return () => {
+      window.clearInterval(id);
+      io?.disconnect();
+      chart.destroy();
+    };
+  }, [engine, kind]);
 
   return (
-    <canvas ref={ref} className="chart__canvas" role="img" aria-label={`${spec.title} chart`} />
+    <div className="chart__box">
+      <canvas ref={canvas} role="img" aria-label={`${SPECS[kind].title} chart`} />
+    </div>
   );
 }
 
@@ -246,21 +189,7 @@ function ChartBlock({ kind }: { kind: Kind }) {
   const engine = useEngine(10);
   const spec = SPECS[kind];
   const x = engine.current;
-  const g = engine.gates;
-  let value = 'LOS';
-  let out = false;
-  if (x && g) {
-    if (kind === 'doppler') {
-      value = fmtHz(x.dopplerHz);
-      out = g.doppler;
-    } else if (kind === 'snr') {
-      value = fmtDb(x.snrDb);
-      out = g.snr;
-    } else {
-      value = fmtUs(x.timingUs);
-      out = g.timing || g.noFrames;
-    }
-  }
+  const out = Boolean(x && spec.out({ s: engine.s, x, gates: engine.gates }));
   return (
     <div className={`chart ${out ? 'chart--out' : ''}`}>
       <div className="chart__head">
@@ -269,10 +198,10 @@ function ChartBlock({ kind }: { kind: Kind }) {
           <div className="chart__subtitle">{spec.subtitle}</div>
         </div>
         <div className="chart__value" aria-live="off">
-          {value}
+          {x ? spec.format(x) : 'LOS'}
         </div>
       </div>
-      <Chart kind={kind} />
+      <LiveChart kind={kind} />
     </div>
   );
 }
@@ -310,9 +239,8 @@ export function TelemetryPanel() {
       className="panel--telemetry"
     >
       <div className="charts">
-        <ChartBlock kind="doppler" />
-        <ChartBlock kind="snr" />
-        <ChartBlock kind="timing" />
+        <ChartBlock kind="carrier" />
+        <ChartBlock kind="rssi" />
         <SpectrumBlock />
       </div>
     </Panel>

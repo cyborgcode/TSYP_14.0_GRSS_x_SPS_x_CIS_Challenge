@@ -6,6 +6,9 @@ import {
   EmulatedHsm,
   ReplayWindow,
   chainHash,
+  createEd25519,
+  encodeText,
+  genesisRoot,
   encodeHeader,
   importMacKey,
   macInput,
@@ -13,11 +16,18 @@ import {
   macVerify,
 } from '../src/sim/crypto';
 import { Engine } from '../src/sim/engine';
-import { PASS_S, passAt, snrPredDb, timeAfterAos } from '../src/sim/geometry';
+import {
+  ALTITUDE_KM,
+  ORBIT_PERIOD_S,
+  PASS_S,
+  passAt,
+  snrPredDb,
+  timeAfterAos,
+} from '../src/sim/geometry';
 import { IsolationForest } from '../src/sim/iforest';
 import { mulberry32 } from '../src/sim/noise';
-import { checkGates, sample, type Attack } from '../src/sim/signals';
-import { GATE_HZ, SPAN_HZ, renderSpectrum, spectrumState } from '../src/ui/spectrumModel';
+import { JAMMED_RSSI_DBM, checkGates, sample, type Attack } from '../src/sim/signals';
+import { CHANNEL_HZ, SPAN_HZ, renderSpectrum, spectrumState } from '../src/ui/spectrumModel';
 
 const bytes = (...v: number[]) => new Uint8Array(v);
 
@@ -62,7 +72,32 @@ describe('trust anchor', () => {
   });
 });
 
+describe('genesis root and Ed25519 handshake', () => {
+  it('roots the chain in a SHA-256 genesis hash', async () => {
+    const root = await genesisRoot('GS-ZAG');
+    expect(root).toMatch(/^[0-9a-f]{64}$/);
+    expect(await genesisRoot('GS-ZAG')).toBe(root);
+    expect(await genesisRoot('GS-MAT')).not.toBe(root);
+  });
+
+  it('signs and verifies a handshake challenge with Ed25519', async () => {
+    const id = await createEd25519();
+    expect(id).not.toBeNull();
+    const challenge = encodeText('GS-ZAG|epoch:63');
+    const sig = await id!.sign(challenge);
+    expect(sig).toHaveLength(64);
+    expect(await id!.verify(challenge, sig)).toBe(true);
+    expect(await id!.verify(encodeText('GS-ZAG|epoch:64'), sig)).toBe(false);
+  });
+});
+
 describe('pass geometry', () => {
+  it('flies a 542.8 km sun-synchronous LEO orbit', () => {
+    expect(ALTITUDE_KM).toBe(542.8);
+    expect(ORBIT_PERIOD_S / 60).toBeGreaterThan(95);
+    expect(ORBIT_PERIOD_S / 60).toBeLessThan(96);
+  });
+
   it('culminates mid-pass with Doppler crossing zero', () => {
     const rise = passAt(PASS_S * 0.2);
     const top = passAt(PASS_S * 0.5);
@@ -97,12 +132,22 @@ describe('physics gates', () => {
     }
   });
 
-  it('flags spoof and replay, loses frames under strong jamming, and is fooled by the mimic', () => {
-    expect(at(attack('spoof')).doppler).toBe(true);
-    expect(at(attack('replay')).timing).toBe(true);
+  it('flags the hijack, loses frames under strong jamming, and is fooled by stealth spoofing', () => {
+    expect(at(attack('hijack')).doppler).toBe(true);
     expect(at(attack('jam', 9)).noFrames).toBe(true);
     expect(at(attack('jam', 3)).any).toBe(false);
-    expect(at(attack('mimic')).any).toBe(false);
+    expect(at(attack('spoof')).any).toBe(false);
+  });
+
+  it('moves the carrier to ~8492 MHz under hijack and RSSI to −96.5 dBm under jamming', () => {
+    const ctx = (a: Attack) => ({ attacks: [a], falseAlarm: 0, dopplerPredHz: 0 });
+    const hijacked = sample(12, snrModel, ctx(attack('hijack')));
+    expect(hijacked.carrierMHz).toBeGreaterThan(8491.4);
+    expect(hijacked.carrierMHz).toBeLessThan(8492.6);
+    const jammed = sample(12, snrModel, ctx(attack('jam', 9)));
+    expect(Math.abs(jammed.rssiDbm - JAMMED_RSSI_DBM)).toBeLessThan(1);
+    const spoofed = sample(12, snrModel, ctx(attack('spoof')));
+    expect(spoofed.rssiDbm).toBeLessThan(spoofed.rssiModelDbm - 2);
   });
 });
 
@@ -147,7 +192,7 @@ async function runFor(engine: Engine, seconds: number) {
 }
 
 describe('engine scenarios', () => {
-  it('stays nominal on a clean pass and verifies every frame', async () => {
+  it('stays nominal on a clean pass, verifies every frame and logs the trust anchor', async () => {
     const engine = await Engine.create();
     const seen = new Set<string>();
     for (let i = 0; i < 400; i++) {
@@ -159,46 +204,58 @@ describe('engine scenarios', () => {
     expect(engine.framesVerified).toBeGreaterThan(40);
     expect(engine.framesRejected).toBe(0);
     expect(engine.ledger.every((r) => r.verdict === 'VERIFIED')).toBe(true);
+    const log = engine.terminal.map((l) => l.text).join('\n');
+    expect(log).toContain(`genesis root ${engine.genesis.slice(0, 24)}`);
+    expect(log).toMatch(/✓ block #\d+ [0-9a-f]{10}…[0-9a-f]{4} hmac ok/);
+    expect(log).toMatch(/Ed25519 handshake ✓ /);
+    expect(engine.handshakes).toBeGreaterThanOrEqual(2);
   });
 
-  it('spoof: escalates, drops forged frames, quarantines and re-keys', async () => {
+  it('frequency hijack: escalates, flags proof failures, quarantines and re-keys', async () => {
     const engine = await Engine.create();
     await runFor(engine, 1);
-    engine.trigger('spoof');
+    engine.trigger('hijack');
     await runFor(engine, 1.5);
     expect(engine.state).toBe('UNDER ATTACK');
     expect(engine.detectors.TRUST.flag && engine.detectors.PHYSICS.flag).toBe(true);
-    expect(engine.ledger.some((r) => r.verdict === 'MAC FAIL' && r.source === 'UNKNOWN-TX')).toBe(
-      true,
-    );
+    expect(engine.current!.carrierMHz).toBeGreaterThan(8490);
+    expect(
+      engine.ledger.some((r) => r.verdict === 'MAC FAIL' && r.source.startsWith('ROGUE-TX')),
+    ).toBe(true);
+    expect(engine.terminal.some((l) => l.text.includes('PROOF FAIL'))).toBe(true);
     await runFor(engine, 5);
     expect(engine.keyEpoch).toBe(0x40);
     expect(engine.ledger.some((r) => r.verdict === 'QUARANTINED')).toBe(true);
     expect(engine.corruptedToAnalyst).toBe(0);
   });
 
-  it('replay: rejected by the anti-replay window', async () => {
+  it('stealth spoofing: physics is evaded, forged nonces from 0x99A2 trigger quarantine', async () => {
     const engine = await Engine.create();
-    await runFor(engine, 18);
-    engine.trigger('replay');
-    await runFor(engine, 2);
-    expect(engine.ledger.some((r) => r.original === 'REPLAY' && r.source === 'S2A (replay)')).toBe(
-      true,
-    );
-    expect(engine.run?.escalatedAt).not.toBeNull();
+    await runFor(engine, 1);
+    engine.trigger('spoof');
+    await runFor(engine, 1.2);
+    expect(engine.detectors.PHYSICS.flag).toBe(false);
+    expect(engine.detectors.PHYSICS.evaded).toBe(true);
+    expect(engine.votes).toBeGreaterThanOrEqual(2);
+    expect(engine.state).toBe('UNDER ATTACK');
+    expect(engine.banner?.headline).toMatch(/Quarantine protocols engaged/);
+    expect(engine.ledger.some((r) => r.source === 'NODE 0x99A2')).toBe(true);
+    expect(engine.terminal.some((l) => l.text.includes('forged nonce'))).toBe(true);
     expect(engine.corruptedToAnalyst).toBe(0);
   });
 
-  it('jam: loses frames, escalates as JAMMING and hands over to GS-KIR', async () => {
+  it('noise jamming: RSSI collapses, frames are lost and routing falls back to GS-MAT', async () => {
     const engine = await Engine.create();
     await runFor(engine, 1);
     engine.setPower(9);
     engine.trigger('jam');
     await runFor(engine, 1.5);
     expect(engine.state).toBe('JAMMING');
+    expect(engine.current!.rssiDbm).toBeLessThan(-95);
     expect(engine.ledger.some((r) => r.verdict === 'LOST')).toBe(true);
     await runFor(engine, 3);
-    expect(engine.route).toBe('KIR');
+    expect(engine.route).toBe('MAT');
+    expect(engine.terminal.some((l) => l.text.includes('fallback routing → GS-MAT'))).toBe(true);
   });
 
   it('jam below the gate is never escalated', async () => {
@@ -211,29 +268,18 @@ describe('engine scenarios', () => {
     expect(engine.run?.escalatedAt ?? null).toBeNull();
   });
 
-  it('mimic: physics is evaded, trust anchor and AI escalate 2 of 3', async () => {
-    const engine = await Engine.create();
-    await runFor(engine, 1);
-    engine.trigger('mimic');
-    await runFor(engine, 1.2);
-    expect(engine.detectors.PHYSICS.flag).toBe(false);
-    expect(engine.detectors.PHYSICS.evaded).toBe(true);
-    expect(engine.votes).toBeGreaterThanOrEqual(2);
-    expect(engine.state).toBe('UNDER ATTACK');
-  });
-
-  it('demo: plays all four scenarios back to back and holds the false alarm', async () => {
+  it('demo: plays all three scenarios back to back and holds the false alarm', async () => {
     const engine = await Engine.create();
     engine.playDemo();
     const kinds = new Set<string>();
     let held = false;
-    for (let i = 0; i < Math.round(49 / 0.05); i++) {
+    for (let i = 0; i < Math.round(43 / 0.05); i++) {
       engine.step();
       await engine.settle();
       if (engine.run) kinds.add(engine.run.kind);
       if (engine.state === 'CHECKING' && engine.detectors.AI.flag && !engine.run) held = true;
     }
-    expect([...kinds].sort()).toEqual(['jam', 'mimic', 'replay', 'spoof']);
+    expect([...kinds].sort()).toEqual(['hijack', 'jam', 'spoof']);
     expect(held).toBe(true);
     expect(engine.runs.every((r) => r.escalatedAt !== null && r.respondedAt !== null)).toBe(true);
     expect(engine.corruptedToAnalyst).toBe(0);
@@ -241,7 +287,7 @@ describe('engine scenarios', () => {
 });
 
 describe('received spectrum', () => {
-  it('puts the carrier SNR above a thermal floor on a clean pass', async () => {
+  it('shows the downlink channel SNR above a thermal floor on a clean pass', async () => {
     const engine = await Engine.create();
     await runFor(engine, 4);
     const st = spectrumState(engine);
@@ -249,15 +295,16 @@ describe('received spectrum', () => {
     expect(st.floorDb).toBe(0);
     expect(st.peaks).toHaveLength(1);
     expect(st.peaks[0].db).toBeCloseTo(engine.current!.snrDb, 6);
+    expect(st.centreMHz).toBeCloseTo(engine.current!.carrierModelMHz, 6);
 
-    const bins = new Float32Array(256);
+    const bins = new Float32Array(400);
     renderSpectrum(st, bins);
-    const peakBin = Math.round(((st.peaks[0].hz + SPAN_HZ / 2) / SPAN_HZ) * 256 - 0.5);
-    const peakDb = 10 * Math.log10(bins[peakBin]);
-    expect(Math.abs(peakDb - st.peaks[0].db)).toBeLessThan(3);
+    const centre = 10 * Math.log10(bins.slice(195, 205).reduce((a, b) => a + b) / 10);
+    const edge = 10 * Math.log10(bins.slice(0, 40).reduce((a, b) => a + b) / 40);
+    expect(centre - edge).toBeGreaterThan(st.peaks[0].db - 3);
   });
 
-  it('raises the noise floor under jamming and shows rogue carriers for spoof and mimic', async () => {
+  it('raises the floor under jamming, puts the hijacker at +14.2 MHz and 0x99A2 on the channel', async () => {
     const jam = await Engine.create();
     await runFor(jam, 1);
     jam.setPower(9);
@@ -265,18 +312,19 @@ describe('received spectrum', () => {
     await runFor(jam, 1.5);
     expect(spectrumState(jam).floorDb).toBeGreaterThan(5);
 
+    const hijack = await Engine.create();
+    await runFor(hijack, 1);
+    hijack.trigger('hijack');
+    await runFor(hijack, 1.5);
+    const rogue = spectrumState(hijack).peaks.find((p) => p.rogue);
+    expect(rogue!.hz / 1e6).toBeGreaterThan(13.5);
+    expect(rogue!.hz).toBeLessThan(SPAN_HZ / 2);
+
     const spoof = await Engine.create();
     await runFor(spoof, 1);
     spoof.trigger('spoof');
-    await runFor(spoof, 1.5);
-    const spoofRogue = spectrumState(spoof).peaks.find((p) => p.rogue);
-    expect(Math.abs(spoofRogue!.hz)).toBeGreaterThan(GATE_HZ);
-
-    const mimic = await Engine.create();
-    await runFor(mimic, 1);
-    mimic.trigger('mimic');
-    await runFor(mimic, 1.2);
-    const mimicRogue = spectrumState(mimic).peaks.find((p) => p.rogue);
-    expect(Math.abs(mimicRogue!.hz)).toBeLessThan(GATE_HZ);
+    await runFor(spoof, 1.2);
+    const node = spectrumState(spoof).peaks.find((p) => p.rogue);
+    expect(Math.abs(node!.hz)).toBeLessThan(CHANNEL_HZ / 2);
   });
 });

@@ -5,7 +5,7 @@ import * as THREE from 'three';
 
 import { EARTH_CENTER } from './geo';
 import { SUN_DIR } from './Earth';
-import { foilBumpTexture, solarCellTexture } from './textures';
+import { foilBumpTexture, foilColorTexture, solarCellTexture } from './textures';
 
 /** Parabolic reflector with its boresight along +Z. */
 export function parabolaGeometry(
@@ -38,7 +38,6 @@ interface Props {
     visible: number;
     transmitting: boolean;
   };
-  ghost?: boolean;
   onSelect?: () => void;
   hoverable?: boolean;
 }
@@ -52,7 +51,7 @@ const basis = new THREE.Matrix4();
 const localTarget = new THREE.Vector3();
 
 export const Satellite = forwardRef<SatelliteHandle, Props>(function Satellite(
-  { getState, ghost = false, onSelect, hoverable = true },
+  { getState, onSelect, hoverable = true },
   ref,
 ) {
   const group = useRef<THREE.Group>(null!);
@@ -69,31 +68,17 @@ export const Satellite = forwardRef<SatelliteHandle, Props>(function Satellite(
   const mat = useMemo(() => {
     const solar = solarCellTexture();
     const foil = foilBumpTexture();
-    const ghostMat = new THREE.MeshBasicMaterial({
-      color: '#F8485E',
-      transparent: true,
-      opacity: 0.32,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    if (ghost) {
-      return {
-        gold: ghostMat,
-        silver: ghostMat,
-        dark: ghostMat,
-        panel: ghostMat,
-        panelBack: ghostMat,
-        white: ghostMat,
-      };
-    }
     return {
+      // Gold multi-layer insulation: crinkled foil catching the environment light.
       gold: new THREE.MeshStandardMaterial({
-        color: '#c99a3a',
-        metalness: 1,
+        map: foilColorTexture(),
+        metalness: 0.5,
         roughness: 0.34,
         bumpMap: foil,
-        bumpScale: 0.6,
-        emissive: '#2a1a05',
+        bumpScale: 0.9,
+        envMapIntensity: 1.8,
+        emissive: '#5a3a0c',
+        emissiveIntensity: 0.55,
       }),
       silver: new THREE.MeshStandardMaterial({ color: '#c8d0da', metalness: 0.85, roughness: 0.3 }),
       dark: new THREE.MeshStandardMaterial({ color: '#15191f', metalness: 0.4, roughness: 0.6 }),
@@ -111,7 +96,7 @@ export const Satellite = forwardRef<SatelliteHandle, Props>(function Satellite(
       }),
       white: new THREE.MeshStandardMaterial({ color: '#eef2f6', metalness: 0.2, roughness: 0.5 }),
     };
-  }, [ghost]);
+  }, []);
 
   const dish = useMemo(() => parabolaGeometry(0.34, 0.12), []);
 
@@ -302,18 +287,14 @@ export const Satellite = forwardRef<SatelliteHandle, Props>(function Satellite(
         </group>
 
         {/* Navigation lights */}
-        {!ghost && (
-          <>
-            <mesh position={[-3.8, 0, 0]}>
-              <sphereGeometry args={[0.035, 8, 8]} />
-              <meshBasicMaterial ref={navL} color="#ff3b4e" transparent toneMapped={false} />
-            </mesh>
-            <mesh position={[3.8, 0, 0]}>
-              <sphereGeometry args={[0.035, 8, 8]} />
-              <meshBasicMaterial ref={navR} color="#34D399" transparent toneMapped={false} />
-            </mesh>
-          </>
-        )}
+        <mesh position={[-3.8, 0, 0]}>
+          <sphereGeometry args={[0.035, 8, 8]} />
+          <meshBasicMaterial ref={navL} color="#ff3b4e" transparent toneMapped={false} />
+        </mesh>
+        <mesh position={[3.8, 0, 0]}>
+          <sphereGeometry args={[0.035, 8, 8]} />
+          <meshBasicMaterial ref={navR} color="#34D399" transparent toneMapped={false} />
+        </mesh>
       </group>
 
       {/* Generous invisible hit volume so the satellite is easy to click */}

@@ -200,7 +200,7 @@ export function Jammer({
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
     return g;
   }, []);
-  const amber = useMemo(() => new THREE.Color('#FBBF24'), []);
+  const violet = useMemo(() => new THREE.Color('#A78BFA'), []);
 
   useFrame(({ clock }) => {
     const st = getState();
@@ -227,7 +227,7 @@ export function Jammer({
       <mesh ref={bloom} position={[0, 0.2, 0]}>
         <sphereGeometry args={[1, 32, 32]} />
         <meshBasicMaterial
-          color={amber}
+          color={violet}
           transparent
           depthWrite={false}
           blending={THREE.AdditiveBlending}
@@ -236,7 +236,7 @@ export function Jammer({
       </mesh>
       <points ref={speckle} geometry={speckleGeo}>
         <pointsMaterial
-          color={new THREE.Color(2.2, 1.6, 0.4)}
+          color={new THREE.Color(1.5, 1.1, 2.6)}
           size={0.05}
           transparent
           opacity={0.9}
@@ -246,16 +246,16 @@ export function Jammer({
       </points>
       <mesh position={[0, 0.35, 0]}>
         <cylinderGeometry args={[0.05, 0.08, 0.7, 8]} />
-        <meshStandardMaterial color="#4a3a14" metalness={0.6} roughness={0.5} />
+        <meshStandardMaterial color="#2e2448" metalness={0.6} roughness={0.5} />
       </mesh>
       <Rings
         radius={0.7}
-        getState={() => ({ color: amber, speed: 2, opacity: getState().strength })}
+        getState={() => ({ color: violet, speed: 2, opacity: getState().strength })}
       />
       <group position={[0, 1.6, 0]}>
         <SceneLabelDynamic
-          label="JAMMER"
-          getState={() => ({ strength: getState().strength, color: amber })}
+          label="NOISE JAMMER"
+          getState={() => ({ strength: getState().strength, color: violet })}
         />
       </group>
     </group>

@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 
 import { useEngine } from '../engineContext';
-import type { LedgerRow, Verdict } from '../sim/engine';
-import { shortHash } from '../sim/crypto';
+import { STATION } from '../sim/copy';
+import type { Verdict } from '../sim/engine';
 import { fmtEpoch, fmtMs } from './format';
 import { Panel } from './Panel';
 
@@ -48,77 +48,82 @@ export function WaxSeal({ verdict, size = 22 }: { verdict: Verdict; size?: numbe
   );
 }
 
-function Row({ row, first }: { row: LedgerRow; first: boolean }) {
-  const tone = TONE[row.verdict];
-  const broken = row.verdict !== 'VERIFIED';
+const VISIBLE_LINES = 80;
+
+function Terminal() {
+  const engine = useEngine(8);
+  const body = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  const lines = engine.terminal.slice(-VISIBLE_LINES);
+  const lastId = lines[lines.length - 1]?.id;
+
+  // Follow the newest line unless the reader has scrolled up to look at older ones.
+  useLayoutEffect(() => {
+    const el = body.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [lastId]);
+
   return (
-    <li className={`ledger__row ledger__row--${tone} ${first ? 'ledger__row--new' : ''}`}>
-      <span
-        className={`ledger__spine ${broken ? `ledger__spine--broken ledger__spine--${tone}` : ''}`}
-        aria-hidden="true"
+    <div className="term">
+      <div className="term__bar" aria-hidden="true">
+        <span className="term__dot" />
+        <span className="term__dot" />
+        <span className="term__dot" />
+        <span className="term__title">trust_anchor.py — {STATION}</span>
+      </div>
+      <div
+        ref={body}
+        className="term__body"
+        role="log"
+        aria-label="trust_anchor.py log"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+        }}
       >
-        <span className="ledger__dot" />
-      </span>
-      <span className="ledger__seq">
-        {row.seq === null ? '—' : row.seq.toString(16).padStart(6, '0')}
-      </span>
-      <span className="ledger__hash">
-        {row.hash ? (
-          <span className="ledger__hash-text">{shortHash(row.hash)}</span>
-        ) : (
-          <span className="ledger__muted">no signal</span>
-        )}
-      </span>
-      <span className="ledger__source" title={row.source}>
-        {row.source}
-      </span>
-      <span className="ledger__seal">
-        <WaxSeal verdict={row.verdict} />
-        <span className={`tag tag--${tone}`}>{row.verdict}</span>
-      </span>
-    </li>
+        {lines.map((l) => (
+          <div key={l.id} className={`term__line term__line--${l.tone}`}>
+            <span className="term__time">{l.t.toFixed(2).padStart(7, ' ')}</span>
+            <span className="term__text">{l.text}</span>
+          </div>
+        ))}
+        <div className="term__line">
+          <span className="term__time" />
+          <span className="term__cursor" aria-hidden="true" />
+        </div>
+      </div>
+    </div>
   );
 }
 
 export function LedgerPanel() {
   const engine = useEngine(8);
-  const rows = engine.logEvents
-    ? engine.ledger
-    : engine.ledger.filter((r) => r.verdict !== 'VERIFIED');
   const flashing = engine.s - engine.keyFlashAt < 1.2;
   const alert = engine.state === 'UNDER ATTACK';
   const overhead = engine.medianOverheadMs;
   return (
     <Panel
       badge="2B"
-      title="Provenance ledger"
+      title="Cryptographic ledger"
       tag="D2 · Trust anchor"
       alert={alert}
       className="panel--ledger"
     >
       <div className="anchor-line">
         <span className="anchor-line__name">Trust anchor</span>
-        <span className="anchor-line__detail">emulated HSM · HMAC-SHA256</span>
+        <span className="anchor-line__detail">
+          HMAC-SHA256 · SHA-256 chain · {engine.signer ? 'Ed25519' : 'Ed25519 unavailable'}
+        </span>
         <span className={`anchor-line__epoch ${flashing ? 'anchor-line__epoch--flash' : ''}`}>
           key epoch {fmtEpoch(engine.keyEpoch)}
         </span>
       </div>
-      <div className="ledger__head" aria-hidden="true">
-        <span />
-        <span>SEQ</span>
-        <span>SHA-256 chain</span>
-        <span>Source</span>
-        <span>Seal</span>
-      </div>
-      <ol className="ledger" aria-label="Most recent frames, newest first">
-        {rows.slice(0, 14).map((row, i) => (
-          <Row key={row.id} row={row} first={i === 0} />
-        ))}
-      </ol>
+      <Terminal />
       <div className="ledger__foot">
         <span>
-          {engine.framesVerified.toLocaleString('en-US')} verified · {engine.framesRejected}{' '}
-          rejected · {engine.framesLost} lost
+          block #{engine.blockHeight.toLocaleString('en-US')} · {engine.framesRejected} rejected ·{' '}
+          {engine.framesLost} lost · {engine.handshakes}{' '}
+          {engine.handshakes === 1 ? 'handshake' : 'handshakes'}
         </span>
         <span>{overhead === null ? '' : `${fmtMs(overhead)} per frame · measured`}</span>
       </div>

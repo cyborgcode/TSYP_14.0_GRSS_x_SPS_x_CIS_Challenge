@@ -1,4 +1,4 @@
-import { Html, OrbitControls, Stars } from '@react-three/drei';
+import { Environment, Html, Lightformer, OrbitControls, Stars } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -6,12 +6,13 @@ import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
 import type { Focus } from '../engineContext';
+import { HANDOVER_STATION, SATELLITE, STATION, STATION_LABEL, STATION_PLACE } from '../sim/copy';
 import { clamp, easeInOutCubic, smooth } from '../sim/noise';
 import type { Engine } from '../sim/engine';
-import { ArcBeam, Beam, type BeamState } from './Beam';
+import { Beam, type BeamState } from './Beam';
 import { Jammer, RelayArcs, RogueTransmitter, StationMarker, stationPosition } from './Actors';
 import { Earth, SUN_DIR } from './Earth';
-import { ATTACKERS, STATIONS, orbitArcPoints, orbitPoint, surfacePoint } from './geo';
+import { ATTACKERS, STATIONS, orbitArcPoints, orbitPoint } from './geo';
 import { GroundStation, type StationHandle, type StationTone } from './GroundStation';
 import { Satellite, type SatelliteHandle } from './Satellite';
 
@@ -21,10 +22,11 @@ const COLORS = {
   warn: new THREE.Color('#FBBF24'),
   ok: new THREE.Color('#34D399'),
   idle: new THREE.Color('#7D8EA3'),
+  jam: new THREE.Color('#A78BFA'),
 };
 
 const STATION_ORIGIN = new THREE.Vector3(0, 0, 0);
-const KIR = stationPosition('GS-KIR');
+const FALLBACK = stationPosition(HANDOVER_STATION);
 
 interface SceneProps {
   engine: Engine;
@@ -98,8 +100,14 @@ function Scene(props: SceneProps) {
         dpr={Math.min(window.devicePixelRatio || 1, q.dpr)}
         frameloop={onScreen && !lost ? 'always' : 'never'}
         camera={{ fov: 38, near: 0.1, far: 900, position: [26, 11, 20] }}
-        gl={{ antialias: false, powerPreference: 'high-performance', alpha: false }}
-        aria-label="3D view of the S2A satellite passing over the GS-LAB ground station"
+        gl={{
+          antialias: false,
+          powerPreference: 'high-performance',
+          alpha: false,
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.05,
+        }}
+        aria-label={`3D view of ${SATELLITE} passing over the ${STATION_PLACE} ground station`}
         onCreated={({ gl }) => {
           const canvas = gl.domElement;
           canvas.addEventListener('webglcontextlost', (e) => {
@@ -199,16 +207,11 @@ function SceneContent({
   const sat = useRef<SatelliteHandle>(null);
   const station = useRef<StationHandle>(null);
   const satLabel = useRef<THREE.Group>(null!);
-  const ghostLabel = useRef<THREE.Group>(null!);
-  const ghostLabelEl = useRef<HTMLDivElement>(null);
 
   const satPos = useMemo(() => new THREE.Vector3(), []);
-  const ghostPos = useMemo(() => new THREE.Vector3(), []);
   const feedA = useMemo(() => new THREE.Vector3(), []);
   const feedB = useMemo(() => new THREE.Vector3(), []);
-  const spoofPos = useMemo(() => surfacePoint(ATTACKERS.spoof.lat, ATTACKERS.spoof.lon, 0.55), []);
-  const mimicPos = useMemo(() => surfacePoint(ATTACKERS.mimic.lat, ATTACKERS.mimic.lon, 0.55), []);
-  const stationAim = useMemo(() => new THREE.Vector3(0, 1.1, 0), []);
+  const beamColor = useMemo(() => new THREE.Color(), []);
 
   const orbitLine = useMemo(() => {
     const g = new THREE.BufferGeometry().setFromPoints(orbitArcPoints(240));
@@ -228,58 +231,58 @@ function SceneContent({
 
   // Per-frame read models shared by the actors.
   const kindActive = (kind: string) => (engine.attack?.kind === kind ? engine.attackEnvelope : 0);
-  const serving = () => (engine.route === 'KIR' ? KIR : feedB);
+  const serving = () => (engine.route === 'MAT' ? FALLBACK : feedB);
 
   useFrame(() => {
     const pass = engine.visualPass();
     orbitPoint(pass.sceneAngle, satPos);
     if (station.current) station.current.feedWorld(feedB);
     if (sat.current) sat.current.feedWorld(feedA);
-    const lag = engine.visualPass(16);
-    orbitPoint(lag.sceneAngle, ghostPos);
     satLabel.current.position.copy(satPos).add(new THREE.Vector3(0, 2.1, 0));
     satLabel.current.visible = pass.inView;
-    ghostLabel.current.position.copy(ghostPos).add(new THREE.Vector3(0, 2.1, 0));
-    if (ghostLabelEl.current) {
-      ghostLabelEl.current.style.opacity = kindActive('replay') > 0.1 ? '1' : '0';
-    }
   });
 
   const stationTone = (): StationTone => {
     if (engine.quarantined) return 'idle';
     const kind = engine.attack?.kind;
     if (kind && engine.attackEnvelope > 0.2)
-      return kind === 'jam' ? (engine.route === 'KIR' ? 'idle' : 'warn') : 'bad';
+      return kind === 'jam'
+        ? engine.route === 'MAT'
+          ? 'idle'
+          : 'warn'
+        : kind === 'spoof'
+          ? 'warn'
+          : 'bad';
     return 'ok';
   };
 
+  // The one downlink beam carries every scenario: colour and distortion follow the attack.
   const downlink = (): BeamState => {
     const pass = engine.visualPass();
-    const jam = engine.route === 'LAB' ? kindActive('jam') : 0;
+    const hijack = kindActive('hijack');
+    const spoof = kindActive('spoof');
+    const jam = engine.route === 'ZAG' ? kindActive('jam') : 0;
     const quarantined = engine.quarantined;
-    const lost = engine.current?.timingUs === null;
+    if (quarantined) beamColor.copy(COLORS.idle);
+    else if (engine.route === 'MAT') beamColor.copy(COLORS.ok);
+    else {
+      beamColor.copy(COLORS.accent);
+      if (hijack) beamColor.lerp(COLORS.bad, hijack);
+      if (spoof) beamColor.lerp(COLORS.warn, spoof);
+      if (jam) beamColor.lerp(COLORS.jam, jam);
+    }
     return {
       a: feedA,
       b: serving(),
       visible: pass.linkActive,
-      color: quarantined ? COLORS.idle : engine.route === 'KIR' ? COLORS.ok : COLORS.accent,
-      opacity: quarantined ? 0.45 : lost ? 0.35 : 1,
-      dashed: quarantined || lost,
-      flicker: clamp(jam * 1.4),
+      color: beamColor,
+      opacity: quarantined ? 0.45 : 1 - 0.3 * jam,
+      dashed: quarantined,
+      flicker: clamp(jam * 1.2),
+      static: jam,
+      wave: 0.34 * hijack + 0.05 * spoof,
+      waveFreq: 9,
       speed: engine.attack && engine.attackEnvelope > 0.2 ? 2.6 : 1.6,
-    };
-  };
-
-  const ghostBeam = (): BeamState => {
-    const r = kindActive('replay');
-    return {
-      a: ghostPos,
-      b: feedB,
-      visible: r > 0.02,
-      color: COLORS.bad,
-      opacity: r * 0.9,
-      dashed: true,
-      speed: 2.6,
     };
   };
 
@@ -293,6 +296,33 @@ function SceneContent({
       />
       <directionalLight position={[20, -14, 24]} intensity={0.55} color="#4CC9F0" />
       <hemisphereLight args={['#2b4a6b', '#04070C', 0.35]} />
+      {/* Studio-style reflections for the metal and foil, generated once on the GPU. */}
+      <Environment resolution={64} frames={1} environmentIntensity={0.55}>
+        <Lightformer
+          form="rect"
+          intensity={4}
+          color="#fff4e0"
+          position={SUN_DIR.clone().multiplyScalar(12).toArray()}
+          scale={[10, 10, 1]}
+          target={[0, 0, 0]}
+        />
+        <Lightformer
+          form="ring"
+          intensity={1.2}
+          color="#4CC9F0"
+          position={[0, -12, 6]}
+          scale={8}
+          target={[0, 0, 0]}
+        />
+        <Lightformer
+          form="rect"
+          intensity={0.8}
+          color="#9db8d8"
+          position={[-10, 4, -8]}
+          scale={[6, 4, 1]}
+          target={[0, 0, 0]}
+        />
+      </Environment>
 
       <Stars
         radius={320}
@@ -310,18 +340,18 @@ function SceneContent({
         getState={() => ({
           alertLink:
             engine.attack && engine.attack.kind !== 'jam' && engine.attackEnvelope > 0.2
-              ? 'GS-LAB-GS-SVB'
+              ? 'GS-ZAG-GS-MAT'
               : null,
         })}
       />
 
-      {STATIONS.filter((s) => s.id !== 'GS-LAB').map((s) => (
+      {STATIONS.filter((s) => s.id !== STATION).map((s) => (
         <StationMarker
           key={s.id}
           id={s.id}
-          showLabel={s.id === 'GS-KIR' || s.id === 'GS-SVB'}
+          showLabel={s.id === HANDOVER_STATION || s.id === 'GS-SVB'}
           getState={() => {
-            const handover = s.id === 'GS-KIR' && engine.route === 'KIR';
+            const handover = s.id === HANDOVER_STATION && engine.route === 'MAT';
             return { color: handover ? COLORS.ok : COLORS.accent, speed: handover ? 2 : 1 };
           }}
         />
@@ -331,7 +361,7 @@ function SceneContent({
         ref={station}
         onSelect={() => setFocus('station')}
         getState={() => ({
-          target: engine.visualPass().linkActive && engine.route === 'LAB' ? satPos : null,
+          target: engine.visualPass().linkActive && engine.route === 'ZAG' ? satPos : null,
           tone: stationTone(),
           ringSpeed: stationTone() === 'bad' ? 2.6 : stationTone() === 'warn' ? 2 : 1,
         })}
@@ -339,7 +369,7 @@ function SceneContent({
       <group position={[0, 2.6, 0]}>
         <Html center zIndexRange={[20, 0]}>
           <button className="scene-label scene-label--button" onClick={() => setFocus('station')}>
-            GS-LAB (testbed)
+            {STATION_LABEL}
             {focus === 'overview' && <span className="scene-label__hint">click to zoom</span>}
           </button>
         </Html>
@@ -361,72 +391,27 @@ function SceneContent({
       <group ref={satLabel}>
         <Html center zIndexRange={[20, 0]}>
           <button className="scene-label scene-label--button" onClick={() => setFocus('sat')}>
-            S2A
+            {SATELLITE}
             {focus === 'overview' && <span className="scene-label__hint">click to zoom</span>}
           </button>
         </Html>
       </group>
 
-      <Satellite
-        ghost
-        hoverable={false}
-        getState={() => ({
-          position: ghostPos,
-          target: stationAim,
-          visible: kindActive('replay'),
-          transmitting: true,
-        })}
-      />
-      <group ref={ghostLabel}>
-        <Html center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
-          <div ref={ghostLabelEl} className="scene-label scene-label--bad" style={{ opacity: 0 }}>
-            S2A (replayed)
-          </div>
-        </Html>
-      </group>
-
       <Beam getState={downlink} radiusA={0.04} radiusB={0.3} packetCount={5} />
-      <Beam getState={ghostBeam} radiusA={0.04} radiusB={0.3} packetCount={3} packetSize={0.07} />
 
+      <RogueTransmitter
+        lat={ATTACKERS.hijack.lat}
+        lon={ATTACKERS.hijack.lon}
+        aim={STATION_ORIGIN}
+        label={ATTACKERS.hijack.label}
+        getState={() => ({ strength: kindActive('hijack'), color: COLORS.bad })}
+      />
       <RogueTransmitter
         lat={ATTACKERS.spoof.lat}
         lon={ATTACKERS.spoof.lon}
         aim={STATION_ORIGIN}
-        label="UNKNOWN-TX"
-        getState={() => ({ strength: kindActive('spoof'), color: COLORS.bad })}
-      />
-      <ArcBeam
-        from={spoofPos}
-        to={stationAim}
-        lift={1.8}
-        getState={() => ({ color: COLORS.bad, opacity: kindActive('spoof'), speed: 2.6 })}
-      />
-
-      <RogueTransmitter
-        lat={ATTACKERS.mimic.lat}
-        lon={ATTACKERS.mimic.lon}
-        aim={STATION_ORIGIN}
-        label="UNKNOWN-TX"
-        getState={() => ({
-          strength: kindActive('mimic'),
-          color:
-            engine.run?.kind === 'mimic' && engine.run.escalatedAt !== null
-              ? COLORS.bad
-              : COLORS.warn,
-        })}
-      />
-      <ArcBeam
-        from={mimicPos}
-        to={stationAim}
-        lift={1.5}
-        getState={() => ({
-          color:
-            engine.run?.kind === 'mimic' && engine.run.escalatedAt !== null
-              ? COLORS.bad
-              : COLORS.warn,
-          opacity: kindActive('mimic'),
-          speed: 2.4,
-        })}
+        label={ATTACKERS.spoof.label}
+        getState={() => ({ strength: kindActive('spoof'), color: COLORS.warn })}
       />
 
       <Jammer

@@ -1,8 +1,9 @@
 import { useRef } from 'react';
 
 import { useEngine, useEngineCtx } from '../engineContext';
-import { CARRIER_HZ, LINK, TIME_COMPRESSION } from '../sim/geometry';
-import { evmFromSnr } from '../sim/signals';
+import { HANDOVER_STATION, ROGUE_NODE, SATELLITE, STATION, STATION_PLACE } from '../sim/copy';
+import { ALTITUDE_KM, CARRIER_HZ, TIME_COMPRESSION } from '../sim/geometry';
+import { GATES, evmFromSnr } from '../sim/signals';
 import { fmtDb, fmtEpoch, fmtHz, MINUS } from './format';
 import { BackIcon, DishIcon, SatelliteIcon } from './icons';
 import { WaxSeal } from './Ledger';
@@ -49,16 +50,11 @@ function Constellation({ side }: { side: 'tx' | 'rx' }) {
       for (let i = 0; i < 26 && !lost; i++) {
         const rogue =
           side === 'rx' &&
-          (kind === 'spoof' || kind === 'mimic') &&
+          (kind === 'hijack' || kind === 'spoof') &&
           env > 0.3 &&
           Math.random() < 0.6;
-        const phase = rogue
-          ? kind === 'spoof'
-            ? 0.5
-            : 0.08
-          : side === 'rx' && kind === 'replay'
-            ? Math.sin(engine.s * 5) * 0.12 * env
-            : 0;
+        // The hijacker's carrier rotates the symbols fast; node 0x99A2 sits almost on top.
+        const phase = rogue ? (kind === 'hijack' ? engine.s * 7 : 0.08) : 0;
         const sym = Math.floor(Math.random() * 4);
         const a = Math.PI / 4 + (sym * Math.PI) / 2 + phase;
         points.current.push({
@@ -109,7 +105,7 @@ function Constellation({ side }: { side: 'tx' | 'rx' }) {
   );
 }
 
-/** Received spectrum waterfall around the Doppler-compensated carrier (±5 kHz). */
+/** Received spectrum waterfall around the Doppler-compensated carrier (±20 MHz). */
 function Waterfall() {
   const { engine } = useEngineCtx();
   const buffer = useRef<HTMLCanvasElement | null>(null);
@@ -160,18 +156,22 @@ function Waterfall() {
     ctx.font = `600 11px ${FONT_DATA}`;
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    ctx.fillText(`${MINUS}5 kHz`, 2, 0);
+    ctx.fillText(`${MINUS}20 MHz`, 2, 0);
     ctx.textAlign = 'center';
     ctx.fillText('carrier', w / 2, 0);
     ctx.textAlign = 'right';
-    ctx.fillText('+5 kHz', w - 2, 0);
+    ctx.fillText('+20 MHz', w - 2, 0);
     const rogue = state.peaks.find((p) => p.rogue);
     if (rogue && engine.attackEnvelope > 0.3) {
-      const mimic = engine.attack?.kind === 'mimic';
-      ctx.fillStyle = mimic ? COLORS.warn : COLORS.bad;
+      const spoof = engine.attack?.kind === 'spoof';
+      ctx.fillStyle = spoof ? COLORS.warn : COLORS.bad;
       ctx.textAlign = 'center';
-      const px = mimic ? w / 2 + 34 : xOfHz(rogue.hz, 0, w);
-      ctx.fillText('UNKNOWN-TX', Math.max(40, Math.min(w - 40, px)), top + 4);
+      const px = spoof ? w / 2 : xOfHz(rogue.hz, 0, w);
+      ctx.fillText(
+        spoof ? `NODE ${ROGUE_NODE}` : 'ROGUE-TX',
+        Math.max(40, Math.min(w - 40, px)),
+        top + 4,
+      );
     }
     if (state.floorDb > 3) {
       ctx.fillStyle = COLORS.warn;
@@ -205,15 +205,15 @@ function SatellitePanel() {
   const engine = useEngine(10);
   const pass = engine.pass;
   const frame = engine.txLog[0];
-  const serving = engine.route === 'KIR' ? 'GS-KIR' : 'GS-LAB';
+  const serving = engine.route === 'MAT' ? HANDOVER_STATION : STATION;
   return (
     <>
       <div className="focus__title">
         <SatelliteIcon size={18} />
         <div>
-          <div className="focus__name">S2A · downlink transmitter</div>
+          <div className="focus__name">{SATELLITE} · downlink transmitter</div>
           <div className="focus__sub">
-            X-band {(CARRIER_HZ / 1e9).toFixed(3)} GHz · EIRP {LINK.eirpDbw} dBW ·{' '}
+            X-band {(CARRIER_HZ / 1e6).toFixed(1)} MHz · {ALTITUDE_KM} km SSO ·{' '}
             {pass.linkActive ? `serving ${serving}` : 'LOS · recording on board'}
           </div>
         </div>
@@ -266,7 +266,7 @@ function SatellitePanel() {
       </div>
       <div className="focus__foot">
         <span>{engine.framesSent.toLocaleString('en-US')} frames sealed this session</span>
-        <span>pass replayed ×{Math.round(TIME_COMPRESSION)} faster than real time</span>
+        <span>pass played ×{Math.round(TIME_COMPRESSION)} faster than real time</span>
       </div>
     </>
   );
@@ -276,35 +276,39 @@ function StationPanel() {
   const engine = useEngine(10);
   const x = engine.current;
   const rows = engine.ledger.slice(0, 6);
-  const pointing = engine.pass.inView && engine.route === 'LAB';
+  const pointing = engine.pass.inView && engine.route === 'ZAG';
   return (
     <>
       <div className="focus__title">
         <DishIcon size={18} />
         <div>
-          <div className="focus__name">GS-LAB · receiver and provenance gate</div>
+          <div className="focus__name">{STATION_PLACE} · receiver and provenance gate</div>
           <div className="focus__sub">
-            {engine.route === 'KIR'
-              ? 'Downlink handed over to GS-KIR · this station is flagged as jammed'
+            {engine.route === 'MAT'
+              ? `Fallback routing via ${HANDOVER_STATION} · this station is flagged as jammed`
               : pointing
-                ? `Tracking S2A · elevation ${engine.pass.elevationDeg.toFixed(1)}°`
+                ? `Tracking ${SATELLITE} · elevation ${engine.pass.elevationDeg.toFixed(1)}°`
                 : 'Waiting for the next pass'}
           </div>
         </div>
       </div>
       <div className="metrics">
         <Metric
+          label="RSSI"
+          value={x ? `${x.rssiDbm.toFixed(1)} dBm` : '—'}
+          tone={x && x.rssiDbm < x.rssiModelDbm - GATES.snrBandDb ? 'warn' : undefined}
+        />
+        <Metric
+          label="Carrier"
+          value={x ? `${x.carrierMHz.toFixed(2)} MHz` : '—'}
+          tone={engine.gates?.doppler ? 'bad' : undefined}
+        />
+        <Metric
           label="SNR"
           value={x ? fmtDb(x.snrDb) : '—'}
           tone={engine.gates?.snr ? 'bad' : undefined}
         />
-        <Metric label="Budget" value={x ? fmtDb(x.snrModelDb) : '—'} />
         <Metric label="EVM" value={x ? `${x.evmPct.toFixed(1)}%` : '—'} />
-        <Metric
-          label="Doppler resid."
-          value={x ? fmtHz(x.dopplerHz) : '—'}
-          tone={engine.gates?.doppler ? 'bad' : undefined}
-        />
       </div>
       <div className="focus__viz">
         <span className="overline">Received spectrum · amplitude vs frequency</span>

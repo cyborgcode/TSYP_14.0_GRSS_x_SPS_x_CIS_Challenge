@@ -63,12 +63,54 @@ const dotFragment = /* glsl */ `
   }
 `;
 
-const atmosphereFragment = /* glsl */ `
+// Atmosphere in three layers. Each approximates single scattering along the view ray: optical
+// depth grows towards the limb, Rayleigh scattering lights the day side blue and the terminator
+// orange, and a Henyey-Greenstein Mie lobe adds the forward-scattered haze around the sun.
+
+/** Layer 1: Rayleigh scattering inside the shell, drawn over the surface. */
+const rayleighFragment = /* glsl */ `
+  uniform vec3 uSun;
+  varying vec3 vNormal;
+  varying vec3 vView;
+  void main() {
+    float mu = clamp(dot(vNormal, vView), 0.0, 1.0);
+    float depth = pow(1.0 - mu, 2.2);
+    float sun = dot(vNormal, uSun);
+    float day = smoothstep(-0.18, 0.35, sun);
+    float terminator = exp(-pow((sun + 0.02) / 0.16, 2.0));
+    float cosT = dot(vView, uSun);
+    float phase = 0.75 * (1.0 + cosT * cosT);
+    vec3 sky = vec3(0.22, 0.55, 1.0) * phase * day;
+    vec3 dusk = vec3(1.0, 0.45, 0.18) * terminator * 0.9;
+    gl_FragColor = vec4((sky + dusk) * depth, depth * (0.2 + 0.55 * day + 0.4 * terminator));
+  }
+`;
+
+/** Layer 2: limb glow seen past the planet's edge, bright on the day side. */
+const limbFragment = /* glsl */ `
+  uniform vec3 uSun;
   varying vec3 vNormal;
   varying vec3 vView;
   void main() {
     float rim = pow(clamp(1.0 - abs(dot(vNormal, vView)), 0.0, 1.0), 2.4);
-    gl_FragColor = vec4(vec3(0.30, 0.79, 0.94), rim * 0.55);
+    float lit = smoothstep(-0.35, 0.4, dot(vNormal, uSun));
+    vec3 col = mix(vec3(0.10, 0.22, 0.45), vec3(0.30, 0.79, 0.94), lit);
+    gl_FragColor = vec4(col, rim * 0.6 * (0.3 + 0.7 * lit));
+  }
+`;
+
+/** Layer 3: outer Mie haze, strongest when looking towards the sun through the limb. */
+const mieFragment = /* glsl */ `
+  uniform vec3 uSun;
+  varying vec3 vNormal;
+  varying vec3 vView;
+  void main() {
+    float rim = pow(clamp(1.0 - abs(dot(vNormal, vView)), 0.0, 1.0), 4.0);
+    float g = 0.76;
+    float cosT = dot(-vView, uSun);
+    float hg = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * cosT, 1.5);
+    float lit = smoothstep(-0.2, 0.5, dot(vNormal, uSun));
+    gl_FragColor = vec4(vec3(0.95, 0.9, 0.82), rim * lit * min(0.5, 0.05 + 0.06 * hg));
   }
 `;
 
@@ -139,10 +181,34 @@ export function Earth() {
         />
       </points>
       <mesh position={EARTH_CENTER} renderOrder={2}>
+        <sphereGeometry args={[EARTH_R * 1.012, 96, 96]} />
+        <shaderMaterial
+          vertexShader={oceanVertex}
+          fragmentShader={rayleighFragment}
+          uniforms={uniforms}
+          transparent
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh position={EARTH_CENTER} renderOrder={2}>
         <sphereGeometry args={[EARTH_R * 1.045, 96, 96]} />
         <shaderMaterial
           vertexShader={oceanVertex}
-          fragmentShader={atmosphereFragment}
+          fragmentShader={limbFragment}
+          uniforms={uniforms}
+          transparent
+          side={THREE.BackSide}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh position={EARTH_CENTER} renderOrder={2}>
+        <sphereGeometry args={[EARTH_R * 1.09, 64, 64]} />
+        <shaderMaterial
+          vertexShader={oceanVertex}
+          fragmentShader={mieFragment}
+          uniforms={uniforms}
           transparent
           side={THREE.BackSide}
           blending={THREE.AdditiveBlending}

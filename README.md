@@ -84,15 +84,23 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
 
 `dashboard/` is the interactive web testbed, deployed on Vercel from `main`:
 
-- **3D ground link**: an S2A pass over GS-LAB in real-time WebGL. Click the satellite or the
-  station to fly in and watch the signal live: frames being sealed on board (real HMAC-SHA256),
-  the received spectrum waterfall, QPSK constellations and per-frame verification at the gate.
-- **Four attack scenarios** (spoofed frame, replayed pass, RF jamming, Doppler mimic) wired live
-  to the 3D view, telemetry, ledger and detectors; the attack-power slider drives jamming
-  continuously. **Play demo** runs the replayable standard-scenario sequence.
-- **Everything runs in the browser**: Web Crypto HMAC-SHA256 + anti-replay window + SHA-256
-  hash chain, an Isolation Forest trained on nominal passes at load, and 2-of-3 fusion.
-  Tiles marked *sample* are placeholders until measured on the official reference dataset.
+- **3D ground link**: a 542.8 km sun-synchronous LEO pass over the Zaghouan (Tunisia) ground
+  station in real-time WebGL (ACES Filmic tone mapping, layered atmospheric scattering, gold MLI
+  satellite bus). Click the satellite or the station to fly in and watch the signal live.
+- **One continuous signal beam**: its colour and distortion, the Carrier Frequency (MHz) and RSSI
+  (dBm) charts (Chart.js), the received spectrum, the security banner and the ledger all change
+  together with the scenario.
+- **Three attack scenarios**: Frequency Hijacking (rogue carrier +14.2 MHz, carrier to ~8492 MHz,
+  proof failures), Stealth Spoofing (forged MAC headers and nonces from node 0x99A2, quarantine
+  protocols) and Noise Jamming (RSSI to −96.5 dBm, fallback routing to GS-MAT). **Play demo**
+  runs all three back to back.
+- **trust_anchor.py terminal**: live log of SHA-256 block validations from a genesis root hash,
+  HMAC-SHA256 frame seals and Ed25519 handshakes, all computed with Web Crypto in the browser.
+- **Detection**: orbital-physics gates, the trust anchor and an Isolation Forest trained on
+  nominal passes at load, fused by a 2-of-3 vote. Tiles marked *sample* are placeholders until
+  measured on the official reference dataset.
+
+The step-by-step evaluation walkthrough is in [docs/evaluation-guide.md](docs/evaluation-guide.md).
 
 ```bash
 cd dashboard

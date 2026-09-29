@@ -1,4 +1,4 @@
-// Scene frame: GS-LAB sits on top of the globe at the origin, +Y is local up,
+// Scene frame: the Zaghouan station (GS-ZAG) sits on top of the globe at the origin, +Y is local up,
 // -Z is north, +X is east. Earth's centre is EARTH_R below the station.
 
 import * as THREE from 'three';
@@ -9,8 +9,8 @@ export const EARTH_R = 16;
 export const EARTH_CENTER = new THREE.Vector3(0, -EARTH_R, 0);
 export const ORBIT_R = EARTH_R * SCENE_ORBIT_RADIUS;
 
-/** Testbed station (approximate; visualisation only). */
-const ORIGIN = { lat: 36.8, lon: 10.2 };
+/** Zaghouan ground station, Tunisia. */
+const ORIGIN = { lat: 36.4, lon: 10.14 };
 
 const rad = (d: number) => (d * Math.PI) / 180;
 
@@ -67,7 +67,7 @@ export interface StationDef {
 export const STATIONS: StationDef[] = [
   { id: 'GS-SVB', lat: 78.2, lon: 15.4 },
   { id: 'GS-KIR', lat: 67.9, lon: 20.2 },
-  { id: 'GS-LAB', lat: 36.8, lon: 10.2 },
+  { id: 'GS-ZAG', lat: 36.4, lon: 10.14 },
   { id: 'GS-MAT', lat: 40.65, lon: 16.7 },
   { id: 'GS-MSP', lat: 27.76, lon: -15.6 },
   { id: 'GS-HBK', lat: -25.9, lon: 27.7 },
@@ -80,11 +80,11 @@ export const STATIONS: StationDef[] = [
 ];
 
 export const RELAY_LINKS: [string, string][] = [
-  ['GS-LAB', 'GS-SVB'],
+  ['GS-ZAG', 'GS-MAT'],
   ['GS-KIR', 'GS-MAT'],
   ['GS-MSP', 'GS-MAT'],
   ['GS-MSP', 'GS-CUI'],
-  ['GS-HBK', 'GS-LAB'],
+  ['GS-HBK', 'GS-ZAG'],
   ['GS-HBK', 'GS-SGP'],
   ['GS-SGP', 'GS-ALS'],
   ['GS-INU', 'GS-FBK'],
@@ -98,9 +98,9 @@ export const RELAY_LINKS: [string, string][] = [
 ];
 
 export const ATTACKERS = {
-  spoof: { lat: 36.0, lon: -3.2, label: 'UNKNOWN-TX' },
-  mimic: { lat: 39.6, lon: 4.0, label: 'UNKNOWN-TX' },
-  jam: { lat: 38.1, lon: 14.2, label: 'JAMMER' },
+  hijack: { lat: 36.0, lon: -3.2, label: 'ROGUE-TX +14.2 MHz' },
+  spoof: { lat: 39.6, lon: 4.0, label: 'NODE 0x99A2' },
+  jam: { lat: 38.1, lon: 14.2, label: 'NOISE JAMMER' },
 } as const;
 
 export const stationById = (id: string) => STATIONS.find((s) => s.id === id)!;

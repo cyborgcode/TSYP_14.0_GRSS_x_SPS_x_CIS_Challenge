@@ -7,7 +7,7 @@ import { ATTACK_ICONS, LockIcon, PlayIcon, StopIcon } from './icons';
 import { MINUS } from './format';
 import { Panel } from './Panel';
 
-const ORDER: AttackKind[] = ['spoof', 'replay', 'jam', 'mimic'];
+const ORDER: AttackKind[] = ['hijack', 'spoof', 'jam'];
 
 function AttackButton({ kind }: { kind: AttackKind }) {
   const engine = useEngine(15);
@@ -143,8 +143,8 @@ export function ControlDeckPanel() {
       </div>
       <p className="deck__hint">
         {jamming
-          ? 'Drag the slider: jammer power drives the SNR drop live.'
-          : 'The slider sets jammer power and spoofer excess power.'}
+          ? 'Drag the slider: jammer power drives the RSSI collapse live.'
+          : 'The slider sets jammer power and the hijacker’s excess power.'}
       </p>
 
       <div className="toggles">

@@ -1,6 +1,7 @@
 // Trust anchor building blocks, computed for real with Web Crypto:
-// HMAC-SHA256 frame MACs (constant-time verify), an anti-replay window and a SHA-256
-// hash-chained provenance ledger. The HSM is emulated in software, as the brief allows.
+// HMAC-SHA256 frame MACs (constant-time verify), an anti-replay window, a SHA-256
+// hash-chained provenance ledger rooted in a genesis block, and Ed25519 signatures for the
+// satellite-to-station handshake. The HSM is emulated in software, as the brief allows.
 
 const encoder = new TextEncoder();
 
@@ -69,6 +70,40 @@ export async function sha256(data: Uint8Array<ArrayBuffer>): Promise<Uint8Array>
 }
 
 export const GENESIS = 'genesis';
+
+/** Root of the provenance chain: SHA-256 of the genesis record. */
+export async function genesisRoot(station: string): Promise<string> {
+  return toHex(await sha256(encoder.encode(`${GENESIS}|${station}|trust_anchor`)));
+}
+
+/** Ed25519 identity of the spacecraft, used to sign handshake challenges. */
+export interface Ed25519Identity {
+  publicHex: string;
+  sign(data: Uint8Array<ArrayBuffer>): Promise<Uint8Array>;
+  verify(data: Uint8Array<ArrayBuffer>, signature: Uint8Array): Promise<boolean>;
+}
+
+/** Real Ed25519 keys from Web Crypto, or null where the browser does not support them. */
+export async function createEd25519(): Promise<Ed25519Identity | null> {
+  try {
+    const pair = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, [
+      'sign',
+      'verify',
+    ])) as CryptoKeyPair;
+    const raw = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
+    return {
+      publicHex: toHex(raw),
+      sign: async (data) =>
+        new Uint8Array(await crypto.subtle.sign({ name: 'Ed25519' }, pair.privateKey, data)),
+      verify: (data, signature) =>
+        crypto.subtle.verify({ name: 'Ed25519' }, pair.publicKey, new Uint8Array(signature), data),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export const encodeText = (text: string): Uint8Array<ArrayBuffer> => encoder.encode(text);
 
 /** h_k = SHA-256(h_{k-1} ‖ SHA-256(frame_k) ‖ meta_k). */
 export async function chainHash(

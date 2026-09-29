@@ -41,24 +41,25 @@ export const BoltIcon = (p: IconProps) => (
   </Svg>
 );
 
-export const ReplayIcon = (p: IconProps) => (
+export const HijackIcon = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M3 12a9 9 0 1 0 3-6.7" />
-    <path d="M3 4v5h5" />
-    <path d="M10 9l5 3-5 3z" fill="currentColor" />
+    <path d="M2 14c1.6-3 3.2-3 4.8 0s3.2 3 4.8 0" />
+    <path d="M13 6l7-0v7" />
+    <path d="M20 6l-7.5 7.5" />
+  </Svg>
+);
+
+export const SpoofIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 10c0-3 4-5 9-5s9 2 9 5c0 4-3 7-5.5 7-1.8 0-2.3-2-3.5-2s-1.7 2-3.5 2C6 17 3 14 3 10z" />
+    <circle cx="8.5" cy="10.5" r="1.6" fill="currentColor" />
+    <circle cx="15.5" cy="10.5" r="1.6" fill="currentColor" />
   </Svg>
 );
 
 export const JamIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M2 12h3l2-6 3 12 3-14 3 16 2-8h4" />
-  </Svg>
-);
-
-export const MimicIcon = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M2 9c2.5-4 5-4 7.5 0s5 4 7.5 0 3.5-3 5-2" />
-    <path d="M2 15c2.5-4 5-4 7.5 0s5 4 7.5 0 3.5-3 5-2" opacity={0.55} />
   </Svg>
 );
 
@@ -152,8 +153,7 @@ export const MouseIcon = (p: IconProps) => (
 );
 
 export const ATTACK_ICONS = {
-  spoof: BoltIcon,
-  replay: ReplayIcon,
+  hijack: HijackIcon,
+  spoof: SpoofIcon,
   jam: JamIcon,
-  mimic: MimicIcon,
 } as const;

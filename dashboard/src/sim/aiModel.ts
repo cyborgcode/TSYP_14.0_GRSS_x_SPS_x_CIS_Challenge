@@ -15,7 +15,7 @@ export const FEATURES = [
   'timing skew',
   'EVM residual',
   'frame loss',
-  'MAC / replay failures',
+  'MAC / nonce failures',
 ] as const;
 
 /** Target nominal exceedance of the 0.6 operating point (0.6 % false-alarm target). */

@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react';
 
 import { useEngine, useEngineCtx, usePrefersReducedMotion } from '../engineContext';
+import { SATELLITE, STATION_PLACE } from '../sim/copy';
+import { ALTITUDE_KM } from '../sim/geometry';
 import { fmtHz, MINUS } from './format';
 import { FocusOverlay } from './FocusOverlay';
 import { AlertIcon, ArrowIcon, CheckIcon, CubeIcon, MouseIcon } from './icons';
@@ -29,12 +31,13 @@ function Hud() {
   const engine = useEngine(8);
   const { focus } = useEngineCtx();
   const pass = engine.pass;
+  const x = engine.current;
   const relayAlert = engine.attack && engine.attack.kind !== 'jam' && engine.attackEnvelope > 0.2;
   return (
     <>
       <div className="hud hud--tl">
         <Readout label="Segment" value="Ground link · Track 1" />
-        <Readout label="Orbit" value="786 km sun-synchronous · pass model" />
+        <Readout label="Orbit" value={`${ALTITUDE_KM} km sun-synchronous LEO`} />
       </div>
       <div className="hud hud--tr">
         <Readout
@@ -42,7 +45,7 @@ function Hud() {
           value={relayAlert ? '14/15 trusted' : '15/15 trusted'}
           tone={relayAlert ? 'bad' : undefined}
         />
-        <Readout label="Tracking" value="12 stations · S2A" />
+        <Readout label="Ground node" value={`${STATION_PLACE} · ${SATELLITE}`} />
       </div>
       {focus === 'overview' && (
         <div className="hud hud--bottom">
@@ -55,13 +58,13 @@ function Hud() {
               {pass.inView ? `${Math.round(pass.rangeKm).toLocaleString('en-US')} km` : '—'}
             </span>
             <span>
-              <b>RANGE RATE</b>{' '}
-              {pass.inView
-                ? `${pass.rangeRateKmS < 0 ? MINUS : '+'}${Math.abs(pass.rangeRateKmS).toFixed(2)} km/s`
-                : '—'}
+              <b>DOPPLER</b> {pass.inView ? fmtHz(pass.dopplerHz) : '—'}
             </span>
             <span>
-              <b>DOPPLER</b> {pass.inView ? fmtHz(pass.dopplerHz) : '—'}
+              <b>CARRIER</b> {x ? `${x.carrierMHz.toFixed(3)} MHz` : '—'}
+            </span>
+            <span>
+              <b>RSSI</b> {x ? `${x.rssiDbm.toFixed(1).replace('-', MINUS)} dBm` : '—'}
             </span>
           </div>
           <div className="hud__hint">
@@ -99,7 +102,7 @@ export function ChainStrip() {
   const kind = engine.attack?.kind;
   const active = engine.attackEnvelope > 0.2;
   const attack = active && kind && kind !== 'jam';
-  const jam = active && kind === 'jam' && engine.route === 'LAB';
+  const jam = active && kind === 'jam' && engine.route === 'ZAG';
   const link = engine.pass.linkActive;
 
   const linkState = (i: number): 'ok' | 'bad' | 'starved' | 'blocked' | 'idle' => {

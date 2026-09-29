@@ -1,5 +1,7 @@
-// Testbed engine: one S2A pass over GS-LAB, framed and sealed for real, attacked on demand,
-// and defended by three independent detectors fused by a 2-of-3 vote.
+// Testbed engine: one LEO pass over the Zaghouan ground station, framed and sealed for real,
+// attacked on demand, and defended by three independent detectors fused by a 2-of-3 vote.
+// The trust anchor chains every frame into a SHA-256 ledger from a genesis root and renews an
+// Ed25519 handshake with the spacecraft; its log is streamed as the trust_anchor.py terminal.
 //
 // Everything here is emulation. No component transmits or receives RF.
 
@@ -9,12 +11,16 @@ import {
   EmulatedHsm,
   ReplayWindow,
   chainHash,
+  createEd25519,
   encodeHeader,
+  encodeText,
+  genesisRoot,
   importMacKey,
   macInput,
   macSign,
   macVerify,
   toHex,
+  type Ed25519Identity,
 } from './crypto';
 import { PERIOD_S, passAt, snrPredDb, timeAfterAos, type PassState } from './geometry';
 import { clamp, easeInOutCubic, mulberry32, win } from './noise';
@@ -35,26 +41,34 @@ export const HISTORY = Math.round(WINDOW_S / TICK_S);
 export const FRAME_PERIOD_S = 0.32;
 const LEDGER_ROWS = 60;
 const RESPONSE_DELAY_S: Record<AttackKind, number> = {
-  spoof: 4.8,
-  replay: 2.8,
+  hijack: 4.8,
+  spoof: 2.8,
   jam: 2.8,
-  mimic: 2.8,
 };
 const UNANSWERED_END_S = 8;
 const UNDETECTED_END_S = 6;
-const REPLAY_LAG_S = 16;
 const ATTACKER_SHARE: Record<AttackKind, number> = {
+  hijack: 0.75,
   spoof: 0.75,
-  replay: 0.7,
   jam: 0,
-  mimic: 0.75,
 };
+const TERMINAL_LINES = 160;
+const HANDSHAKE_EVERY_S = 8;
 
 export type SystemState = 'NOMINAL' | 'CHECKING' | 'UNDER ATTACK' | 'JAMMING' | 'RECOVERING';
 export type Verdict = 'VERIFIED' | 'MAC FAIL' | 'REPLAY' | 'LOST' | 'QUARANTINED';
 export type DetectorId = 'PHYSICS' | 'TRUST' | 'AI';
-export type Route = 'LAB' | 'KIR';
+export type Route = 'ZAG' | 'MAT';
 export type FrameLabel = 'genuine' | AttackKind;
+
+export type TermTone = 'info' | 'ok' | 'bad' | 'warn' | 'dim';
+
+export interface TermLine {
+  id: number;
+  t: number;
+  text: string;
+  tone: TermTone;
+}
 
 export interface TelemetryPoint {
   s: number;
@@ -153,13 +167,12 @@ const DEMO_EVENTS: DemoEvent[] = [
   { at: 14.7, run: (e) => e.startFalseAlarm(1.5) },
   { at: 16.3, run: (e) => (e.heavyBatch = true) },
   { at: 17.9, run: (e) => (e.heavyBatch = false) },
-  { at: 21.5, run: (e) => e.trigger('spoof', { demo: true }) },
-  { at: 29.5, run: (e) => e.trigger('replay', { demo: true }) },
+  { at: 21.5, run: (e) => e.trigger('hijack', { demo: true }) },
+  { at: 29.5, run: (e) => e.trigger('spoof', { demo: true }) },
   { at: 35.5, run: (e) => e.trigger('jam', { demo: true }) },
-  { at: 41.5, run: (e) => e.trigger('mimic', { demo: true }) },
-  { at: 48.5, run: (e) => e.stopDemo() },
+  { at: 42.5, run: (e) => e.stopDemo() },
 ];
-export const DEMO_LENGTH_S = 48.5;
+export const DEMO_LENGTH_S = 42.5;
 
 export class Engine {
   s = 0;
@@ -172,7 +185,7 @@ export class Engine {
   txLog: TxFrame[] = [];
   keyEpoch = 0x3f;
   keyFlashAt = -10;
-  route: Route = 'LAB';
+  route: Route = 'ZAG';
   handoverAt = -10;
 
   power = 9;
@@ -217,6 +230,12 @@ export class Engine {
   demo: { active: boolean; t0: number; next: number } = { active: false, t0: 0, next: 0 };
   eventCount = 0;
 
+  terminal: TermLine[] = [];
+  blockHeight = 0;
+  readonly genesis: string;
+  readonly signer: Ed25519Identity | null;
+  handshakes = 0;
+
   readonly ai: AiModel;
   private passOffset: number;
   private acc = 0;
@@ -227,7 +246,9 @@ export class Engine {
   private lastPhysicsViolation = -10;
   private rowId = 0;
   private calloutId = 0;
-  private prevHash: string | null = null;
+  private prevHash: string;
+  private termId = 0;
+  private nextHandshakeAt = HANDSHAKE_EVERY_S;
   private queue: Promise<void> = Promise.resolve();
   private readonly replayWindow = new ReplayWindow(64);
   private readonly rand = mulberry32(20261108);
@@ -240,20 +261,64 @@ export class Engine {
   private readonly hsm: EmulatedHsm;
   private readonly attackerKey: CryptoKey;
 
-  private constructor(hsm: EmulatedHsm, attackerKey: CryptoKey, ai: AiModel) {
+  private constructor(
+    hsm: EmulatedHsm,
+    attackerKey: CryptoKey,
+    ai: AiModel,
+    genesis: string,
+    signer: Ed25519Identity | null,
+  ) {
     this.hsm = hsm;
     this.attackerKey = attackerKey;
     this.ai = ai;
+    this.genesis = genesis;
+    this.prevHash = genesis;
+    this.signer = signer;
     this.passOffset = timeAfterAos(8);
     this.pass = passAt(this.passOffset);
+
+    this.log(`$ python trust_anchor.py --node ${copy.STATION} --link x-band`, 'dim');
+    this.log(`genesis root ${genesis.slice(0, 24)}…${genesis.slice(-8)}`, 'info');
+    if (signer) {
+      this.log(`Ed25519 pub ${copy.SATELLITE} ${signer.publicHex.slice(0, 24)}…`, 'info');
+    } else {
+      this.log('Ed25519 unavailable in this browser · HMAC-SHA256 seals only', 'warn');
+    }
+    this.handshake('session open');
   }
 
   static async create(): Promise<Engine> {
-    const [hsm, attackerKey] = await Promise.all([
+    const [hsm, attackerKey, genesis, signer] = await Promise.all([
       EmulatedHsm.create(),
       importMacKey(crypto.getRandomValues(new Uint8Array(32))),
+      genesisRoot(copy.STATION),
+      createEd25519(),
     ]);
-    return new Engine(hsm, attackerKey, new AiModel());
+    return new Engine(hsm, attackerKey, new AiModel(), genesis, signer);
+  }
+
+  // ---------------------------------------------------------------- trust_anchor.py log
+
+  log(text: string, tone: TermTone = 'info') {
+    this.terminal.push({ id: ++this.termId, t: this.s, text, tone });
+    if (this.terminal.length > TERMINAL_LINES) this.terminal.shift();
+  }
+
+  /** Signs a fresh challenge with the spacecraft's Ed25519 key and verifies it at the station. */
+  private handshake(reason: string) {
+    const signer = this.signer;
+    if (!signer) return;
+    const epoch = this.keyEpoch;
+    const challenge = encodeText(`${copy.STATION}|epoch:${epoch}|t:${this.s.toFixed(2)}`);
+    this.queue = this.queue.then(async () => {
+      const signature = await signer.sign(challenge);
+      const ok = await signer.verify(challenge, signature);
+      this.handshakes++;
+      this.log(
+        `Ed25519 handshake ${ok ? '✓' : '✗'} ${reason} · sig ${toHex(signature).slice(0, 12)}…`,
+        ok ? 'ok' : 'bad',
+      );
+    });
   }
 
   // ---------------------------------------------------------------- subscriptions
@@ -328,7 +393,7 @@ export class Engine {
     this.run = null;
     this.banner = null;
     this.compromised = null;
-    this.route = 'LAB';
+    this.route = 'ZAG';
     this.autoResponse = true;
     // Start a fresh pass so the whole schedule plays with the satellite in view.
     this.passOffset = timeAfterAos(3) - this.s;
@@ -390,21 +455,25 @@ export class Engine {
 
     const previousInView = this.pass.inView;
     this.pass = passAt(s + this.passOffset);
-    if (this.route === 'KIR' && previousInView && !this.pass.inView) this.route = 'LAB';
+    if (this.route === 'MAT' && previousInView && !this.pass.inView) {
+      this.route = 'ZAG';
+      this.log(`route restored → ${copy.STATION} for the next pass`, 'info');
+    }
 
     this.updateLifecycle(s);
 
     const attacks =
-      this.attack && !(this.route === 'KIR' && this.attack.kind === 'jam') ? [this.attack] : [];
+      this.attack && !(this.route === 'MAT' && this.attack.kind === 'jam') ? [this.attack] : [];
     const falseAlarm = this.falseAlarm
       ? win(s, this.falseAlarm.from, this.falseAlarm.to, 0.15, 0.4)
       : 0;
 
     if (this.pass.linkActive) {
-      const handoverLoss = this.route === 'KIR' ? 1.2 : 0;
+      const handoverLoss = this.route === 'MAT' ? 1.2 : 0;
       this.current = sample(s, snrPredDb(this.pass.rangeKm) - handoverLoss, {
         attacks,
         falseAlarm,
+        dopplerPredHz: this.pass.dopplerHz,
       });
       this.gates = checkGates(this.current);
       if (this.gates.any) this.lastPhysicsViolation = s;
@@ -427,6 +496,11 @@ export class Engine {
     this.updateDetectors(s);
     this.updateState(s);
 
+    if (s >= this.nextHandshakeAt) {
+      this.nextHandshakeAt = s + HANDSHAKE_EVERY_S;
+      if (this.pass.linkActive) this.handshake('periodic');
+    }
+
     this.batchLoad +=
       ((this.heavyBatch ? 0.88 : 0.3 + 0.08 * Math.sin(s * 0.7)) - this.batchLoad) * 0.12;
     this.callouts = this.callouts.filter((c) => c.until > s);
@@ -443,6 +517,7 @@ export class Engine {
     if (x && x.timingUs === null) {
       this.framesLost++;
       this.arrivals.push({ t: s, outcome: 'lost' });
+      this.log(`⚠ frame missing · RSSI ${x.rssiDbm.toFixed(1)} dBm`, 'warn');
       this.pushRow({
         seq: null,
         hash: null,
@@ -460,37 +535,24 @@ export class Engine {
     const roll = this.rand();
 
     if (active && kind && roll < ATTACKER_SHARE[kind]) {
-      if (kind === 'replay') {
-        const recorded = this.sent.find((f) => f.t >= s - REPLAY_LAG_S - 0.4) ?? this.sent[0];
-        if (recorded) {
-          this.process(
-            recorded.header,
-            recorded.seq,
-            recorded.payload,
-            recorded.tag,
-            'S2A (replay)',
-            'replay',
-            s,
-          );
-          return;
-        }
-      } else if (kind === 'spoof' || kind === 'mimic') {
-        const header = encodeHeader({ scid: 0x2a, vc: 1, tMs: s * 1000 });
-        const payload = this.payload();
-        const seq = this.genuineSeq + 1;
-        this.queue = this.queue.then(async () => {
-          const tag = await macSign(this.attackerKey, macInput(header, seq, payload));
-          await this.verify(header, seq, payload, tag, 'UNKNOWN-TX', kind, s);
-        });
-        return;
-      }
+      const header = encodeHeader({ scid: 0x2a, vc: 1, tMs: s * 1000 });
+      const payload = this.payload();
+      // The hijacker pushes the next sequence number; node 0x99A2 forges nonces from recent ones.
+      const seq =
+        kind === 'spoof' ? this.genuineSeq - Math.floor(this.rand() * 24) : this.genuineSeq + 1;
+      const source = kind === 'spoof' ? `NODE ${copy.ROGUE_NODE}` : 'ROGUE-TX +14.2 MHz';
+      this.queue = this.queue.then(async () => {
+        const tag = await macSign(this.attackerKey, macInput(header, seq, payload));
+        await this.verify(header, seq, payload, tag, source, kind, s);
+      });
+      return;
     }
 
     const seq = ++this.genuineSeq;
     const header = encodeHeader({ scid: 0x2a, vc: 1, tMs: s * 1000 });
     const payload = this.payload();
     const epoch = this.keyEpoch;
-    const source = `S2A · VC1 · ${this.route}`;
+    const source = `${copy.SATELLITE} · VC1 · ${this.route}`;
     this.framesSent++;
     this.queue = this.queue.then(async () => {
       const key = await this.hsm.epochKey(epoch);
@@ -514,18 +576,6 @@ export class Engine {
     const p = new Uint8Array(32);
     for (let i = 0; i < p.length; i++) p[i] = Math.floor(this.rand() * 256);
     return p;
-  }
-
-  private process(
-    header: Uint8Array,
-    seq: number,
-    payload: Uint8Array,
-    tag: Uint8Array,
-    source: string,
-    label: FrameLabel,
-    s: number,
-  ) {
-    this.queue = this.queue.then(() => this.verify(header, seq, payload, tag, source, label, s));
   }
 
   /** Station side: MAC → anti-replay → hash chain. Failing frames stop at the gate. */
@@ -566,6 +616,19 @@ export class Engine {
       if (run && run.rejectMs === null && s >= run.start) run.rejectMs = (s - run.start) * 1000;
     }
     this.pushRow({ seq, hash, source, verdict, label, t: s, overheadMs });
+
+    const block = ++this.blockHeight;
+    const short = `${hash.slice(0, 10)}…${hash.slice(-4)}`;
+    if (verdict === 'VERIFIED') {
+      this.log(`✓ block #${block} ${short} hmac ok`, 'ok');
+    } else if (label === 'spoof') {
+      this.log(
+        `✗ block #${block} forged nonce 0x${seq.toString(16)} · node ${copy.ROGUE_NODE}`,
+        'bad',
+      );
+    } else {
+      this.log(`✗ PROOF FAIL #${block} · hmac mismatch · ROGUE-TX`, 'bad');
+    }
   }
 
   private pushRow(row: Omit<LedgerRow, 'id' | 'original'>) {
@@ -639,7 +702,7 @@ export class Engine {
           run.latency[id] = d.latencyMs;
         }
       }
-      PHYSICS.evaded = run.kind === 'mimic' && !PHYSICS.flag && (TRUST.flag || AI.flag);
+      PHYSICS.evaded = run.kind === 'spoof' && !PHYSICS.flag && (TRUST.flag || AI.flag);
       if (this.votes >= 2 && run.escalatedAt === null) this.escalate(run, s);
     }
 
@@ -675,39 +738,37 @@ export class Engine {
     } else {
       attack.tResponse = run.tTrigger + UNANSWERED_END_S;
     }
-    if (run.kind === 'spoof') this.compromised = { from: s + 0.2, to: attack.tResponse };
+    if (run.kind === 'hijack') this.compromised = { from: s + 0.2, to: attack.tResponse };
 
     this.statusLine =
       run.kind === 'jam'
-        ? 'Jamming detected · handing over to GS-KIR'
+        ? `Jamming detected · forcing fallback routing to ${copy.HANDOVER_STATION}`
         : `Running: ${copy.ATTACK_BUTTONS[run.kind].running} · frames held at the gate`;
 
     const say = (text: string, sub: string | undefined, target: CalloutTarget, tone: Tone) =>
       this.say({ text, sub }, target, tone, 3.2);
     switch (run.kind) {
+      case 'hijack':
+        say('Carrier jumped to 8492 MHz', '+14.2 MHz: no orbit produces that', 'telemetry', 'bad');
+        say('Proof failures on every rogue frame', undefined, 'ledger', 'bad');
+        say('Rogue carrier aimed at Zaghouan', undefined, 'station', 'bad');
+        this.log('!! ALERT frequency hijack · carrier +14.2 MHz', 'bad');
+        break;
       case 'spoof':
-        say('Doppler off by 1.65 kHz', 'S2A’s orbit cannot produce that', 'telemetry', 'bad');
-        say('MAC check fails on every frame', undefined, 'ledger', 'bad');
-        say('Rogue transmitter near GS-LAB', undefined, 'station', 'bad');
-        break;
-      case 'replay':
-        say('Ghost pass: S2A replayed', `recorded ${REPLAY_LAG_S} s earlier`, 'sat', 'bad');
-        say('Sequence numbers already used', undefined, 'ledger', 'bad');
-        say('Frames arrive 850 µs late', 'and the Doppler curve is off-model', 'telemetry', 'bad');
-        break;
-      case 'jam':
-        say('SNR falls as jammer power rises', 'driven live by the slider', 'telemetry', 'warn');
-        say('Jammer floods GS-LAB', undefined, 'station', 'warn');
-        break;
-      case 'mimic':
-        say('Doppler looks right', 'the physics check is fooled', 'telemetry', 'warn');
-        say('But the MAC still fails', undefined, 'ledger', 'bad');
+        say('Carrier and RSSI look plausible', 'the physics check is fooled', 'telemetry', 'warn');
+        say(`Forged MAC headers from node ${copy.ROGUE_NODE}`, undefined, 'ledger', 'bad');
         say(
-          '2 of 3 detectors agree: escalate',
+          'Quarantine protocols engaged',
           'caught by the trust anchor and the AI model',
           'fusion',
           'bad',
         );
+        this.log(`!! QUARANTINE PROTOCOLS ENGAGED · node ${copy.ROGUE_NODE} isolated`, 'bad');
+        break;
+      case 'jam':
+        say('RSSI collapsing to −96.5 dBm', 'driven live by the power slider', 'telemetry', 'warn');
+        say('Broadband noise floods Zaghouan', undefined, 'station', 'warn');
+        this.log('!! ALERT noise jamming · RSSI collapse', 'warn');
         break;
     }
     this.emit();
@@ -717,23 +778,29 @@ export class Engine {
     run.respondedAt = s;
     let handoverS: number | null = null;
     switch (run.kind) {
+      case 'hijack':
       case 'spoof':
-      case 'mimic':
         this.keyEpoch += 1;
         this.keyFlashAt = s;
         this.quarantineUntil = s + 1.7;
         this.statusLine = `Re-keying · key epoch 0x${this.keyEpoch.toString(16).toUpperCase()}`;
-        break;
-      case 'replay':
-        this.statusLine = 'Anti-replay window held · recorded frames discarded';
+        this.log(
+          `quarantine: ${this.framesRejected} frames isolated · epoch 0x${this.keyEpoch.toString(16).toUpperCase()}`,
+          'warn',
+        );
+        this.handshake('re-key');
         break;
       case 'jam':
-        this.route = 'KIR';
+        this.route = 'MAT';
         this.handoverAt = s;
         handoverS = run.escalatedAt === null ? null : s - run.escalatedAt;
-        this.statusLine = 'Link restored via GS-KIR';
+        this.statusLine = `Link restored via ${copy.HANDOVER_STATION}`;
+        this.log(`fallback routing → ${copy.HANDOVER_STATION} · downlink restored`, 'ok');
         this.say(
-          { text: 'Downlink handed over to GS-KIR', sub: 'no corrupted frames accepted' },
+          {
+            text: `Fallback routing to ${copy.HANDOVER_STATION}`,
+            sub: 'no corrupted frames accepted',
+          },
           'sat',
           'ok',
           3,
@@ -745,7 +812,7 @@ export class Engine {
         row.verdict = 'QUARANTINED';
       }
     }
-    if (run.kind === 'spoof' || run.kind === 'mimic') {
+    if (run.kind === 'hijack' || run.kind === 'spoof') {
       this.say(
         { text: 'Frames held at the provenance gate', sub: 'the pipeline never fails silently' },
         'ledger',
@@ -781,7 +848,7 @@ export class Engine {
       } else {
         this.statusLine =
           run.kind === 'jam'
-            ? 'Jamming stayed below the detection gate · SNR held in the band'
+            ? 'Jamming stayed below the detection gate · RSSI held in the band'
             : 'Attack ended without escalation';
       }
       this.compromised = null;

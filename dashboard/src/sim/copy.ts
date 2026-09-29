@@ -2,16 +2,26 @@
 
 import type { AttackKind } from './signals';
 
-export const STATION = 'GS-LAB';
-export const STATION_LABEL = 'GS-LAB (testbed)';
-export const HANDOVER_STATION = 'GS-KIR';
-export const SATELLITE = 'S2A';
+export const STATION = 'GS-ZAG';
+export const STATION_LABEL = 'Zaghouan GS (TN)';
+export const STATION_PLACE = 'Zaghouan, Tunisia';
+export const HANDOVER_STATION = 'GS-MAT';
+export const HANDOVER_PLACE = 'Matera, Italy';
+export const SATELLITE = 'LEO-SAT';
+export const ROGUE_NODE = '0x99A2';
 
 export const ATTACK_BUTTONS: Record<AttackKind, { label: string; sub: string; running: string }> = {
-  spoof: { label: 'Spoofed frame', sub: 'standard scenario', running: 'Spoofed frame' },
-  replay: { label: 'Replayed pass', sub: 'captured S2A pass', running: 'Replayed pass' },
-  jam: { label: 'RF jamming', sub: 'availability attack', running: 'RF jamming' },
-  mimic: { label: 'Doppler mimic', sub: 'evasion attempt', running: 'Doppler mimic' },
+  hijack: {
+    label: 'Frequency Hijacking',
+    sub: 'rogue carrier +14.2 MHz',
+    running: 'Frequency Hijacking',
+  },
+  spoof: {
+    label: 'Stealth Spoofing',
+    sub: `forged MAC · node ${ROGUE_NODE}`,
+    running: 'Stealth Spoofing',
+  },
+  jam: { label: 'Noise Jamming', sub: 'broadband white noise', running: 'Noise Jamming' },
 };
 
 export interface BannerCopy {
@@ -22,25 +32,20 @@ export interface BannerCopy {
 export function activeBanner(kind: AttackKind, ms: number | null): BannerCopy {
   const t = ms === null ? '' : ` in ${Math.round(ms)} ms`;
   switch (kind) {
+    case 'hijack':
+      return {
+        headline: `Frequency hijack detected${t} · carrier at 8492 MHz`,
+        detail: `Rogue carrier +14.2 MHz off the ${SATELLITE} downlink · proof failures on every frame`,
+      };
     case 'spoof':
       return {
-        headline: `Spoofed ground-link frame · detected${t}`,
-        detail: 'UNKNOWN-TX → GS-LAB, claiming to be S2A · frames held at the gate',
-      };
-    case 'replay':
-      return {
-        headline: `Replayed pass rejected${t}`,
-        detail: 'Sequence numbers reused · timing skew +850 µs · Doppler off-model',
+        headline: `Quarantine protocols engaged${t}`,
+        detail: `Forged MAC headers and nonces from node ${ROGUE_NODE} · frames isolated at the gate`,
       };
     case 'jam':
       return {
-        headline: 'RF jamming at GS-LAB · SNR below the link budget',
-        detail: 'Frames lost · switching the S2A downlink to GS-KIR',
-      };
-    case 'mimic':
-      return {
-        headline: 'Evasion attempt caught · 2 of 3 detectors',
-        detail: 'Doppler mimicked, but the MAC failed and the AI model flagged it',
+        headline: `Noise jamming at ${STATION} · RSSI −96.5 dBm`,
+        detail: `Broadband white noise saturating the receiver · forcing fallback routing to ${HANDOVER_STATION}`,
       };
   }
 }
@@ -52,25 +57,20 @@ export function resolvedBanner(
 ): BannerCopy {
   const e = `0x${epoch.toString(16).toUpperCase()}`;
   switch (kind) {
+    case 'hijack':
+      return {
+        headline: 'Hijack contained · 0 corrupted frames reached the analyst',
+        detail: `Carrier re-locked on ${SATELLITE} · keys rotated to epoch ${e}`,
+      };
     case 'spoof':
       return {
-        headline: 'Threat contained · 0 corrupted frames reached the analyst',
-        detail: `GS-LAB link quarantined · keys rotated to epoch ${e}`,
-      };
-    case 'replay':
-      return {
-        headline: 'Replay blocked · anti-replay window held',
-        detail: 'Recorded frames discarded before decoding',
+        headline: `Node ${ROGUE_NODE} isolated · spoofed frames quarantined`,
+        detail: `Ed25519 handshake renewed · keys rotated to epoch ${e}`,
       };
     case 'jam':
       return {
-        headline: `Link restored via GS-KIR${handoverS === null ? '' : ` in ${handoverS.toFixed(1)} s`}`,
-        detail: 'GS-LAB flagged as jammed · no corrupted frames accepted',
-      };
-    case 'mimic':
-      return {
-        headline: 'Threat contained · spoofed frames dropped',
-        detail: `GS-LAB quarantined · keys rotated to epoch ${e}`,
+        headline: `Fallback routing via ${HANDOVER_STATION}${handoverS === null ? '' : ` in ${handoverS.toFixed(1)} s`}`,
+        detail: `${STATION} flagged as jammed · no corrupted frames accepted`,
       };
   }
 }
@@ -81,13 +81,16 @@ export const unansweredBanner: BannerCopy = {
 };
 
 export const TOUR_CALLOUTS = {
-  lock: { text: 'S2A downlink locked on GS-LAB', sub: 'pass predicted from orbital elements' },
+  lock: {
+    text: `${SATELLITE} downlink locked on ${STATION}`,
+    sub: 'pass predicted from orbital elements',
+  },
   gate: {
-    text: 'Measured vs orbit model',
+    text: 'Carrier and RSSI vs orbit model',
     sub: 'anything outside the gate breaks orbital physics',
   },
   chain: {
-    text: 'Each frame is hash-chained to the last',
+    text: 'Each frame is a SHA-256 block chained to the last',
     sub: 'one altered frame breaks the chain',
   },
   hold: { text: 'Only 1 of 3 detectors flagged it', sub: 'fusion holds instead of alarming' },
