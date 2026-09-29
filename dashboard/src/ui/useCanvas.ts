@@ -7,8 +7,8 @@ export type DrawFn = (
   timeS: number,
 ) => void;
 
-/** Sizes a canvas to its box at device pixel ratio and redraws it every animation frame. */
-export function useCanvasLoop(draw: DrawFn, fps = 60) {
+/** Sizes a canvas to its box at device pixel ratio and redraws it at `fps` while it is on screen. */
+export function useCanvasLoop(draw: DrawFn, fps = 30) {
   const ref = useRef<HTMLCanvasElement>(null);
   const drawRef = useRef(draw);
   drawRef.current = draw;
@@ -33,13 +33,19 @@ export function useCanvasLoop(draw: DrawFn, fps = 60) {
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
+    let visible = true;
+    const io =
+      typeof IntersectionObserver === 'undefined'
+        ? null
+        : new IntersectionObserver(([e]) => (visible = e.isIntersecting));
+    io?.observe(canvas);
 
     let raf = 0;
     let last = 0;
     const interval = 1000 / fps;
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
-      if (now - last < interval - 1) return;
+      if (!visible || now - last < interval - 1) return;
       last = now;
       if (width > 0 && height > 0) {
         ctx.clearRect(0, 0, width, height);
@@ -50,6 +56,7 @@ export function useCanvasLoop(draw: DrawFn, fps = 60) {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      io?.disconnect();
     };
   }, [fps]);
 

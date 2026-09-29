@@ -30,7 +30,7 @@ const fragment = /* glsl */ `
   float hash(float n) { return fract(sin(n) * 43758.5453); }
   void main() {
     float along = mix(vUv.y, vUv.x, uAlongX);
-    float soft = pow(abs(dot(normalize(vNormal), normalize(vView))), 1.4);
+    float soft = pow(clamp(abs(dot(normalize(vNormal), normalize(vView))), 0.0, 1.0), 1.4);
     float stripes = fract(along * uDensity - uTime * uSpeed);
     float pulse = pow(stripes, 6.0);
     float dash = mix(1.0, step(0.45, fract(along * uDensity * 0.5 - uTime * uSpeed * 0.5)), uDashed);
@@ -103,12 +103,12 @@ export function Beam({
   useFrame(({ clock }) => {
     const st = getState();
     const m = mesh.current;
-    m.visible = st.visible && st.opacity > 0.01;
+    dir.subVectors(st.b, st.a);
+    const len = dir.length();
+    m.visible = st.visible && st.opacity > 0.01 && len > 1e-4;
     packets.current.visible = m.visible && st.packets !== false;
     if (!m.visible) return;
 
-    dir.subVectors(st.b, st.a);
-    const len = dir.length();
     mid.addVectors(st.a, st.b).multiplyScalar(0.5);
     m.position.copy(mid);
     m.quaternion.setFromUnitVectors(Y, tmp.copy(dir).normalize());

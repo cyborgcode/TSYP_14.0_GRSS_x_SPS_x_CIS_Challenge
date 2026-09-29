@@ -135,10 +135,14 @@ export const Satellite = forwardRef<SatelliteHandle, Props>(function Satellite(
     tmpY.copy(st.position).sub(EARTH_CENTER).normalize();
     tmpZ.copy(st.position).sub(prev.current);
     if (tmpZ.lengthSq() < 1e-8 || dt === 0) tmpZ.set(0, 0, 1);
-    tmpZ.addScaledVector(tmpY, -tmpZ.dot(tmpY)).normalize();
-    tmpX.crossVectors(tmpY, tmpZ).normalize();
-    basis.makeBasis(tmpX, tmpY, tmpZ);
-    g.quaternion.setFromRotationMatrix(basis);
+    tmpZ.addScaledVector(tmpY, -tmpZ.dot(tmpY));
+    // A jump along the radius (pass wrap) leaves no heading: keep the last attitude.
+    if (tmpZ.lengthSq() > 1e-10) {
+      tmpZ.normalize();
+      tmpX.crossVectors(tmpY, tmpZ).normalize();
+      basis.makeBasis(tmpX, tmpY, tmpZ);
+      g.quaternion.setFromRotationMatrix(basis);
+    }
     prev.current.copy(st.position);
 
     // Solar wings track the sun about their boom axis.
@@ -151,6 +155,8 @@ export const Satellite = forwardRef<SatelliteHandle, Props>(function Satellite(
       localTarget.copy(st.target);
       antenna.current.parent!.worldToLocal(localTarget);
       localTarget.sub(antenna.current.position);
+    }
+    if (st.target && localTarget.lengthSq() > 1e-10) {
       antenna.current.quaternion.setFromUnitVectors(
         new THREE.Vector3(0, 0, 1),
         localTarget.normalize(),

@@ -26,7 +26,7 @@ const oceanFragment = /* glsl */ `
     vec3 deep = vec3(0.020, 0.043, 0.075);
     vec3 lit = vec3(0.055, 0.125, 0.200);
     vec3 col = mix(deep * 0.55, mix(deep, lit, 0.6), day);
-    float rim = pow(1.0 - max(dot(vNormal, vView), 0.0), 3.0);
+    float rim = pow(clamp(1.0 - dot(vNormal, vView), 0.0, 1.0), 3.0);
     col += vec3(0.30, 0.79, 0.94) * rim * 0.35;
     gl_FragColor = vec4(col, 1.0);
   }
@@ -67,7 +67,7 @@ const atmosphereFragment = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vView;
   void main() {
-    float rim = pow(1.0 - abs(dot(vNormal, vView)), 2.4);
+    float rim = pow(clamp(1.0 - abs(dot(vNormal, vView)), 0.0, 1.0), 2.4);
     gl_FragColor = vec4(vec3(0.30, 0.79, 0.94), rim * 0.55);
   }
 `;

@@ -1,7 +1,7 @@
 import { Html, OrbitControls, Stars } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
@@ -33,25 +33,169 @@ interface SceneProps {
   reduced: boolean;
 }
 
-export default function Scene(props: SceneProps) {
+type Tier = 0 | 1 | 2;
+
+/** Render quality per tier: low drops the bloom pass, high adds MSAA and a sharper pixel ratio. */
+const TIERS: Record<Tier, { dpr: number; bloom: boolean; samples: number }> = {
+  0: { dpr: 0.8, bloom: false, samples: 0 },
+  1: { dpr: 1, bloom: true, samples: 0 },
+  2: { dpr: 1.5, bloom: true, samples: 4 },
+};
+const TIER_KEY = 'gs-lab.gfx-tier';
+
+function loadTier(): Tier {
+  try {
+    const v = window.localStorage.getItem(TIER_KEY);
+    return v === '0' ? 0 : v === '2' ? 2 : 1;
+  } catch {
+    return 1;
+  }
+}
+
+function saveTier(t: Tier) {
+  try {
+    window.localStorage.setItem(TIER_KEY, String(t));
+  } catch {
+    // Storage unavailable: the tier is re-measured next visit.
+  }
+}
+
+function Scene(props: SceneProps) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const [tier, setTier] = useState<Tier>(loadTier);
+  const [onScreen, setOnScreen] = useState(true);
+  // The GPU can drop the WebGL context (driver reset, memory pressure). The browser restores it
+  // and three.js re-uploads every resource; if that never happens, offer a reload.
+  const [lost, setLost] = useState(false);
+  const [stuck, setStuck] = useState(false);
+
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([e]) => setOnScreen(e.isIntersecting));
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!lost) {
+      setStuck(false);
+      return;
+    }
+    const id = window.setTimeout(() => setStuck(true), 6000);
+    return () => window.clearTimeout(id);
+  }, [lost]);
+
+  const changeTier = useCallback((t: Tier) => {
+    setTier(t);
+    saveTier(t);
+  }, []);
+
+  const q = TIERS[tier];
   return (
-    <Canvas
-      dpr={[1, 2]}
-      camera={{ fov: 38, near: 0.1, far: 900, position: [26, 11, 20] }}
-      gl={{ antialias: false, powerPreference: 'high-performance', alpha: false }}
-      aria-label="3D view of the S2A satellite passing over the GS-LAB ground station"
-    >
-      <color attach="background" args={['#04070C']} />
-      <SceneContent {...props} />
-    </Canvas>
+    <div ref={wrap} className="scene-root">
+      <Canvas
+        dpr={Math.min(window.devicePixelRatio || 1, q.dpr)}
+        frameloop={onScreen && !lost ? 'always' : 'never'}
+        camera={{ fov: 38, near: 0.1, far: 900, position: [26, 11, 20] }}
+        gl={{ antialias: false, powerPreference: 'high-performance', alpha: false }}
+        aria-label="3D view of the S2A satellite passing over the GS-LAB ground station"
+        onCreated={({ gl }) => {
+          const canvas = gl.domElement;
+          canvas.addEventListener('webglcontextlost', (e) => {
+            // Without preventDefault the browser never restores the context.
+            e.preventDefault();
+            // A lost context usually means the GPU was overloaded: come back one tier lower.
+            setTier((t) => {
+              const next = Math.max(0, t - 1) as Tier;
+              saveTier(next);
+              return next;
+            });
+            setLost(true);
+          });
+          canvas.addEventListener('webglcontextrestored', () => setLost(false));
+        }}
+      >
+        <color attach="background" args={['#04070C']} />
+        <QualityGovernor tier={tier} onChange={changeTier} />
+        <SceneContent {...props} bloom={q.bloom} samples={q.samples} />
+      </Canvas>
+      {lost && (
+        <div className="viewport__loading">
+          {stuck ? (
+            <div className="viewport__lost">
+              The graphics driver stopped the 3D view.
+              <button className="demo-button" onClick={() => window.location.reload()}>
+                Reload
+              </button>
+            </div>
+          ) : (
+            'Restoring 3D view…'
+          )}
+        </div>
+      )}
+    </div>
   );
+}
+
+export default memo(Scene);
+
+const WINDOW_MS = 2000;
+const WARMUP_MS = 3000;
+
+/**
+ * Measures the frame rate in 2 s windows and moves one tier down when it drops below 40 fps, or
+ * one tier up after three windows at full refresh rate. A tier that had to be left is never
+ * re-entered in the same session, so the quality cannot oscillate.
+ */
+function QualityGovernor({ tier, onChange }: { tier: Tier; onChange: (t: Tier) => void }) {
+  const st = useRef({ born: performance.now(), t0: 0, frames: 0, last: 0, good: 0, cap: 2 });
+  useEffect(() => {
+    st.current.t0 = 0;
+    st.current.good = 0;
+  }, [tier]);
+
+  useFrame(() => {
+    const s = st.current;
+    const now = performance.now();
+    // Hidden tab, paused loop or a hitch: restart the window instead of counting the gap.
+    if (now - s.born < WARMUP_MS || document.hidden || now - s.last > 1000) s.t0 = 0;
+    s.last = now;
+    if (!s.t0) {
+      s.t0 = now;
+      s.frames = 0;
+      return;
+    }
+    s.frames++;
+    const span = now - s.t0;
+    if (span < WINDOW_MS) return;
+    const fps = (s.frames * 1000) / span;
+    s.t0 = now;
+    s.frames = 0;
+    if (fps < 40 && tier > 0) {
+      s.cap = tier - 1;
+      onChange((tier - 1) as Tier);
+    } else if (fps > 56 && tier < s.cap) {
+      if (++s.good >= 3) onChange((tier + 1) as Tier);
+    } else {
+      s.good = 0;
+    }
+  });
+  return null;
 }
 
 function satVisibility(elevationDeg: number): number {
   return smooth(-2.5, 2, elevationDeg);
 }
 
-function SceneContent({ engine, focus, setFocus, reduced }: SceneProps) {
+function SceneContent({
+  engine,
+  focus,
+  setFocus,
+  reduced,
+  bloom,
+  samples,
+}: SceneProps & { bloom: boolean; samples: number }) {
   const sat = useRef<SatelliteHandle>(null);
   const station = useRef<StationHandle>(null);
   const satLabel = useRef<THREE.Group>(null!);
@@ -293,16 +437,18 @@ function SceneContent({ engine, focus, setFocus, reduced }: SceneProps) {
 
       <CameraRig engine={engine} focus={focus} reduced={reduced} satPos={satPos} />
 
-      <EffectComposer multisampling={4}>
-        <Bloom
-          mipmapBlur
-          intensity={1.05}
-          luminanceThreshold={0.62}
-          luminanceSmoothing={0.25}
-          radius={0.72}
-        />
-        <Vignette offset={0.28} darkness={0.55} />
-      </EffectComposer>
+      {bloom && (
+        <EffectComposer multisampling={samples}>
+          <Bloom
+            mipmapBlur
+            intensity={1.05}
+            luminanceThreshold={0.62}
+            luminanceSmoothing={0.25}
+            radius={0.72}
+          />
+          <Vignette offset={0.28} darkness={0.55} />
+        </EffectComposer>
+      )}
     </>
   );
 }
