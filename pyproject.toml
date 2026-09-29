@@ -15,13 +15,14 @@ higgsfield = ["higgsfield-client>=0.2", "python-dotenv>=1.0"]
 
 [project.scripts]
 groundlink = "groundlink.cli:main"
+testbed-validate = "testbed.validator:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["groundlink*"]
+include = ["groundlink*", "testbed*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

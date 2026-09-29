@@ -26,10 +26,10 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Lint
-        run: ruff check groundlink tests
+        run: ruff check groundlink testbed tests
 
       - name: Format check
-        run: ruff format --check groundlink tests
+        run: ruff format --check groundlink testbed tests
 
       - name: Test
         run: python -m pytest

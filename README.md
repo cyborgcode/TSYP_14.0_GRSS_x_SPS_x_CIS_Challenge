@@ -25,6 +25,13 @@ python -m groundlink.cli
 python -m pytest
 ```
 
+Run the red-team audit and measure the three dashboard attacks
+([evaluation report](docs/evaluation-report.md)):
+
+```bash
+python -m testbed.validator
+```
+
 Run a single attack, or change the attack window and false-alarm target:
 
 ```bash
@@ -60,7 +67,13 @@ groundlink/
   audit.py         tamper-evident station log
   evaluate.py      detection metrics
   cli.py           standard scenario runner
-tests/             59 tests
+testbed/           the dashboard's three attacks as Python modules
+  ingester.py      telemetry + red-team attacks (hijack, stealth spoofing, noise jamming)
+  detector.py      physics gate + Isolation Forest on orbit residuals
+  trust_anchor.py  HMAC-SHA256 + anti-replay + SHA-256 ledger from a genesis block
+  zero_trust.py    policy engine: registry, token, trust anchor, detector
+  validator.py     red-team audit and the measured evaluation report
+tests/             66 tests
 docs/              one document per deliverable, plus roadmap and decisions
 dashboard/         React app — the Phase 2 live-demo surface
 data/              official datasets (gitignored)
