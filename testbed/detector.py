@@ -76,10 +76,6 @@ class TelemetryDetector:
         normality = float(self.model.score_samples(np.array([feats]))[0])
         forest = normality < self.model.offset_
         anomaly = physics or forest
-        # Velocity is measured against the last packet judged normal, so the first packet after
-        # an attack is not flagged for stepping back to the orbit prediction.
-        if not anomaly:
-            self._remember(packet)
         return {
             "anomaly": anomaly,
             "physics_gate": physics,
@@ -88,6 +84,15 @@ class TelemetryDetector:
             "carrier_frequency_mhz": packet["carrier_frequency_mhz"],
             "rssi_dbm": packet["rssi_dbm"],
         }
+
+    def accept(self, packet: dict) -> None:
+        """Makes an accepted packet the reference for the next velocity features.
+
+        Only packets the whole pipeline accepted (authentic, cleared, nominal RF) become the
+        reference. A spoofed frame that slips past the RF checks must not, or the next genuine
+        packet would look like a jump back.
+        """
+        self._remember(packet)
 
     def _remember(self, packet: dict) -> None:
         self.history.append(packet)

@@ -50,6 +50,8 @@ class Pipeline:
         block, authentic, reason = self.ledger.ingest(packet)
         t2 = time.perf_counter()
         decision = self.zta.evaluate_access_request(packet, detection, (authentic, reason))
+        if decision["access_granted"]:
+            self.detector.accept(packet)
         t3 = time.perf_counter()
         return {
             "packet": packet,

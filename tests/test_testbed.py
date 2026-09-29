@@ -82,6 +82,8 @@ def test_detector_never_reads_the_ground_truth_label(pipe):
         packet = ing.generate_packet(mode)
         unlabelled = {k: v for k, v in packet.items() if k != "attack_mode"}
         assert detector.evaluate_packet(packet) == twin.evaluate_packet(unlabelled)
+        detector.accept(packet)
+        twin.accept(unlabelled)
 
 
 def test_zero_trust_denies_on_token_mismatch_even_with_a_clean_rf_profile(pipe):
