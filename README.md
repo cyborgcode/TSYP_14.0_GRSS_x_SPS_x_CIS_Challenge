@@ -80,7 +80,19 @@ data/              official datasets (gitignored)
 Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log](docs/decisions.md) ·
 [working agreement](CONTRIBUTING.md)
 
-## Dashboard
+## Live testbed (dashboard)
+
+`dashboard/` is the interactive web testbed, deployed on Vercel from `main`:
+
+- **3D ground link**: an S2A pass over GS-LAB in real-time WebGL. Click the satellite or the
+  station to fly in and watch the signal live: frames being sealed on board (real HMAC-SHA256),
+  the received spectrum waterfall, QPSK constellations and per-frame verification at the gate.
+- **Four attack scenarios** (spoofed frame, replayed pass, RF jamming, Doppler mimic) wired live
+  to the 3D view, telemetry, ledger and detectors; the attack-power slider drives jamming
+  continuously. **Play demo** runs the replayable standard-scenario sequence.
+- **Everything runs in the browser**: Web Crypto HMAC-SHA256 + anti-replay window + SHA-256
+  hash chain, an Isolation Forest trained on nominal passes at load, and 2-of-3 fusion.
+  Tiles marked *sample* are placeholders until measured on the official reference dataset.
 
 ```bash
 cd dashboard
