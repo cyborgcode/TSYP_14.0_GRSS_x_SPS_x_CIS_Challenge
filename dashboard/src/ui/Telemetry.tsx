@@ -4,6 +4,7 @@ import { symlog } from '../sim/noise';
 import { GATES } from '../sim/signals';
 import { fmtDb, fmtHz, fmtUs } from './format';
 import { Panel } from './Panel';
+import { Spectrum } from './Spectrum';
 import { COLORS, FONT_DATA, FONT_UI, hatch, useCanvasLoop } from './useCanvas';
 
 type Kind = 'doppler' | 'snr' | 'timing';
@@ -276,6 +277,27 @@ function ChartBlock({ kind }: { kind: Kind }) {
   );
 }
 
+function SpectrumBlock() {
+  const engine = useEngine(10);
+  const x = engine.current;
+  const link = engine.pass.linkActive && x !== null;
+  const jammed = engine.attack?.kind === 'jam' && engine.attackEnvelope > 0.2;
+  return (
+    <div className={`chart ${jammed ? 'chart--out' : ''}`}>
+      <div className="chart__head">
+        <div>
+          <div className="chart__title">Received spectrum</div>
+          <div className="chart__subtitle">amplitude vs frequency</div>
+        </div>
+        <div className="chart__value" aria-live="off">
+          {link && x ? fmtDb(x.snrDb) : 'LOS'}
+        </div>
+      </div>
+      <Spectrum />
+    </div>
+  );
+}
+
 export function TelemetryPanel() {
   const engine = useEngine(4);
   const alert = engine.state === 'UNDER ATTACK';
@@ -291,6 +313,7 @@ export function TelemetryPanel() {
         <ChartBlock kind="doppler" />
         <ChartBlock kind="snr" />
         <ChartBlock kind="timing" />
+        <SpectrumBlock />
       </div>
     </Panel>
   );

@@ -17,6 +17,7 @@ import { PASS_S, passAt, snrPredDb, timeAfterAos } from '../src/sim/geometry';
 import { IsolationForest } from '../src/sim/iforest';
 import { mulberry32 } from '../src/sim/noise';
 import { checkGates, sample, type Attack } from '../src/sim/signals';
+import { GATE_HZ, SPAN_HZ, renderSpectrum, spectrumState } from '../src/ui/spectrumModel';
 
 const bytes = (...v: number[]) => new Uint8Array(v);
 
@@ -236,5 +237,46 @@ describe('engine scenarios', () => {
     expect(held).toBe(true);
     expect(engine.runs.every((r) => r.escalatedAt !== null && r.respondedAt !== null)).toBe(true);
     expect(engine.corruptedToAnalyst).toBe(0);
+  });
+});
+
+describe('received spectrum', () => {
+  it('puts the carrier SNR above a thermal floor on a clean pass', async () => {
+    const engine = await Engine.create();
+    await runFor(engine, 4);
+    const st = spectrumState(engine);
+    expect(st.link).toBe(true);
+    expect(st.floorDb).toBe(0);
+    expect(st.peaks).toHaveLength(1);
+    expect(st.peaks[0].db).toBeCloseTo(engine.current!.snrDb, 6);
+
+    const bins = new Float32Array(256);
+    renderSpectrum(st, bins);
+    const peakBin = Math.round(((st.peaks[0].hz + SPAN_HZ / 2) / SPAN_HZ) * 256 - 0.5);
+    const peakDb = 10 * Math.log10(bins[peakBin]);
+    expect(Math.abs(peakDb - st.peaks[0].db)).toBeLessThan(3);
+  });
+
+  it('raises the noise floor under jamming and shows rogue carriers for spoof and mimic', async () => {
+    const jam = await Engine.create();
+    await runFor(jam, 1);
+    jam.setPower(9);
+    jam.trigger('jam');
+    await runFor(jam, 1.5);
+    expect(spectrumState(jam).floorDb).toBeGreaterThan(5);
+
+    const spoof = await Engine.create();
+    await runFor(spoof, 1);
+    spoof.trigger('spoof');
+    await runFor(spoof, 1.5);
+    const spoofRogue = spectrumState(spoof).peaks.find((p) => p.rogue);
+    expect(Math.abs(spoofRogue!.hz)).toBeGreaterThan(GATE_HZ);
+
+    const mimic = await Engine.create();
+    await runFor(mimic, 1);
+    mimic.trigger('mimic');
+    await runFor(mimic, 1.2);
+    const mimicRogue = spectrumState(mimic).peaks.find((p) => p.rogue);
+    expect(Math.abs(mimicRogue!.hz)).toBeLessThan(GATE_HZ);
   });
 });

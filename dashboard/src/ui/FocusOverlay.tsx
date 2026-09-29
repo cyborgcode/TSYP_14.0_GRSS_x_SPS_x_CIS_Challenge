@@ -6,6 +6,8 @@ import { evmFromSnr } from '../sim/signals';
 import { fmtDb, fmtEpoch, fmtHz, MINUS } from './format';
 import { BackIcon, DishIcon, SatelliteIcon } from './icons';
 import { WaxSeal } from './Ledger';
+import { Spectrum } from './Spectrum';
+import { renderSpectrum, spectrumState, xOfHz } from './spectrumModel';
 import { COLORS, FONT_DATA, FONT_UI, useCanvasLoop } from './useCanvas';
 
 function gauss(): number {
@@ -111,6 +113,7 @@ function Constellation({ side }: { side: 'tx' | 'rx' }) {
 function Waterfall() {
   const { engine } = useEngineCtx();
   const buffer = useRef<HTMLCanvasElement | null>(null);
+  const bins = useRef<Float32Array | null>(null);
   const lastT = useRef<number | null>(null);
   const ref = useCanvasLoop((ctx, w, h, t) => {
     const top = 16;
@@ -127,15 +130,9 @@ function Waterfall() {
     const b = buffer.current;
     const bctx = b.getContext('2d')!;
 
-    const x = engine.current;
-    const link = engine.pass.linkActive && x !== null;
-    const kind = engine.attack?.kind;
-    const env = engine.attackEnvelope;
-    const jam =
-      kind === 'jam' && engine.route === 'LAB' ? env * Math.min(1, engine.appliedPower / 12) : 0;
-    const span = 10_000;
-    const binOf = (hz: number) => ((hz + span / 2) / span) * b.width;
-    const lost = x?.timingUs === null;
+    const state = spectrumState(engine);
+    if (!bins.current || bins.current.length !== b.width) bins.current = new Float32Array(b.width);
+    const power = bins.current;
 
     // Scroll by elapsed time (40 rows per second) so the display is right at any frame rate.
     const rows =
@@ -144,23 +141,11 @@ function Waterfall() {
     bctx.drawImage(b, 0, rows);
 
     for (let rIdx = 0; rIdx < rows; rIdx++) {
+      renderSpectrum(state, power);
       const row = bctx.createImageData(b.width, 1);
       for (let i = 0; i < b.width; i++) {
-        let v = 0.05 + Math.random() * 0.09 + jam * (0.45 + Math.random() * 0.5);
-        if (link && x && !lost) {
-          const genuine = Math.max(0, x.snrDb - 4) / 22;
-          const carrier =
-            kind === 'spoof' || kind === 'mimic' ? (1 - env * 0.7) * genuine : genuine;
-          const offset = kind === 'spoof' ? 0 : x.dopplerHz;
-          const d = i - binOf(offset);
-          v += carrier * Math.exp(-(d * d) / 4);
-          if ((kind === 'spoof' || kind === 'mimic') && env > 0.05) {
-            const rogueHz = kind === 'spoof' ? x.dopplerHz : 12 * Math.sin(engine.s * 3);
-            const dr = i - binOf(rogueHz);
-            v += env * 0.95 * Math.exp(-(dr * dr) / 5);
-          }
-        }
-        v = Math.min(1, v);
+        // Same scale as the spectrum plot: thermal noise dark, 30 dB and above bright.
+        const v = Math.max(0, Math.min(1, (10 * Math.log10(power[i] + 1e-9) + 4) / 32));
         // Colour map: navy → accent → ice.
         const r = v < 0.5 ? 10 + v * 2 * 66 : 76 + (v - 0.5) * 2 * 130;
         const g = v < 0.5 ? 16 + v * 2 * 185 : 201 + (v - 0.5) * 2 * 29;
@@ -180,13 +165,15 @@ function Waterfall() {
     ctx.fillText('carrier', w / 2, 0);
     ctx.textAlign = 'right';
     ctx.fillText('+5 kHz', w - 2, 0);
-    if ((kind === 'spoof' || kind === 'mimic') && env > 0.3 && x) {
-      ctx.fillStyle = kind === 'spoof' ? COLORS.bad : COLORS.warn;
+    const rogue = state.peaks.find((p) => p.rogue);
+    if (rogue && engine.attackEnvelope > 0.3) {
+      const mimic = engine.attack?.kind === 'mimic';
+      ctx.fillStyle = mimic ? COLORS.warn : COLORS.bad;
       ctx.textAlign = 'center';
-      const px = kind === 'spoof' ? binOf(x.dopplerHz) : w / 2 + 34;
+      const px = mimic ? w / 2 + 34 : xOfHz(rogue.hz, 0, w);
       ctx.fillText('UNKNOWN-TX', Math.max(40, Math.min(w - 40, px)), top + 4);
     }
-    if (jam > 0.2) {
+    if (state.floorDb > 3) {
       ctx.fillStyle = COLORS.warn;
       ctx.textAlign = 'center';
       ctx.fillText('noise floor rising', w / 2, top + 4);
@@ -318,6 +305,10 @@ function StationPanel() {
           value={x ? fmtHz(x.dopplerHz) : '—'}
           tone={engine.gates?.doppler ? 'bad' : undefined}
         />
+      </div>
+      <div className="focus__viz">
+        <span className="overline">Received spectrum · amplitude vs frequency</span>
+        <Spectrum className="spectrum" />
       </div>
       <div className="focus__split">
         <div className="focus__viz focus__viz--wide">
