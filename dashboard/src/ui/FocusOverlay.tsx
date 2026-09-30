@@ -299,8 +299,8 @@ function StationPanel() {
           tone={x && x.rssiDbm < x.rssiModelDbm - GATES.snrBandDb ? 'warn' : undefined}
         />
         <Metric
-          label="Carrier"
-          value={x ? `${x.carrierMHz.toFixed(2)} MHz` : '—'}
+          label="Carrier MHz"
+          value={x ? x.carrierMHz.toFixed(2) : '—'}
           tone={engine.gates?.doppler ? 'bad' : undefined}
         />
         <Metric
@@ -310,13 +310,13 @@ function StationPanel() {
         />
         <Metric label="EVM" value={x ? `${x.evmPct.toFixed(1)}%` : '—'} />
       </div>
-      <div className="focus__viz">
+      <div className="focus__viz focus__viz--spectrum">
         <span className="overline">Received spectrum · amplitude vs frequency</span>
         <Spectrum className="spectrum" />
       </div>
       <div className="focus__split">
         <div className="focus__viz focus__viz--wide">
-          <span className="overline">Spectrum waterfall · Doppler-compensated</span>
+          <span className="overline">Waterfall · ±20 MHz</span>
           <Waterfall />
         </div>
         <div className="focus__viz">

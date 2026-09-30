@@ -14,13 +14,15 @@ function Readout({
   label,
   value,
   tone,
+  className = '',
 }: {
   label: string;
   value: string;
   tone?: 'bad' | 'warn' | 'ok';
+  className?: string;
 }) {
   return (
-    <div className="readout">
+    <div className={`readout ${className}`}>
       <span className="overline">{label}</span>
       <span className={`readout__value ${tone ? `readout__value--${tone}` : ''}`}>{value}</span>
     </div>
@@ -36,7 +38,7 @@ function Hud() {
   return (
     <>
       <div className="hud hud--tl">
-        <Readout label="Segment" value="Ground link · Track 1" />
+        <Readout label="Segment" value="Ground link · Track 1" className="readout--segment" />
         <Readout label="Orbit" value={`${ALTITUDE_KM} km sun-synchronous LEO`} />
       </div>
       <div className="hud hud--tr">
@@ -53,11 +55,11 @@ function Hud() {
             <span>
               <b>ELEV</b> {pass.inView ? `${pass.elevationDeg.toFixed(1)}°` : 'LOS'}
             </span>
-            <span>
+            <span className="hud__stat--range">
               <b>RANGE</b>{' '}
               {pass.inView ? `${Math.round(pass.rangeKm).toLocaleString('en-US')} km` : '—'}
             </span>
-            <span>
+            <span className="hud__stat--doppler">
               <b>DOPPLER</b> {pass.inView ? fmtHz(pass.dopplerHz) : '—'}
             </span>
             <span>

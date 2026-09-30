@@ -70,6 +70,7 @@ function Terminal() {
         <span className="term__dot" />
         <span className="term__dot" />
         <span className="term__title">trust_anchor.py — {STATION}</span>
+        <span className="term__epoch mono">epoch {fmtEpoch(engine.keyEpoch)}</span>
       </div>
       <div
         ref={body}

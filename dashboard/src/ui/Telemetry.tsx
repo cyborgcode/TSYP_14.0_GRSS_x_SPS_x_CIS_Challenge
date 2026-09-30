@@ -222,7 +222,9 @@ function SpectrumBlock() {
           {link && x ? fmtDb(x.snrDb) : 'LOS'}
         </div>
       </div>
-      <Spectrum />
+      <div className="chart__box">
+        <Spectrum />
+      </div>
     </div>
   );
 }

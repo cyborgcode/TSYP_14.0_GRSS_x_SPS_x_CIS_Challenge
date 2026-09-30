@@ -518,9 +518,11 @@ function CameraRig({
     const c = controls.current;
     if (!c) return;
 
-    // Shift the projection centre left while the detail overlay covers the right side.
-    const wantShift =
-      focus !== 'overview' && size.width > 900 ? Math.min(size.width * 0.23, 260) : 0;
+    // Shift the projection centre into the uncovered part of the view while the detail overlay
+    // sits on the right (it does above 900 px of window width; below, it docks at the bottom).
+    // The overlay is min(460 px, 52 %) wide with an 8–12 px margin, as in index.css.
+    const overlay = Math.min(460, size.width * 0.52) + 12;
+    const wantShift = focus !== 'overview' && window.innerWidth > 900 ? overlay / 2 : 0;
     shift.current += (wantShift - shift.current) * (reduced ? 1 : 1 - Math.exp(-dt * 5));
     const cam = camera as THREE.PerspectiveCamera;
     if (Math.abs(shift.current) > 0.5)

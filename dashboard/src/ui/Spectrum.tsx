@@ -14,7 +14,7 @@ const TICKS = [0, 10, 20, 30];
 const AVERAGE = 0.35;
 
 /** Live received spectrum: amplitude (dB above thermal noise) against frequency in MHz. */
-export function Spectrum({ className = 'chart__canvas' }: { className?: string }) {
+export function Spectrum({ className = 'chart__fill' }: { className?: string }) {
   const { engine } = useEngineCtx();
   const raw = useRef(new Float32Array(BINS));
   const avg = useRef<Float32Array | null>(null);
