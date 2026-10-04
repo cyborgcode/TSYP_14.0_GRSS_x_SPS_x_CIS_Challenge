@@ -15,6 +15,7 @@
   --warn: #fbbf24;
   --bad: #f8485e;
   --jam: #a78bfa;
+  --tamper: #f472b6;
   --r-panel: 10px;
   --r-tile: 8px;
   --r-chip: 7px;
@@ -247,9 +248,15 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
   grid-template-areas:
-    'viewport side'
-    'telemetry ledger';
+    'viewport deck'
+    'viewport threat'
+    'telemetry telemetry'
+    'resilience ledger';
   gap: 12px 16px;
+}
+/* Column wrappers only matter on 16:9 screens; elsewhere each panel is a grid item. */
+.grid__col {
+  display: contents;
 }
 .grid__viewport {
   grid-area: viewport;
@@ -259,15 +266,14 @@ button {
 .grid__viewport > .panel {
   flex: 1;
 }
-.grid__side {
-  grid-area: side;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
+.panel--deck {
+  grid-area: deck;
 }
-.grid__side > .panel--threat {
-  flex: 1;
+.panel--threat {
+  grid-area: threat;
+}
+.panel--resilience {
+  grid-area: resilience;
 }
 .grid__telemetry {
   grid-area: telemetry;
@@ -1662,6 +1668,10 @@ button {
   border-color: rgba(251, 191, 36, 0.6);
   background: rgba(251, 191, 36, 0.06);
 }
+.attack--tamper:hover:not(:disabled) {
+  border-color: rgba(244, 114, 182, 0.6);
+  background: rgba(244, 114, 182, 0.06);
+}
 .attack--jam:hover:not(:disabled) {
   border-color: rgba(167, 139, 250, 0.6);
   background: rgba(167, 139, 250, 0.06);
@@ -1686,6 +1696,10 @@ button {
 .attack--spoof .attack__icon {
   color: var(--warn);
   background: rgba(251, 191, 36, 0.1);
+}
+.attack--tamper .attack__icon {
+  color: var(--tamper);
+  background: rgba(244, 114, 182, 0.12);
 }
 .attack--jam .attack__icon {
   color: var(--jam);
@@ -1714,6 +1728,10 @@ button {
   border-color: var(--warn);
   background: rgba(251, 191, 36, 0.08);
 }
+.attack--tamper.attack--running {
+  border-color: var(--tamper);
+  background: rgba(244, 114, 182, 0.1);
+}
 .attack--jam.attack--running {
   border-color: var(--jam);
   background: rgba(167, 139, 250, 0.1);
@@ -1732,6 +1750,9 @@ button {
 }
 .attack--spoof .attack__progress {
   background: var(--warn);
+}
+.attack--tamper .attack__progress {
+  background: var(--tamper);
 }
 .attack--jam .attack__progress {
   background: var(--jam);
@@ -1881,6 +1902,50 @@ button {
 .status-line--bad .status-line__dot {
   background: var(--bad);
   animation: blink 0.5s steps(2, jump-none) infinite;
+}
+.inspect-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: var(--r-button);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-1);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.inspect-button:hover,
+.inspect-button--active {
+  color: var(--text-0);
+  border-color: rgba(236, 242, 248, 0.35);
+}
+.deck__proof {
+  margin: 8px 0 0;
+  min-height: 2.6em;
+  padding: 5px 9px;
+  border-left: 2px solid var(--line);
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+.deck__proof--spoof {
+  border-color: var(--warn);
+  color: var(--text-1);
+}
+.deck__proof--tamper {
+  border-color: var(--tamper);
+  color: var(--text-1);
+}
+.deck__proof--hijack {
+  border-color: var(--bad);
+  color: var(--text-1);
+}
+.deck__proof--jam {
+  border-color: var(--jam);
+  color: var(--text-1);
 }
 .demo-button {
   position: relative;
@@ -2110,6 +2175,587 @@ button {
   }
 }
 
+/* ------------------------------------------------------------------ resilience & trust metrics */
+
+.panel__action {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+  color: var(--text-1);
+  font: 700 11.5px var(--font-ui);
+  cursor: pointer;
+}
+.panel__action:hover {
+  color: var(--text-0);
+  border-color: rgba(236, 242, 248, 0.35);
+}
+.panel__action + .panel__tag {
+  margin-left: 0;
+}
+.panel--resilience .panel__body {
+  gap: 8px;
+}
+.rkpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.rkpi {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-chip);
+  background: var(--bg-1);
+}
+.rkpi__v {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-0);
+  line-height: 1.15;
+}
+.rkpi__v--ok {
+  color: var(--ok);
+}
+.rkpi__v--warn {
+  color: var(--warn);
+}
+.rkpi__v--bad {
+  color: var(--bad);
+}
+.rkpi__k {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.25;
+}
+.rchain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(52, 211, 153, 0.25);
+  border-radius: var(--r-chip);
+  background: rgba(52, 211, 153, 0.05);
+  font-size: 12px;
+  color: var(--text-1);
+}
+.rchain--bad {
+  border-color: rgba(248, 72, 94, 0.6);
+  background: rgba(248, 72, 94, 0.1);
+  color: var(--text-0);
+}
+.rchain__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rchain__status {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.rchain__actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+.rbtn {
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-1);
+  font: 600 11.5px var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rbtn:hover:not(:disabled) {
+  color: var(--text-0);
+  border-color: rgba(236, 242, 248, 0.35);
+}
+.rbtn--bad {
+  border-color: rgba(248, 72, 94, 0.45);
+  color: #ff9aa8;
+}
+.rbtn--bad:hover:not(:disabled) {
+  border-color: var(--bad);
+  background: rgba(248, 72, 94, 0.12);
+}
+.rbtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.is-ok {
+  color: var(--ok);
+}
+.is-bad {
+  color: var(--bad);
+}
+.rmatrix {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+}
+.rmatrix__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px 50px 46px 56px 54px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-bottom: 1px solid rgba(30, 43, 58, 0.6);
+  color: var(--text-0);
+}
+.rmatrix__row > span:not(:first-child) {
+  text-align: right;
+}
+.rmatrix__row--head {
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.rmatrix__row--idle {
+  color: var(--text-3);
+}
+.rmatrix__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rmatrix__row--idle .rmatrix__drop {
+  color: inherit;
+}
+
+/* ------------------------------------------------------------------ packet inspection drawer */
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  width: min(540px, 38vw);
+  min-width: 380px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(8, 13, 21, 0.97);
+  border-left: 1px solid var(--line);
+  box-shadow: -24px 0 48px rgba(0, 0, 0, 0.5);
+  animation: drawer-in 0.28s var(--ease-out) both;
+  backdrop-filter: blur(6px);
+}
+@keyframes drawer-in {
+  from {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+}
+.drawer__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.drawer__titles {
+  flex: 1;
+  min-width: 0;
+}
+.drawer__title {
+  margin: 0;
+  font: 700 14px var(--font-ui);
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}
+.drawer__sub {
+  font-size: 12px;
+  color: var(--text-2);
+}
+.drawer__close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-1);
+  cursor: pointer;
+}
+.drawer__close:hover {
+  color: var(--text-0);
+}
+.drawer__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.drawer__count {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.seg__btn {
+  padding: 4px 9px;
+  border: 0;
+  background: var(--bg-1);
+  color: var(--text-2);
+  font: 600 12px var(--font-ui);
+  cursor: pointer;
+}
+.seg .seg__btn + .seg__btn {
+  border-left: 1px solid var(--line);
+}
+.seg__btn--solo {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.seg__btn--on {
+  background: rgba(76, 201, 240, 0.14);
+  color: var(--accent);
+}
+.plist {
+  flex: 0 0 auto;
+  height: clamp(120px, 26vh, 240px);
+  overflow-y: auto;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.plist__empty {
+  margin: 12px 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.plist__row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 10px 84px minmax(0, 1fr) 80px 46px;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-1);
+  font: 600 11.5px var(--font-data);
+  text-align: left;
+  cursor: pointer;
+}
+.plist__row:hover {
+  background: rgba(236, 242, 248, 0.04);
+}
+.plist__row--on {
+  border-color: rgba(76, 201, 240, 0.5);
+  background: rgba(76, 201, 240, 0.08);
+}
+.plist__dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.plist__auth {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plist__conf {
+  position: relative;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.plist__confFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+}
+.plist__confFill.is-bad {
+  background: var(--bad);
+}
+.plist__dec {
+  text-align: right;
+  font-weight: 700;
+}
+.plabel--genuine,
+.plabel--genuineUnderAttack {
+  background: var(--accent);
+}
+.plabel--spoof {
+  background: var(--warn);
+}
+.plabel--tamper {
+  background: var(--tamper);
+}
+.plabel--hijack {
+  background: var(--bad);
+}
+.plabel--jam {
+  background: var(--jam);
+}
+.drawer__detail {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 14px 16px;
+}
+.pdetail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pdetail__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.pdetail__id {
+  font-size: 14px;
+  font-weight: 700;
+}
+.pdetail__meta {
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.plabel {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  color: #0a1019;
+  font: 700 11px var(--font-ui);
+}
+.psec {
+  border: 1px solid var(--line);
+  border-radius: var(--r-chip);
+  background: var(--bg-1);
+  padding: 8px 10px 10px;
+}
+.psec__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.psec__file {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(76, 201, 240, 0.12);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+.psec__title {
+  font-weight: 700;
+  font-size: 12.5px;
+}
+.psec__head .pstat {
+  margin-left: auto;
+}
+.pstat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 700 11.5px var(--font-data);
+}
+.pstat--ok {
+  color: var(--ok);
+}
+.pstat--bad {
+  color: var(--bad);
+}
+.prow {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--text-1);
+}
+.prow__k {
+  color: var(--text-2);
+}
+.prow__v {
+  min-width: 0;
+  color: var(--text-0);
+}
+.pwrap {
+  overflow-wrap: anywhere;
+  font-size: 11.5px;
+}
+.pwrap .pmuted {
+  white-space: nowrap;
+}
+.pmuted {
+  color: var(--text-2);
+}
+.pbad {
+  color: #ff9aa8;
+}
+.pchain {
+  font-size: 11.5px;
+}
+.hex {
+  display: flex;
+  flex-direction: column;
+  font: 500 11.5px/1.35 var(--font-data);
+  color: var(--text-0);
+}
+.hex--diff {
+  color: var(--bad);
+}
+.hexdump {
+  margin: 6px 0 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-0);
+  font: 500 11.5px/1.5 var(--font-data);
+  overflow-x: auto;
+}
+.hexdump__line {
+  display: flex;
+  gap: 12px;
+  white-space: nowrap;
+}
+.hexdump__off {
+  color: var(--text-3);
+}
+.hexdump__bytes {
+  display: flex;
+  gap: 5px;
+}
+.hexdump__byte:nth-child(8) {
+  margin-right: 6px;
+}
+.hexdump__byte--flip {
+  padding: 0 2px;
+  margin: 0 -2px;
+  border-radius: 3px;
+  background: var(--tamper);
+  color: #0a1019;
+  font-weight: 700;
+}
+.pnote {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-1);
+}
+.pnote--bad {
+  color: #ffb3c9;
+}
+.pnote--warn {
+  color: var(--warn);
+}
+.pnote--ok {
+  color: var(--ok);
+}
+.pconf {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.pconf__num {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-0);
+}
+.pconf__label {
+  font-size: 12px;
+  color: var(--text-1);
+}
+.pconf__bar {
+  position: relative;
+  height: 6px;
+  margin: 4px 0;
+  border-radius: 3px;
+  background: var(--line);
+}
+.pconf__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.pconf__fill--warn {
+  background: var(--warn);
+}
+.pconf__fill--bad {
+  background: var(--bad);
+}
+.pconf__tick {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--text-1);
+}
+.pconf__sub {
+  font-size: 11px;
+  color: var(--text-2);
+}
+.pfeat {
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.pfeat__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 118px 104px;
+  gap: 8px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(30, 43, 58, 0.6);
+}
+.pfeat__row > span:not(:first-child) {
+  text-align: right;
+}
+.pfeat__row--head {
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.pfeat__row--bad {
+  color: #ff9aa8;
+}
+.preasons {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #ff9aa8;
+}
+
 /* ------------------------------------------------------------------ responsive */
 
 @media (max-width: 1500px) {
@@ -2128,16 +2774,14 @@ button {
     height: 74px;
   }
   .grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: none;
     grid-template-areas:
-      'viewport'
-      'side'
-      'telemetry'
-      'ledger';
-  }
-  .grid__side {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+      'viewport viewport'
+      'deck threat'
+      'resilience resilience'
+      'telemetry telemetry'
+      'ledger ledger';
   }
 }
 
@@ -2185,8 +2829,15 @@ button {
   .banner__detail {
     white-space: normal;
   }
-  .grid__side {
-    display: flex;
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'viewport'
+      'deck'
+      'threat'
+      'resilience'
+      'telemetry'
+      'ledger';
   }
   .charts {
     grid-template-columns: minmax(0, 1fr);
@@ -2229,6 +2880,44 @@ button {
   }
 }
 
+@media (max-width: 640px) {
+  .drawer {
+    width: 100vw;
+    min-width: 0;
+  }
+  .plist__row {
+    grid-template-columns: 10px 72px minmax(0, 1fr) 48px 40px;
+  }
+  .prow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .pfeat__row {
+    grid-template-columns: minmax(0, 1fr) 96px 84px;
+  }
+  .hexdump {
+    font-size: 10.5px;
+  }
+  .hexdump__line {
+    gap: 8px;
+  }
+  .hexdump__bytes {
+    gap: 3px;
+  }
+  .hexdump__byte:nth-child(8) {
+    margin-right: 3px;
+  }
+  .rkpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .rmatrix__row {
+    grid-template-columns: minmax(0, 1fr) 40px 46px 42px 50px;
+  }
+  .rmatrix__row > span:last-child {
+    display: none;
+  }
+}
+
 @media (max-width: 520px) {
   .metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2258,6 +2947,7 @@ button {
     font-size: 20px;
   }
   .main {
+    --bottom-row: clamp(165px, 26vh, 290px);
     max-width: none;
     height: calc(100vh - 52px);
     display: flex;
@@ -2292,36 +2982,59 @@ button {
     font-size: 22px;
   }
 
+  /* Three columns, each a flex stack: 3D view over telemetry; attack deck over the metrics card;
+     threat matrix over the trust_anchor.py terminal. Telemetry and terminal share one height. */
   .grid {
     flex: 1;
     min-height: 0;
     grid-template-columns: minmax(0, 2fr) minmax(290px, 1fr) minmax(290px, 1fr);
-    grid-template-rows: minmax(0, 1fr) clamp(165px, 26vh, 290px);
-    grid-template-areas:
-      'viewport deck threat'
-      'telemetry ledger ledger';
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: none;
     gap: 10px 12px;
   }
-  .grid > * {
+  .grid__col {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
     min-height: 0;
   }
-  /* The deck and the threat matrix become grid items of their own. */
-  .grid__side {
-    display: contents;
-  }
-  .panel--deck {
-    grid-area: deck;
-    min-height: 0;
-  }
+  .grid__viewport,
   .panel--threat {
-    grid-area: threat;
+    flex: 1 1 0;
     min-height: 0;
+  }
+  .grid__telemetry,
+  .grid__ledger {
+    flex: none;
+    height: var(--bottom-row);
+  }
+  /* The deck keeps its natural height; the metrics card takes the rest. Both scroll if short. */
+  .panel--deck {
+    flex: 0 1 auto;
+    min-height: 0;
+  }
+  .panel--resilience {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .panel--resilience .panel__body {
+    overflow-y: auto;
+    padding: 10px 12px;
+    gap: 5px;
+  }
+  .deck__proof {
+    min-height: 2.45em;
   }
   .panel--deck .panel__body {
     overflow-y: auto;
   }
   .panel--threat .panel__body {
     overflow-y: auto;
+  }
+  .rmatrix__row {
+    grid-template-columns: minmax(0, 1fr) 50px 54px 44px 44px 50px;
+    padding: 2px 2px;
   }
   .panel__body {
     padding: 12px;
@@ -2381,6 +3094,31 @@ button {
   }
   .ledger__foot {
     padding-top: 6px;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .ledger__foot > :last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .term__title {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .term__epoch {
+    white-space: nowrap;
+  }
+  /* One event per line: long hashes are already shortened. */
+  .term__line {
+    white-space: pre;
+  }
+  .term__text {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .attacks {
@@ -2430,6 +3168,16 @@ button {
   }
 }
 
+@media (min-width: 1200px) and (min-height: 900px) and (max-height: 999px) and (min-aspect-ratio: 3/2) {
+  .deck__hint {
+    display: none;
+  }
+  .attack {
+    min-height: 42px;
+    padding: 5px 10px;
+  }
+}
+
 /* Tall 16:9 screens: let the gauges and the forest grid use the room. */
 @media (min-width: 1200px) and (min-height: 1000px) and (min-aspect-ratio: 3/2) {
   .gauge__svg {
@@ -2445,6 +3193,32 @@ button {
 
 /* Narrower 16:9 screens (up to 1700 px): the left column is ~650–800 px wide. */
 @media (min-width: 1200px) and (max-width: 1700px) and (min-height: 560px) and (min-aspect-ratio: 3/2) {
+  /* The metrics card header carries the drawer button here. */
+  .inspect-button,
+  .panel__action-text,
+  .panel--resilience .panel__tag,
+  .panel--ledger .panel__tag {
+    display: none;
+  }
+  .panel__action {
+    padding: 4px 6px;
+  }
+  .rmatrix__row {
+    grid-template-columns: minmax(0, 1fr) 44px 50px 40px 36px;
+    gap: 5px;
+  }
+  .rmatrix__row--head {
+    letter-spacing: 0;
+  }
+  .rmatrix__row > span:last-child {
+    display: none;
+  }
+  .term__time {
+    display: none;
+  }
+  .term__line {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .readout--segment,
   .hud__stat--range,
   .hud__stat--doppler,
@@ -2499,6 +3273,10 @@ button {
 }
 
 @media (min-width: 1200px) and (min-height: 560px) and (max-height: 900px) and (min-aspect-ratio: 3/2) {
+  /* The proof line under the buttons says what each scenario shows. */
+  .attack__sub {
+    display: none;
+  }
   .deck__head,
   .deck__hint,
   .fusion__note {
@@ -2541,6 +3319,33 @@ button {
 }
 
 @media (min-width: 1200px) and (min-height: 560px) and (max-height: 800px) and (min-aspect-ratio: 3/2) {
+  .attacks {
+    grid-template-columns: 1fr 1fr;
+  }
+  .attack {
+    gap: 7px;
+    padding: 4px 8px;
+  }
+  .attack__label {
+    font-size: 12.5px;
+    line-height: 1.15;
+  }
+  .deck__proof {
+    margin-top: 6px;
+  }
+  .rkpi {
+    padding: 3px 7px;
+  }
+  .rmatrix__row {
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  .rchain {
+    padding: 4px 8px;
+  }
+  .rkpi__v {
+    font-size: 15px;
+  }
   .chain__head,
   .anchor-line {
     display: none;
@@ -2599,8 +3404,8 @@ button {
 
 /* Very short windows (a 720–768 px screen minus browser bars). */
 @media (min-width: 1200px) and (min-height: 560px) and (max-height: 680px) and (min-aspect-ratio: 3/2) {
-  .grid {
-    grid-template-rows: minmax(0, 1fr) 150px;
+  .main {
+    --bottom-row: 150px;
   }
   .panel__body {
     padding: 9px 10px;

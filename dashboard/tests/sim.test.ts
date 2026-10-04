@@ -2,20 +2,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { AiModel, FLAG_AT, featureVector, nominalSamples } from '../src/sim/aiModel';
+import { FRAME_PERIOD_S } from '../src/sim/constants';
 import {
   EmulatedHsm,
   ReplayWindow,
-  chainHash,
   createEd25519,
   encodeText,
-  genesisRoot,
-  encodeHeader,
   importMacKey,
-  macInput,
-  macSign,
-  macVerify,
 } from '../src/sim/crypto';
-import { Engine } from '../src/sim/engine';
+import { DEMO_LENGTH_S, Engine } from '../src/sim/engine';
 import {
   ALTITUDE_KM,
   ORBIT_PERIOD_S,
@@ -25,32 +20,73 @@ import {
   timeAfterAos,
 } from '../src/sim/geometry';
 import { IsolationForest } from '../src/sim/iforest';
+import { LinkDetector, zeroTrust } from '../src/sim/linkDetector';
 import { mulberry32 } from '../src/sim/noise';
 import { JAMMED_RSSI_DBM, checkGates, sample, type Attack } from '../src/sim/signals';
+import {
+  TrustAnchorLedger,
+  frameText,
+  pyJsonDumps,
+  seal,
+  sha256Hex,
+  type Frame,
+} from '../src/sim/trustAnchor';
 import { CHANNEL_HZ, SPAN_HZ, renderSpectrum, spectrumState } from '../src/ui/spectrumModel';
 
-const bytes = (...v: number[]) => new Uint8Array(v);
+const KEY = Uint8Array.from({ length: 32 }, (_, i) => i);
+const GOLDEN_FRAME: Frame = {
+  satellite_id: 'LEO-SAT-542',
+  sequence: 1001,
+  timestamp: 1790000000.123456,
+  hw_token: '0x4FE2',
+  payload: '00112233445566778899aabbccddeeff',
+};
 
-describe('trust anchor', () => {
-  it('verifies a genuine MAC and rejects a single flipped bit', async () => {
-    const key = await importMacKey(crypto.getRandomValues(new Uint8Array(32)));
-    const header = encodeHeader({ scid: 0x2a, vc: 1, tMs: 1234 });
-    const payload = bytes(1, 2, 3, 4);
-    const tag = await macSign(key, macInput(header, 7, payload));
+describe('trust anchor (port of trust_anchor.py)', () => {
+  it('matches the Python golden vectors byte for byte', async () => {
+    const key = await importMacKey(KEY);
+    expect(frameText(GOLDEN_FRAME)).toBe(
+      'LEO-SAT-542|1001|1790000000.123456|0x4FE2|00112233445566778899aabbccddeeff',
+    );
+    const mac = await seal(key, GOLDEN_FRAME);
+    expect(mac).toBe('e4821a19a7a2f113ff115e8a5664f37e333a8a24171f0fea8c8676b525cbbb7d');
+    expect(await sha256Hex(frameText(GOLDEN_FRAME))).toBe(
+      '9eccc3bc5eaa0ea3aec07ec636a053087bb91bc07b3d2303ba728928522c7a8e',
+    );
 
-    expect(await macVerify(key, macInput(header, 7, payload), tag)).toBe(true);
-    expect(await macVerify(key, macInput(header, 8, payload), tag)).toBe(false);
-    const flipped = new Uint8Array(tag);
-    flipped[0] ^= 1;
-    expect(await macVerify(key, macInput(header, 7, payload), flipped)).toBe(false);
+    const ledger = await TrustAnchorLedger.create();
+    expect(ledger.genesisRoot).toBe(
+      'f309c75abe507ae390667b057af430aa58acadee40797e09c2a664cbc5a01e25',
+    );
+    const first = await ledger.authenticate(GOLDEN_FRAME, mac, key);
+    expect(first.reason).toBe('AUTHENTIC');
+    const b1 = await ledger.append(GOLDEN_FRAME, mac, first.frameDigest, first.reason);
+    expect(b1.hash).toBe('39d8d1aeec5d1d1ada1077e49298aff6936b6dada21cf0efd4d9aad67372872e');
+    const again = await ledger.authenticate(GOLDEN_FRAME, mac, key);
+    expect(again.reason).toBe('STALE_OR_REUSED_NONCE');
+    const b2 = await ledger.append(GOLDEN_FRAME, mac, again.frameDigest, again.reason);
+    expect(b2.hash).toBe('ba618dbeb83416b31b54a49755733c6beef1f61860cb0fe1d9ccf8ae967ae2be');
+    expect((await ledger.verifyChain()).ok).toBe(true);
   });
 
-  it('derives distinct keys per epoch and rejects frames sealed under another epoch', async () => {
+  it('encodes block payloads like json.dumps(sort_keys=True)', () => {
+    expect(pyJsonDumps({ b: 2, a: 'x', c: 'é' })).toBe('{"a": "x", "b": 2, "c": "\\u00e9"}');
+  });
+
+  it('rejects a single flipped payload bit before it can burn the nonce', async () => {
+    const key = await importMacKey(KEY);
+    const mac = await seal(key, GOLDEN_FRAME);
+    const ledger = await TrustAnchorLedger.create();
+    const tampered = { ...GOLDEN_FRAME, payload: '01' + GOLDEN_FRAME.payload.slice(2) };
+    expect((await ledger.authenticate(tampered, mac, key)).reason).toBe('MAC_MISMATCH');
+    expect((await ledger.authenticate(GOLDEN_FRAME, mac, key)).reason).toBe('AUTHENTIC');
+  });
+
+  it('rejects frames sealed under another key epoch', async () => {
     const hsm = await EmulatedHsm.create();
-    const data = macInput(encodeHeader({ scid: 1, vc: 1, tMs: 0 }), 1, bytes(9));
-    const tag = await macSign(await hsm.epochKey(0x3f), data);
-    expect(await macVerify(await hsm.epochKey(0x3f), data, tag)).toBe(true);
-    expect(await macVerify(await hsm.epochKey(0x40), data, tag)).toBe(false);
+    const mac = await seal(await hsm.epochKey(0x3f), GOLDEN_FRAME);
+    const ledger = await TrustAnchorLedger.create();
+    expect((await ledger.authenticate(GOLDEN_FRAME, mac, await hsm.epochKey(0x40))).ok).toBe(false);
   });
 
   it('anti-replay window rejects repeats and anything older than the window', () => {
@@ -63,23 +99,85 @@ describe('trust anchor', () => {
     expect(w.accept(137)).toBe(true);
   });
 
-  it('chains hashes so one altered frame changes every later link', async () => {
-    const a = await chainHash(null, bytes(1), 'm');
-    const b = await chainHash(a, bytes(2), 'm');
-    const bAltered = await chainHash(await chainHash(null, bytes(9), 'm'), bytes(2), 'm');
-    expect(a).toMatch(/^[0-9a-f]{64}$/);
-    expect(b).not.toBe(bAltered);
+  it('verify_chain() finds an edited block and a broken link', async () => {
+    const key = await importMacKey(KEY);
+    const ledger = await TrustAnchorLedger.create();
+    for (let i = 0; i < 5; i++) {
+      const f = { ...GOLDEN_FRAME, sequence: 2000 + i };
+      const mac = await seal(key, f);
+      const a = await ledger.authenticate(f, mac, key);
+      await ledger.append(f, mac, a.frameDigest, a.reason);
+    }
+    const block = ledger.chain[3];
+    const original = block.payload;
+    block.payload = { ...(original as Record<string, string | number>), verdict: 'MAC_MISMATCH' };
+    expect((await ledger.verifyChain()).message).toBe(
+      'Tampering detected at index 3: hash mismatch.',
+    );
+    block.payload = original;
+    ledger.chain[4].previous_hash = '0'.repeat(64);
+    expect((await ledger.verifyChain()).message).toBe(
+      'Chain broken at index 4: previous hash mismatch.',
+    );
   });
 });
 
-describe('genesis root and Ed25519 handshake', () => {
-  it('roots the chain in a SHA-256 genesis hash', async () => {
-    const root = await genesisRoot('GS-ZAG');
-    expect(root).toMatch(/^[0-9a-f]{64}$/);
-    expect(await genesisRoot('GS-ZAG')).toBe(root);
-    expect(await genesisRoot('GS-MAT')).not.toBe(root);
+describe('detector (port of detector.py) and zero trust', () => {
+  const detector = new LinkDetector();
+  const rf = (dCarrier: number, dRssi: number) => ({
+    carrierMHz: 8477.8 + dCarrier,
+    carrierModelMHz: 8477.8,
+    rssiDbm: -85 + dRssi,
+    rssiModelDbm: -85,
   });
 
+  it('keeps the false-alarm rate near the 1% contamination point on unseen passes', () => {
+    const d = new LinkDetector();
+    let flagged = 0;
+    let n = 0;
+    for (let s = 50_000.3; n < 2000; s += FRAME_PERIOD_S) {
+      const pass = passAt(s);
+      if (!pass.linkActive) continue;
+      const x = sample(s, snrPredDb(pass.rangeKm), {
+        attacks: [],
+        falseAlarm: 0,
+        dopplerPredHz: pass.dopplerHz,
+      });
+      const r = d.evaluate(x);
+      if (r.anomaly) flagged++;
+      else d.accept(x);
+      n++;
+    }
+    expect(flagged / n).toBeLessThan(0.03);
+  });
+
+  it('flags a +14.2 MHz carrier and a collapsed RSSI with physics reasons', () => {
+    const hijack = detector.evaluate(rf(14.2, 0));
+    expect(hijack.physics).toBe(true);
+    expect(hijack.physicsReasons).toContain('carrier offset no orbit can produce');
+    // The forest saturates past the training range, exactly as detector.py's docstring says:
+    // that is what the physics gate is for.
+    expect(hijack.confidence).toBeGreaterThan(0.5);
+    const jam = detector.evaluate(rf(0, -11.5));
+    expect(jam.physicsReasons).toContain('RSSI outside the link-budget band');
+  });
+
+  it('zero trust drops on any failing evidence, whatever the frame claims', () => {
+    const ok = detector.evaluate(rf(0, 0));
+    const claim = { satellite_id: 'LEO-SAT-542', hw_token: '0x4FE2' };
+    expect(zeroTrust(claim, { ok: true, reason: 'AUTHENTIC' }, ok).allow).toBe(true);
+    const forged = zeroTrust(
+      { ...claim, hw_token: '0x99A2' },
+      { ok: false, reason: 'MAC_MISMATCH' },
+      ok,
+    );
+    expect(forged.action).toBe('QUARANTINE_AND_DROP');
+    expect(forged.reasons).toHaveLength(2);
+    expect(zeroTrust(null, null, null).allow).toBe(false);
+  });
+});
+
+describe('Ed25519 handshake', () => {
   it('signs and verifies a handshake challenge with Ed25519', async () => {
     const id = await createEd25519();
     expect(id).not.toBeNull();
@@ -268,18 +366,79 @@ describe('engine scenarios', () => {
     expect(engine.run?.escalatedAt ?? null).toBeNull();
   });
 
-  it('demo: plays all three scenarios back to back and holds the false alarm', async () => {
+  it('data tampering: no RF signature, every altered frame fails the hash and is dropped', async () => {
+    const engine = await Engine.create();
+    await runFor(engine, 1);
+    engine.trigger('tamper');
+    await runFor(engine, 1.5);
+    expect(engine.detectors.PHYSICS.flag).toBe(false);
+    expect(engine.detectors.PHYSICS.evaded).toBe(true);
+    const tampered = engine.packets.filter((p) => p.label === 'tamper');
+    expect(tampered.length).toBeGreaterThan(0);
+    for (const p of tampered) {
+      expect(p.auth.reason).toBe('MAC_MISMATCH');
+      expect(p.decision.allow).toBe(false);
+      expect(p.detector?.physics).toBe(false);
+      expect(p.flipped).not.toBeNull();
+      expect(p.frame!.payload).not.toBe(p.originalPayload);
+      expect(p.mac).not.toBe(p.expectedMac);
+    }
+    expect(engine.terminal.some((l) => l.text.includes('HASH MISMATCH'))).toBe(true);
+    await runFor(engine, 4);
+    expect(engine.state === 'UNDER ATTACK' || engine.runs.some((r) => r.kind === 'tamper')).toBe(
+      true,
+    );
+    expect(engine.keyEpoch).toBe(0x3f);
+    expect(engine.corruptedToAnalyst).toBe(0);
+  });
+
+  it('records every packet for the inspection drawer and per-scenario layer stats', async () => {
+    const engine = await Engine.create();
+    await runFor(engine, 2);
+    const genuine = engine.packets.find((p) => p.label === 'genuine')!;
+    expect(genuine.auth.reason).toBe('AUTHENTIC');
+    expect(genuine.mac).toBe(genuine.expectedMac);
+    expect(genuine.frameText).toBe(frameText(genuine.frame!));
+    expect(genuine.frameDigest).toBe(await sha256Hex(genuine.frameText!));
+    expect(genuine.block!.hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(genuine.detector!.confidence).toBeGreaterThanOrEqual(0);
+    expect(genuine.decision.action).toBe('ALLOW_STREAM');
+
+    engine.trigger('spoof');
+    await runFor(engine, 2);
+    const spoof = engine.layerStats.spoof!;
+    expect(spoof.frames).toBeGreaterThan(0);
+    expect(spoof.anchor).toBe(spoof.frames);
+    expect(spoof.blocked).toBe(spoof.frames);
+    expect(engine.layerStats.genuine!.blocked).toBe(0);
+  });
+
+  it('verify_chain() passes on the live ledger and catches an edited past block', async () => {
+    const engine = await Engine.create();
+    await runFor(engine, 3);
+    const ok = await engine.checkChain(true);
+    expect(ok!.ok).toBe(true);
+    expect(ok!.blocks).toBe(engine.anchor.height);
+    await engine.tamperLedger();
+    expect(engine.chainStatus!.ok).toBe(false);
+    expect(engine.chainStatus!.message).toMatch(/Tampering detected at index \d+: hash mismatch/);
+    await runFor(engine, 7);
+    expect(engine.ledgerTamper).toBeNull();
+    expect((await engine.checkChain(true))!.ok).toBe(true);
+  });
+
+  it('demo: plays all four scenarios back to back and holds the false alarm', async () => {
     const engine = await Engine.create();
     engine.playDemo();
     const kinds = new Set<string>();
     let held = false;
-    for (let i = 0; i < Math.round(43 / 0.05); i++) {
+    for (let i = 0; i < Math.round((DEMO_LENGTH_S + 0.5) / 0.05); i++) {
       engine.step();
       await engine.settle();
       if (engine.run) kinds.add(engine.run.kind);
       if (engine.state === 'CHECKING' && engine.detectors.AI.flag && !engine.run) held = true;
     }
-    expect([...kinds].sort()).toEqual(['hijack', 'jam', 'spoof']);
+    expect([...kinds].sort()).toEqual(['hijack', 'jam', 'spoof', 'tamper']);
     expect(held).toBe(true);
     expect(engine.runs.every((r) => r.escalatedAt !== null && r.respondedAt !== null)).toBe(true);
     expect(engine.corruptedToAnalyst).toBe(0);

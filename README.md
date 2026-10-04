@@ -25,7 +25,7 @@ python -m groundlink.cli
 python -m pytest
 ```
 
-Run the red-team audit and measure the three dashboard attacks
+Run the red-team audit and measure the four dashboard attacks
 ([evaluation report](docs/evaluation-report.md)):
 
 ```bash
@@ -67,13 +67,13 @@ groundlink/
   audit.py         tamper-evident station log
   evaluate.py      detection metrics
   cli.py           standard scenario runner
-testbed/           the dashboard's three attacks as Python modules
-  ingester.py      telemetry + red-team attacks (hijack, stealth spoofing, noise jamming)
+testbed/           the dashboard's four attacks as Python modules
+  ingester.py      telemetry + red-team attacks (hijack, spoofing, jamming, data tampering)
   detector.py      physics gate + Isolation Forest on orbit residuals
   trust_anchor.py  HMAC-SHA256 + anti-replay + SHA-256 ledger from a genesis block
   zero_trust.py    policy engine: registry, token, trust anchor, detector
   validator.py     red-team audit and the measured evaluation report
-tests/             66 tests
+tests/             68 tests
 docs/              one document per deliverable, plus roadmap and decisions
 dashboard/         React app — the Phase 2 live-demo surface
 data/              official datasets (gitignored)
@@ -103,10 +103,19 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
 - **One continuous signal beam**: its colour and distortion, the Carrier Frequency (MHz) and RSSI
   (dBm) charts (Chart.js), the received spectrum, the security banner and the ledger all change
   together with the scenario.
-- **Three attack scenarios**: Frequency Hijacking (rogue carrier +14.2 MHz, carrier to ~8492 MHz,
-  proof failures), Stealth Spoofing (forged MAC headers and nonces from node 0x99A2, quarantine
-  protocols) and Noise Jamming (RSSI to −96.5 dBm, fallback routing to GS-MAT). **Play demo**
-  runs all three back to back.
+- **Simulate attack**: Stealth Spoofing (forged MAC headers and nonces from node 0x99A2,
+  quarantine protocols), Data Tampering (one payload bit flipped in transit: no RF signature,
+  only hash verification sees it), Frequency Hijacking (rogue carrier +14.2 MHz, carrier to
+  ~8492 MHz, proof failures) and Noise Jamming (RSSI to −96.5 dBm, fallback routing to GS-MAT).
+  **Play demo** runs all four back to back.
+- **Packet inspection drawer**: every frame as it went through browser ports of
+  `trust_anchor.py`, `detector.py` and `zero_trust.py`: raw frame and payload hexdump (flipped
+  bits highlighted), MAC received against MAC recomputed, nonce check, ledger block and
+  `verify_chain()`, detector features against the physics limits, Isolation Forest score and
+  confidence, and the access decision with its reasons.
+- **Resilience & trust metrics**: authenticated, rejected, held and corrupted-to-analyst
+  counts; live `verify_chain()` with a red-team "edit a past block" test; and per-scenario
+  detection by layer (trust anchor, detector, dropped, time to first drop).
 - **trust_anchor.py terminal**: live log of SHA-256 block validations from a genesis root hash,
   HMAC-SHA256 frame seals and Ed25519 handshakes, all computed with Web Crypto in the browser.
 - **Detection**: orbital-physics gates, the trust anchor and an Isolation Forest trained on

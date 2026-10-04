@@ -23,6 +23,7 @@ const COLORS = {
   ok: new THREE.Color('#34D399'),
   idle: new THREE.Color('#7D8EA3'),
   jam: new THREE.Color('#A78BFA'),
+  tamper: new THREE.Color('#F472B6'),
 };
 
 const STATION_ORIGIN = new THREE.Vector3(0, 0, 0);
@@ -250,7 +251,7 @@ function SceneContent({
         ? engine.route === 'MAT'
           ? 'idle'
           : 'warn'
-        : kind === 'spoof'
+        : kind === 'spoof' || kind === 'tamper'
           ? 'warn'
           : 'bad';
     return 'ok';
@@ -261,6 +262,7 @@ function SceneContent({
     const pass = engine.visualPass();
     const hijack = kindActive('hijack');
     const spoof = kindActive('spoof');
+    const tamper = kindActive('tamper');
     const jam = engine.route === 'ZAG' ? kindActive('jam') : 0;
     const quarantined = engine.quarantined;
     if (quarantined) beamColor.copy(COLORS.idle);
@@ -269,6 +271,7 @@ function SceneContent({
       beamColor.copy(COLORS.accent);
       if (hijack) beamColor.lerp(COLORS.bad, hijack);
       if (spoof) beamColor.lerp(COLORS.warn, spoof);
+      if (tamper) beamColor.lerp(COLORS.tamper, tamper);
       if (jam) beamColor.lerp(COLORS.jam, jam);
     }
     return {
@@ -280,7 +283,7 @@ function SceneContent({
       dashed: quarantined,
       flicker: clamp(jam * 1.2),
       static: jam,
-      wave: 0.34 * hijack + 0.05 * spoof,
+      wave: 0.34 * hijack + 0.05 * spoof + 0.03 * tamper,
       waveFreq: 9,
       speed: engine.attack && engine.attackEnvelope > 0.2 ? 2.6 : 1.6,
     };

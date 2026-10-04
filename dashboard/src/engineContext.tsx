@@ -8,6 +8,9 @@ interface Ctx {
   engine: Engine;
   focus: Focus;
   setFocus: (f: Focus) => void;
+  /** The packet inspection drawer. */
+  inspectorOpen: boolean;
+  setInspectorOpen: (open: boolean) => void;
 }
 
 const EngineContext = createContext<Ctx | null>(null);
@@ -21,6 +24,7 @@ export function EngineProvider({
 }) {
   const [engine, setEngine] = useState<Engine | null>(null);
   const [focus, setFocus] = useState<Focus>('overview');
+  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,7 +55,9 @@ export function EngineProvider({
 
   if (!engine) return <>{fallback}</>;
   return (
-    <EngineContext.Provider value={{ engine, focus, setFocus }}>{children}</EngineContext.Provider>
+    <EngineContext.Provider value={{ engine, focus, setFocus, inspectorOpen, setInspectorOpen }}>
+      {children}
+    </EngineContext.Provider>
   );
 }
 

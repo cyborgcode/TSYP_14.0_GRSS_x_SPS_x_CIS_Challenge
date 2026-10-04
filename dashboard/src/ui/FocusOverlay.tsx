@@ -248,10 +248,10 @@ function SatellitePanel() {
             <dl className="frame-build__fields">
               <dt>SEQ</dt>
               <dd className="mono">{frame.seq.toString(16).padStart(6, '0')}</dd>
-              <dt>Header</dt>
-              <dd className="mono">{frame.headerHex}</dd>
+              <dt>Frame</dt>
+              <dd className="mono">{frame.frameHeader}</dd>
               <dt>Payload</dt>
-              <dd className="mono">{frame.payloadHex}…</dd>
+              <dd className="mono">{frame.payloadHex}</dd>
               <dt>MAC</dt>
               <dd key={frame.seq} className="mono frame-build__mac">
                 {frame.macHex.slice(0, 32)}…

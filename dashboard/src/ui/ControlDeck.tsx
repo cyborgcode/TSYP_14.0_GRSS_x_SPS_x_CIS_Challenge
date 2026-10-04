@@ -1,16 +1,24 @@
 import { useState, type MouseEvent } from 'react';
 
-import { useEngine } from '../engineContext';
-import { ATTACK_BUTTONS } from '../sim/copy';
+import { useEngine, useEngineCtx } from '../engineContext';
+import { ATTACK_BUTTONS, ATTACK_PROOF } from '../sim/copy';
 import type { AttackKind } from '../sim/signals';
-import { ATTACK_ICONS, LockIcon, PlayIcon, StopIcon } from './icons';
+import { ATTACK_ICONS, LockIcon, PlayIcon, SearchIcon, StopIcon } from './icons';
 import { MINUS } from './format';
 import { Panel } from './Panel';
 
-const ORDER: AttackKind[] = ['hijack', 'spoof', 'jam'];
+/** Crypto-only attacks first: they are the ones RF monitoring alone cannot see. */
+const ORDER: AttackKind[] = ['spoof', 'tamper', 'hijack', 'jam'];
 
-function AttackButton({ kind }: { kind: AttackKind }) {
+function AttackButton({
+  kind,
+  onHover,
+}: {
+  kind: AttackKind;
+  onHover: (k: AttackKind | null) => void;
+}) {
   const engine = useEngine(15);
+  const { setInspectorOpen } = useEngineCtx();
   const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([]);
   const copy = ATTACK_BUTTONS[kind];
   const Icon = ATTACK_ICONS[kind];
@@ -30,7 +38,8 @@ function AttackButton({ kind }: { kind: AttackKind }) {
     const id = performance.now();
     setRipples((r) => [...r, { id, x: e.clientX - rect.left, y: e.clientY - rect.top }]);
     window.setTimeout(() => setRipples((r) => r.filter((p) => p.id !== id)), 650);
-    engine.trigger(kind);
+    // Open the packet drawer on the live frames, so every verdict can be inspected.
+    if (engine.trigger(kind)) setInspectorOpen(true);
   };
 
   return (
@@ -38,8 +47,13 @@ function AttackButton({ kind }: { kind: AttackKind }) {
       type="button"
       className={`attack attack--${kind} ${running ? 'attack--running' : ''}`}
       onClick={click}
+      onMouseEnter={() => onHover(kind)}
+      onMouseLeave={() => onHover(null)}
+      onFocus={() => onHover(kind)}
+      onBlur={() => onHover(null)}
       disabled={disabled && !running}
       aria-pressed={running}
+      aria-describedby="attack-proof"
     >
       <span className="attack__icon">
         <Icon size={18} />
@@ -88,6 +102,9 @@ function Toggle({
 
 export function ControlDeckPanel() {
   const engine = useEngine(15);
+  const { inspectorOpen, setInspectorOpen } = useEngineCtx();
+  const [hovered, setHovered] = useState<AttackKind | null>(null);
+  const proofKind = hovered ?? engine.attack?.kind ?? null;
   const power = engine.appliedPower;
   const powerText = `${power < 0 ? MINUS : '+'}${Math.abs(power).toFixed(1)} dB`;
   const statusTone =
@@ -108,20 +125,29 @@ export function ControlDeckPanel() {
   return (
     <Panel
       badge="4"
-      title="Red-team control deck"
+      title="Simulate attack"
       tag="D5 · Response"
       alert={engine.state === 'UNDER ATTACK'}
       className="panel--deck"
     >
       <div className="deck__head">
-        <span className="overline">Attack scenarios</span>
+        <span className="overline">Red-team scenarios</span>
         <span className="deck__heldout">held-out set: {engine.heldOut ? 'on' : 'off'}</span>
       </div>
       <div className="attacks">
         {ORDER.map((k) => (
-          <AttackButton key={k} kind={k} />
+          <AttackButton key={k} kind={k} onHover={setHovered} />
         ))}
       </div>
+      <p
+        id="attack-proof"
+        className={`deck__proof ${proofKind ? `deck__proof--${proofKind}` : ''}`}
+        aria-live="polite"
+      >
+        {proofKind
+          ? ATTACK_PROOF[proofKind]
+          : 'Each scenario opens the packet drawer on the live frames'}
+      </p>
 
       <div className={`power ${jamming ? 'power--live' : ''}`}>
         <label className="overline" htmlFor="attack-power">
@@ -166,6 +192,16 @@ export function ControlDeckPanel() {
           <span className="status-line__dot" />
           <span>{engine.statusLine}</span>
         </div>
+        <button
+          type="button"
+          className={`inspect-button ${inspectorOpen ? 'inspect-button--active' : ''}`}
+          onClick={() => setInspectorOpen(!inspectorOpen)}
+          aria-expanded={inspectorOpen}
+          aria-controls="packet-drawer"
+        >
+          <SearchIcon size={12} />
+          Inspect packets
+        </button>
         <button
           type="button"
           className={`demo-button ${engine.demo.active ? 'demo-button--active' : ''}`}

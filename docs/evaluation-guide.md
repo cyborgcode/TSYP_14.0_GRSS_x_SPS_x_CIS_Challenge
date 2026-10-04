@@ -23,16 +23,18 @@ RSSI chart, the received spectrum, the security banner and the cryptographic led
 
 ## 3. Red-team attack scenarios
 
-Trigger each scenario from the Red-Team Control Deck:
+Trigger each scenario from the **Simulate attack** panel. Each one opens the packet inspection
+drawer on the live frames (section 5).
 
 | Scenario | What happens | System response |
 |---|---|---|
 | **Frequency Hijacking** | A rogue carrier sweeping around +14.2 MHz is injected into the link. | The carrier chart jumps to ~8492 MHz, the beam turns red with a rapid oscillation, and the ledger logs `PROOF FAIL` for every rogue frame. Keys are rotated after quarantine. |
 | **Stealth Spoofing** | Node `0x99A2` injects frames with forged MAC headers and cryptographic nonces. The carrier stays on track, so the physics check is evaded. | The beam turns amber, RSSI degrades, the banner reads *Quarantine protocols engaged*, and the trust anchor and AI model escalate 2 of 3. |
+| **Data Tampering** | A relay between LEO-SAT and Zaghouan flips one payload bit after the satellite sealed the frame. The RF is untouched. | The beam turns pink, the physics check and the AI model see nothing, and the trust anchor logs `HASH MISMATCH` for every altered frame. The frames are quarantined and a retransmission is requested; keys are not rotated, since the relay never had them. |
 | **Noise Jamming** | Broadband Gaussian white noise saturates the receiver. | The beam turns purple with high-frequency static, RSSI drops to −96.5 dBm, frames go missing, and fallback routing to GS-MAT (Matera, Italy) is forced. |
 
 The attack-power slider changes the jammer power and the hijacker's excess power live.
-**Play demo** runs all three scenarios back to back, including a false alarm that the 2-of-3
+**Play demo** runs all four scenarios back to back, including a false alarm that the 2-of-3
 fusion suppresses.
 
 ## 4. Cryptographic ledger and telemetry verification
@@ -45,5 +47,25 @@ fusion suppresses.
   against the orbit-predicted carrier and the link budget; points outside the gate turn red. The
   received spectrum (amplitude against frequency, ±20 MHz) shows the 6 MHz downlink channel, the
   hijacker at +14.2 MHz and the jammed noise floor.
+
+## 5. Packet inspection and resilience metrics
+
+- **Packet inspection drawer** (*Inspect packets*, or any scenario button; Esc closes it): the
+  newest frames with their trust-anchor verdict, AI confidence and access decision. Selecting
+  one shows the raw frame and payload hexdump (bits flipped in transit are highlighted against
+  what the satellite sealed), the MAC received against the HMAC-SHA256 recomputed by the
+  station, the anti-replay check, the SHA-256 digest and ledger block, the `verify_chain()`
+  status, the `detector.py` features against their physics limits, the Isolation Forest score,
+  threshold and confidence, and the `zero_trust.py` decision with its reasons. *Live* / *Paused*
+  freezes the list. The red-team label is shown for the jury only; the pipeline never reads it.
+- **Resilience & trust metrics**: frames authenticated, rejected (MAC or nonce), held on RF
+  evidence and corrupted frames that reached the analyst (0). `verify_chain()` re-checks the
+  ledger every 5 s; *Verify* re-checks it from the genesis block, and *Edit block* lets the red
+  team change a verdict recorded in a past block, which the next check reports by index before
+  the block is restored. The matrix gives, per scenario, the share of frames flagged by the
+  trust anchor and by the detector, the share dropped, and the median time to the first drop.
+
+The browser ports produce the same frame text, HMAC seal and block hashes as the Python modules
+in `testbed/`; both test suites check the same golden vectors.
 
 Everything is emulation: nothing on the page transmits or receives RF.

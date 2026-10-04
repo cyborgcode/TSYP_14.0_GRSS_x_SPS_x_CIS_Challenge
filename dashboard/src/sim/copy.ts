@@ -22,6 +22,19 @@ export const ATTACK_BUTTONS: Record<AttackKind, { label: string; sub: string; ru
     running: 'Stealth Spoofing',
   },
   jam: { label: 'Noise Jamming', sub: 'broadband white noise', running: 'Noise Jamming' },
+  tamper: {
+    label: 'Data Tampering',
+    sub: 'bit flips in transit',
+    running: 'Data Tampering',
+  },
+};
+
+/** What each scenario proves, shown on the Simulate Attack panel. */
+export const ATTACK_PROOF: Record<AttackKind, string> = {
+  spoof: 'RF looks plausible: only the HMAC and nonce checks catch it',
+  tamper: 'No RF signature at all: only hash verification catches it',
+  hijack: 'Both layers fire: orbit physics and proof failures',
+  jam: 'Frames are genuine: only the detector catches it, then fallback',
 };
 
 export interface BannerCopy {
@@ -41,6 +54,11 @@ export function activeBanner(kind: AttackKind, ms: number | null): BannerCopy {
       return {
         headline: `Quarantine protocols engaged${t}`,
         detail: `Forged MAC headers and nonces from node ${ROGUE_NODE} · frames isolated at the gate`,
+      };
+    case 'tamper':
+      return {
+        headline: `Data tampering detected${t} · hash verification failed`,
+        detail: `Payload bits flipped between ${SATELLITE} and ${STATION} · HMAC-SHA256 mismatch on every altered frame`,
       };
     case 'jam':
       return {
@@ -66,6 +84,11 @@ export function resolvedBanner(
       return {
         headline: `Node ${ROGUE_NODE} isolated · spoofed frames quarantined`,
         detail: `Ed25519 handshake renewed · keys rotated to epoch ${e}`,
+      };
+    case 'tamper':
+      return {
+        headline: 'Tampered frames quarantined · 0 reached the analyst',
+        detail: `Retransmission requested · key epoch ${e} unchanged: the relay never had the key`,
       };
     case 'jam':
       return {

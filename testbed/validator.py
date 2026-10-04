@@ -27,6 +27,7 @@ SCENARIOS = [
     ("frequency_hijacking", "Red-Team Vector 1: Frequency Hijacking (+14.2 MHz Sweep)"),
     ("stealth_spoofing", "Red-Team Vector 2: Stealth Spoofing (Forged Nonce 0x99A2)"),
     ("noise_jamming", "Red-Team Vector 3: Broadband Noise Jamming (-96.5 dBm Drop)"),
+    ("data_tampering", "Red-Team Vector 4: Data Tampering (Payload Bit Flip in Transit)"),
 ]
 
 

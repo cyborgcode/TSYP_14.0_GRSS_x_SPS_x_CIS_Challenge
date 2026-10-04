@@ -5,7 +5,8 @@
 import { CARRIER_HZ, NOISE_FLOOR_DBM } from './geometry';
 import { clamp, smooth, sn } from './noise';
 
-export type AttackKind = 'hijack' | 'spoof' | 'jam';
+/** `tamper` alters frame bits in transit: no RF signature, only the crypto can see it. */
+export type AttackKind = 'hijack' | 'spoof' | 'jam' | 'tamper';
 
 export interface Attack {
   kind: AttackKind;

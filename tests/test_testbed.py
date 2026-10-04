@@ -1,5 +1,7 @@
 """Tests for the testbed package: ingester, detector, trust anchor, zero trust, validator."""
 
+import hashlib
+
 import pytest
 
 from testbed.detector import TelemetryDetector
@@ -9,7 +11,9 @@ from testbed.ingester import (
     NOMINAL_CARRIER_MHZ,
     ROGUE_NODE_TOKEN,
     TelemetryIngester,
+    frame_bytes,
     predicted_link,
+    seal,
 )
 from testbed.trust_anchor import GENESIS_PAYLOAD, TrustAnchorLedger
 from testbed.validator import Pipeline, measure
@@ -59,6 +63,47 @@ def test_forged_frame_does_not_burn_a_genuine_nonce():
     assert ledger.authenticate(genuine)[0] is True
 
 
+def test_golden_vectors_match_the_browser_port():
+    """Same values as dashboard/tests/sim.test.ts: the browser ledger is byte-identical."""
+    key = bytes(range(32))
+    frame = {
+        "satellite_id": "LEO-SAT-542",
+        "sequence": 1001,
+        "timestamp": 1790000000.123456,
+        "hw_token": "0x4FE2",
+        "payload": "00112233445566778899aabbccddeeff",
+    }
+    assert frame_bytes(frame) == (
+        b"LEO-SAT-542|1001|1790000000.123456|0x4FE2|00112233445566778899aabbccddeeff"
+    )
+    mac = seal(key, frame)
+    assert mac == "e4821a19a7a2f113ff115e8a5664f37e333a8a24171f0fea8c8676b525cbbb7d"
+    digest = hashlib.sha256(frame_bytes(frame)).hexdigest()
+    assert digest == "9eccc3bc5eaa0ea3aec07ec636a053087bb91bc07b3d2303ba728928522c7a8e"
+
+    ledger = TrustAnchorLedger(key)
+    assert ledger.genesis_root == (
+        "f309c75abe507ae390667b057af430aa58acadee40797e09c2a664cbc5a01e25"
+    )
+    packet = frame | {"mac": mac, "sha256_hash": digest}
+    block, ok, reason = ledger.ingest(packet)
+    assert (ok, reason) == (True, "AUTHENTIC")
+    assert block["hash"] == "39d8d1aeec5d1d1ada1077e49298aff6936b6dada21cf0efd4d9aad67372872e"
+    block, ok, reason = ledger.ingest(packet)
+    assert (ok, reason) == (False, "STALE_OR_REUSED_NONCE")
+    assert block["hash"] == "ba618dbeb83416b31b54a49755733c6beef1f61860cb0fe1d9ccf8ae967ae2be"
+
+
+def test_data_tampering_keeps_a_clean_rf_profile_and_fails_the_mac(pipe):
+    for _ in range(30):
+        r = pipe.process("data_tampering")
+        p = r["packet"]
+        assert p["hw_token"] == "0x4FE2"
+        assert r["auth_reason"] == "MAC_MISMATCH"
+        assert r["decision"]["access_granted"] is False
+        assert r["detection"]["physics_gate"] is False
+
+
 def test_ledger_chain_from_genesis_detects_any_edit():
     ing = TelemetryIngester(seed=4)
     ledger = TrustAnchorLedger(ing.key)
@@ -78,7 +123,13 @@ def test_detector_never_reads_the_ground_truth_label(pipe):
     detector.train_baseline([ing.generate_packet("normal") for _ in range(600)])
     twin = TelemetryDetector()
     twin.model, twin.is_trained = detector.model, True
-    for mode in ("normal", "frequency_hijacking", "stealth_spoofing", "noise_jamming"):
+    for mode in (
+        "normal",
+        "frequency_hijacking",
+        "stealth_spoofing",
+        "noise_jamming",
+        "data_tampering",
+    ):
         packet = ing.generate_packet(mode)
         unlabelled = {k: v for k, v in packet.items() if k != "attack_mode"}
         assert detector.evaluate_packet(packet) == twin.evaluate_packet(unlabelled)
@@ -108,5 +159,8 @@ def test_measured_pipeline_blocks_every_attack_with_a_low_false_alarm_rate():
     assert rates["stealth_spoofing"]["anchor"] == 1
     assert rates["stealth_spoofing"]["denied"] == 1
     assert rates["noise_jamming"]["denied"] > 0.95
+    assert rates["data_tampering"]["anchor"] == 1
+    assert rates["data_tampering"]["denied"] == 1
+    assert rates["data_tampering"]["gate"] == 0
     assert all(v == 1 for v in m["packets_to_first_flag"].values())
     assert m["chain"]["intact"] and m["chain"]["tamper_detected"]

@@ -6,6 +6,8 @@ import { Header } from './ui/Header';
 import { DishIcon } from './ui/icons';
 import { KpiTiles } from './ui/KpiTiles';
 import { LedgerPanel } from './ui/Ledger';
+import { PacketDrawer } from './ui/PacketDrawer';
+import { ResiliencePanel } from './ui/Resilience';
 import { TelemetryPanel } from './ui/Telemetry';
 import { ThreatMatrixPanel } from './ui/ThreatMatrix';
 import { ViewportPanel } from './ui/Viewport';
@@ -42,21 +44,27 @@ function Dashboard() {
       <main className="main">
         <KpiTiles />
         <div className="grid">
-          <div className="grid__viewport">
-            <ViewportPanel />
+          <div className="grid__col grid__col--main">
+            <div className="grid__viewport">
+              <ViewportPanel />
+            </div>
+            <div className="grid__telemetry">
+              <TelemetryPanel />
+            </div>
           </div>
-          <div className="grid__side">
+          <div className="grid__col grid__col--ops">
             <ControlDeckPanel />
+            <ResiliencePanel />
+          </div>
+          <div className="grid__col grid__col--trust">
             <ThreatMatrixPanel />
-          </div>
-          <div className="grid__telemetry">
-            <TelemetryPanel />
-          </div>
-          <div className="grid__ledger">
-            <LedgerPanel />
+            <div className="grid__ledger">
+              <LedgerPanel />
+            </div>
           </div>
         </div>
       </main>
+      <PacketDrawer />
       <footer className="footer">
         <p>
           Emulation only: nothing on this page transmits or receives RF. Attacks are software

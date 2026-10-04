@@ -1,27 +1,42 @@
 // Testbed engine: one LEO pass over the Zaghouan ground station, framed and sealed for real,
 // attacked on demand, and defended by three independent detectors fused by a 2-of-3 vote.
-// The trust anchor chains every frame into a SHA-256 ledger from a genesis root and renews an
-// Ed25519 handshake with the spacecraft; its log is streamed as the trust_anchor.py terminal.
+// Every frame runs through browser ports of the Python testbed: trust_anchor.py (HMAC-SHA256
+// seal, anti-replay window, SHA-256 chain from the same genesis block), detector.py (physics
+// gate + Isolation Forest on orbit residuals) and zero_trust.py. Each frame leaves a packet
+// record for the inspection drawer. The trust anchor also renews an Ed25519 handshake with the
+// spacecraft; its log is streamed as the trust_anchor.py terminal.
 //
 // Everything here is emulation. No component transmits or receives RF.
 
 import * as copy from './copy';
 import { AiModel, FLAG_AT, featureVector } from './aiModel';
+import { FRAME_PERIOD_S } from './constants';
 import {
   EmulatedHsm,
-  ReplayWindow,
-  chainHash,
   createEd25519,
-  encodeHeader,
   encodeText,
-  genesisRoot,
   importMacKey,
-  macInput,
-  macSign,
-  macVerify,
   toHex,
   type Ed25519Identity,
 } from './crypto';
+import {
+  LinkDetector,
+  ROGUE_TOKEN,
+  SAT_ID,
+  SAT_TOKEN,
+  zeroTrust,
+  type Decision,
+  type DetectorResult,
+  type RfMeasurement,
+} from './linkDetector';
+import {
+  TrustAnchorLedger,
+  seal,
+  type AuthReason,
+  type Block,
+  type ChainCheck,
+  type Frame,
+} from './trustAnchor';
 import { PERIOD_S, passAt, snrPredDb, timeAfterAos, type PassState } from './geometry';
 import { clamp, easeInOutCubic, mulberry32, win } from './noise';
 import {
@@ -38,12 +53,15 @@ import {
 export const TICK_S = 0.05;
 export const WINDOW_S = 7;
 export const HISTORY = Math.round(WINDOW_S / TICK_S);
-export const FRAME_PERIOD_S = 0.32;
+export { FRAME_PERIOD_S };
+const PACKET_RECORDS = 160;
+const CHAIN_CHECK_EVERY_S = 5;
 const LEDGER_ROWS = 60;
 const RESPONSE_DELAY_S: Record<AttackKind, number> = {
   hijack: 4.8,
   spoof: 2.8,
   jam: 2.8,
+  tamper: 2.8,
 };
 const UNANSWERED_END_S = 8;
 const UNDETECTED_END_S = 6;
@@ -51,6 +69,7 @@ const ATTACKER_SHARE: Record<AttackKind, number> = {
   hijack: 0.75,
   spoof: 0.75,
   jam: 0,
+  tamper: 0.75,
 };
 const TERMINAL_LINES = 160;
 const HANDSHAKE_EVERY_S = 8;
@@ -91,10 +110,61 @@ export interface LedgerRow {
 export interface TxFrame {
   seq: number;
   t: number;
-  headerHex: string;
+  /** satellite_id|sequence|timestamp|hw_token, the frame header as sealed. */
+  frameHeader: string;
   payloadHex: string;
   macHex: string;
   epoch: number;
+}
+
+/** Everything the station saw and decided about one frame, for the inspection drawer. */
+export interface PacketRecord {
+  id: number;
+  /** Scene time of reception. */
+  t: number;
+  /** Red-team ground truth, known to the simulator only; no detector reads it. */
+  label: FrameLabel;
+  /** An attack was active when the frame arrived (genuine frames included). */
+  underAttack: boolean;
+  source: string;
+  /** null when jamming left nothing to decode. */
+  frame: Frame | null;
+  frameText: string | null;
+  mac: string | null;
+  expectedMac: string | null;
+  frameDigest: string | null;
+  keyEpoch: number;
+  /** Tampering only: the payload as sealed on board, and the bit flipped in transit. */
+  originalPayload: string | null;
+  flipped: { byte: number; bit: number } | null;
+  auth: { ok: boolean; reason: AuthReason | 'NO_FRAME' };
+  block: Pick<Block, 'index' | 'previous_hash' | 'hash'> | null;
+  rf: RfMeasurement | null;
+  detector: DetectorResult | null;
+  decision: Decision;
+  authMs: number;
+  detectorMs: number;
+}
+
+export type StatKey = FrameLabel | 'genuineUnderAttack';
+
+export interface LayerStats {
+  frames: number;
+  /** Frames that reached the trust anchor (jamming leaves nothing to decode). */
+  decoded: number;
+  anchor: number;
+  physics: number;
+  forest: number;
+  detector: number;
+  blocked: number;
+  /** Per run: milliseconds from attack onset to the first blocked attack frame. */
+  firstBlockMs: number[];
+}
+
+export interface ChainStatus extends ChainCheck {
+  full: boolean;
+  blocks: number;
+  at: number;
 }
 
 export interface DetectorState {
@@ -117,6 +187,7 @@ export interface Run {
   respondedAt: number | null;
   firstRowId: number;
   demo: boolean;
+  firstBlockMs: number | null;
 }
 
 export type Tone = 'bad' | 'warn' | 'ok';
@@ -146,14 +217,6 @@ interface Arrival {
   outcome: 'ok' | 'fail' | 'lost';
 }
 
-interface SentFrame {
-  seq: number;
-  header: Uint8Array;
-  payload: Uint8Array;
-  tag: Uint8Array;
-  t: number;
-}
-
 interface DemoEvent {
   at: number;
   run: (engine: Engine) => void;
@@ -168,11 +231,12 @@ const DEMO_EVENTS: DemoEvent[] = [
   { at: 16.3, run: (e) => (e.heavyBatch = true) },
   { at: 17.9, run: (e) => (e.heavyBatch = false) },
   { at: 21.5, run: (e) => e.trigger('hijack', { demo: true }) },
-  { at: 29.5, run: (e) => e.trigger('spoof', { demo: true }) },
-  { at: 35.5, run: (e) => e.trigger('jam', { demo: true }) },
-  { at: 42.5, run: (e) => e.stopDemo() },
+  { at: 29.5, run: (e) => e.trigger('tamper', { demo: true }) },
+  { at: 35.5, run: (e) => e.trigger('spoof', { demo: true }) },
+  { at: 41.5, run: (e) => e.trigger('jam', { demo: true }) },
+  { at: 48.5, run: (e) => e.stopDemo() },
 ];
-export const DEMO_LENGTH_S = 42.5;
+export const DEMO_LENGTH_S = 48.5;
 
 export class Engine {
   s = 0;
@@ -223,6 +287,8 @@ export class Engine {
   framesVerified = 0;
   framesReceived = 0;
   framesRejected = 0;
+  rejectedMac = 0;
+  rejectedNonce = 0;
   framesLost = 0;
   corruptedToAnalyst = 0;
   overheadMs: number[] = [];
@@ -232,25 +298,37 @@ export class Engine {
 
   terminal: TermLine[] = [];
   blockHeight = 0;
-  readonly genesis: string;
   readonly signer: Ed25519Identity | null;
   handshakes = 0;
+
+  /** Browser ports of trust_anchor.py and detector.py. */
+  readonly anchor: TrustAnchorLedger;
+  readonly linkDetector: LinkDetector;
+  packets: PacketRecord[] = [];
+  layerStats: Partial<Record<StatKey, LayerStats>> = {};
+  heldByZeroTrust = 0;
+  chainStatus: ChainStatus | null = null;
+  /** Red-team edit of a past ledger block, restored after a few seconds. */
+  ledgerTamper: { index: number; until: number } | null = null;
 
   readonly ai: AiModel;
   private passOffset: number;
   private acc = 0;
   private nextFrameAt = 0;
   private genuineSeq = 1_048_576;
-  private sent: SentFrame[] = [];
   private arrivals: Arrival[] = [];
   private lastPhysicsViolation = -10;
   private rowId = 0;
   private calloutId = 0;
-  private prevHash: string;
+  private packetId = 0;
+  private verifiedUpTo = 0;
+  /** verify_chain() runs are serialised, so a status never reflects a half-finished check. */
+  private chainChecks: Promise<unknown> = Promise.resolve();
+  private nextChainCheckAt = CHAIN_CHECK_EVERY_S;
+  private ledgerTamperOriginal: Block['payload'] | null = null;
   private termId = 0;
   private nextHandshakeAt = HANDSHAKE_EVERY_S;
   private queue: Promise<void> = Promise.resolve();
-  private readonly replayWindow = new ReplayWindow(64);
   private readonly rand = mulberry32(20261108);
   private falseAlarm: { from: number; to: number } | null = null;
   private faCallout: 'none' | 'held' | 'cleared' = 'none';
@@ -265,15 +343,16 @@ export class Engine {
     hsm: EmulatedHsm,
     attackerKey: CryptoKey,
     ai: AiModel,
-    genesis: string,
+    anchor: TrustAnchorLedger,
     signer: Ed25519Identity | null,
   ) {
     this.hsm = hsm;
     this.attackerKey = attackerKey;
     this.ai = ai;
-    this.genesis = genesis;
-    this.prevHash = genesis;
+    this.anchor = anchor;
+    this.linkDetector = new LinkDetector();
     this.signer = signer;
+    const genesis = anchor.genesisRoot;
     this.passOffset = timeAfterAos(8);
     this.pass = passAt(this.passOffset);
 
@@ -288,13 +367,18 @@ export class Engine {
   }
 
   static async create(): Promise<Engine> {
-    const [hsm, attackerKey, genesis, signer] = await Promise.all([
+    const [hsm, attackerKey, anchor, signer] = await Promise.all([
       EmulatedHsm.create(),
       importMacKey(crypto.getRandomValues(new Uint8Array(32))),
-      genesisRoot(copy.STATION),
+      TrustAnchorLedger.create(),
       createEd25519(),
     ]);
-    return new Engine(hsm, attackerKey, new AiModel(), genesis, signer);
+    return new Engine(hsm, attackerKey, new AiModel(), anchor, signer);
+  }
+
+  /** Root of the ledger: SHA-256 of the genesis block, identical to trust_anchor.py. */
+  get genesis(): string {
+    return this.anchor.genesisRoot;
   }
 
   // ---------------------------------------------------------------- trust_anchor.py log
@@ -366,6 +450,7 @@ export class Engine {
       respondedAt: null,
       firstRowId: this.rowId + 1,
       demo: Boolean(opts.demo),
+      firstBlockMs: null,
     };
     for (const d of Object.values(this.detectors)) {
       d.latencyMs = null;
@@ -500,6 +585,12 @@ export class Engine {
       this.nextHandshakeAt = s + HANDSHAKE_EVERY_S;
       if (this.pass.linkActive) this.handshake('periodic');
     }
+    if (s >= this.nextChainCheckAt) {
+      this.nextChainCheckAt = s + CHAIN_CHECK_EVERY_S;
+      // While the red-team edit is live, keep showing the full check that caught it.
+      if (!this.ledgerTamper) void this.checkChain(false);
+    }
+    if (this.ledgerTamper && s >= this.ledgerTamper.until) this.restoreLedger();
 
     this.batchLoad +=
       ((this.heavyBatch ? 0.88 : 0.3 + 0.08 * Math.sin(s * 0.7)) - this.batchLoad) * 0.12;
@@ -514,6 +605,16 @@ export class Engine {
 
   private emitFrame(s: number) {
     const x = this.current;
+    const rf: RfMeasurement | null = x
+      ? {
+          carrierMHz: x.carrierMHz,
+          carrierModelMHz: x.carrierModelMHz,
+          rssiDbm: x.rssiDbm,
+          rssiModelDbm: x.rssiModelDbm,
+        }
+      : null;
+    const underAttack = this.attack !== null && envelope(this.attack, s) > 0.05;
+
     if (x && x.timingUs === null) {
       this.framesLost++;
       this.arrivals.push({ t: s, outcome: 'lost' });
@@ -527,108 +628,279 @@ export class Engine {
         t: s,
         overheadMs: 0,
       });
+      // Nothing to authenticate, but the RF still goes through the detector.
+      this.queue = this.queue.then(() => {
+        const t0 = performance.now();
+        const detection = rf ? this.linkDetector.evaluate(rf) : null;
+        this.record({
+          t: s,
+          label: 'jam',
+          underAttack,
+          source: 'no signal',
+          frame: null,
+          frameText: null,
+          mac: null,
+          expectedMac: null,
+          frameDigest: null,
+          keyEpoch: this.keyEpoch,
+          originalPayload: null,
+          flipped: null,
+          auth: { ok: false, reason: 'NO_FRAME' },
+          block: null,
+          rf,
+          detector: detection,
+          decision: zeroTrust(null, null, detection),
+          authMs: 0,
+          detectorMs: performance.now() - t0,
+        });
+      });
       return;
     }
 
     const kind = this.attack?.kind;
     const active = this.attack && kind && envelope(this.attack, s) > 0.3;
     const roll = this.rand();
+    const route = this.route;
+    const genuineSource = `${copy.SATELLITE} · VC1 · ${route}`;
 
-    if (active && kind && roll < ATTACKER_SHARE[kind]) {
-      const header = encodeHeader({ scid: 0x2a, vc: 1, tMs: s * 1000 });
-      const payload = this.payload();
+    if (active && kind && kind !== 'tamper' && roll < ATTACKER_SHARE[kind]) {
       // The hijacker pushes the next sequence number; node 0x99A2 forges nonces from recent ones.
-      const seq =
-        kind === 'spoof' ? this.genuineSeq - Math.floor(this.rand() * 24) : this.genuineSeq + 1;
+      const frame: Frame = {
+        satellite_id: SAT_ID,
+        sequence:
+          kind === 'spoof' ? this.genuineSeq - Math.floor(this.rand() * 24) : this.genuineSeq + 1,
+        timestamp: Date.now() / 1000,
+        hw_token: kind === 'spoof' ? ROGUE_TOKEN : SAT_TOKEN,
+        payload: toHex(this.payload()),
+      };
       const source = kind === 'spoof' ? `NODE ${copy.ROGUE_NODE}` : 'ROGUE-TX +14.2 MHz';
       this.queue = this.queue.then(async () => {
-        const tag = await macSign(this.attackerKey, macInput(header, seq, payload));
-        await this.verify(header, seq, payload, tag, source, kind, s);
+        const mac = await seal(this.attackerKey, frame);
+        await this.verify(frame, mac, source, kind, s, rf, underAttack, null);
       });
       return;
     }
 
-    const seq = ++this.genuineSeq;
-    const header = encodeHeader({ scid: 0x2a, vc: 1, tMs: s * 1000 });
-    const payload = this.payload();
     const epoch = this.keyEpoch;
-    const source = `${copy.SATELLITE} · VC1 · ${this.route}`;
+    const frame: Frame = {
+      satellite_id: SAT_ID,
+      sequence: ++this.genuineSeq,
+      timestamp: Date.now() / 1000,
+      hw_token: SAT_TOKEN,
+      payload: toHex(this.payload()),
+    };
+    // Data tampering: a relay in the path flips one payload bit after the satellite sealed it.
+    const tampered = active && kind === 'tamper' && roll < ATTACKER_SHARE.tamper;
     this.framesSent++;
     this.queue = this.queue.then(async () => {
       const key = await this.hsm.epochKey(epoch);
-      const tag = await macSign(key, macInput(header, seq, payload));
-      this.sent.push({ seq, header, payload, tag, t: s });
-      if (this.sent.length > 120) this.sent.shift();
+      const mac = await seal(key, frame);
       this.txLog.unshift({
-        seq,
+        seq: frame.sequence,
         t: s,
-        headerHex: toHex(header),
-        payloadHex: toHex(payload.subarray(0, 16)),
-        macHex: toHex(tag),
+        frameHeader: `${frame.satellite_id}|${frame.sequence}|${frame.timestamp.toFixed(6)}|${frame.hw_token}`,
+        payloadHex: frame.payload,
+        macHex: mac,
         epoch,
       });
       if (this.txLog.length > 8) this.txLog.pop();
-      await this.verify(header, seq, payload, tag, source, 'genuine', s);
+      if (tampered) {
+        const byte = Math.floor(this.rand() * 16);
+        const bit = Math.floor(this.rand() * 8);
+        const bytes = frame.payload.match(/../g)!.map((h) => parseInt(h, 16));
+        bytes[byte] ^= 1 << bit;
+        const received = {
+          ...frame,
+          payload: bytes.map((b) => b.toString(16).padStart(2, '0')).join(''),
+        };
+        await this.verify(received, mac, genuineSource, 'tamper', s, rf, underAttack, {
+          originalPayload: frame.payload,
+          flipped: { byte, bit },
+        });
+      } else {
+        await this.verify(frame, mac, genuineSource, 'genuine', s, rf, underAttack, null);
+      }
     });
   }
 
   private payload(): Uint8Array {
-    const p = new Uint8Array(32);
+    // 16 bytes, as in ingester.py.
+    const p = new Uint8Array(16);
     for (let i = 0; i < p.length; i++) p[i] = Math.floor(this.rand() * 256);
     return p;
   }
 
-  /** Station side: MAC → anti-replay → hash chain. Failing frames stop at the gate. */
+  /**
+   * Station side, as in the Python testbed: trust_anchor.py (MAC, then nonce, then the chain),
+   * detector.py on the RF, then the zero-trust decision. Failing frames stop at the gate.
+   */
   private async verify(
-    header: Uint8Array,
-    seq: number,
-    payload: Uint8Array,
-    tag: Uint8Array,
+    frame: Frame,
+    mac: string,
     source: string,
     label: FrameLabel,
     s: number,
+    rf: RfMeasurement | null,
+    underAttack: boolean,
+    tamper: { originalPayload: string; flipped: { byte: number; bit: number } } | null,
   ) {
     const started = performance.now();
-    const input = macInput(header, seq, payload);
     const key = await this.hsm.epochKey(this.keyEpoch);
-    const macOk = await macVerify(key, input, tag);
-    const verdict: Verdict = !macOk
-      ? 'MAC FAIL'
-      : this.replayWindow.accept(seq)
-        ? 'VERIFIED'
+    const auth = await this.anchor.authenticate(frame, mac, key);
+    const block = await this.anchor.append(frame, mac, auth.frameDigest, auth.reason);
+    const authMs = performance.now() - started;
+
+    const t0 = performance.now();
+    const detection = rf ? this.linkDetector.evaluate(rf) : null;
+    const detectorMs = performance.now() - t0;
+    const decision = zeroTrust(frame, auth, detection);
+    if (decision.allow && rf) this.linkDetector.accept(rf);
+
+    const verdict: Verdict = auth.ok
+      ? 'VERIFIED'
+      : auth.reason === 'MAC_MISMATCH'
+        ? 'MAC FAIL'
         : 'REPLAY';
-    const hash = await chainHash(this.prevHash, input, `${source}|${verdict}`);
-    this.prevHash = hash;
-    const overheadMs = performance.now() - started;
-
     this.framesReceived++;
-    this.overheadMs.push(overheadMs);
+    this.overheadMs.push(authMs);
     if (this.overheadMs.length > 240) this.overheadMs.shift();
-
     if (verdict === 'VERIFIED') {
       this.framesVerified++;
       if (label !== 'genuine') this.corruptedToAnalyst++;
       this.arrivals.push({ t: s, outcome: 'ok' });
+      if (!decision.allow) this.heldByZeroTrust++;
     } else {
       this.framesRejected++;
+      if (verdict === 'MAC FAIL') this.rejectedMac++;
+      else this.rejectedNonce++;
       this.arrivals.push({ t: s, outcome: 'fail' });
       const run = this.run;
       if (run && run.rejectMs === null && s >= run.start) run.rejectMs = (s - run.start) * 1000;
     }
-    this.pushRow({ seq, hash, source, verdict, label, t: s, overheadMs });
+    this.pushRow({
+      seq: frame.sequence,
+      hash: block.hash,
+      source,
+      verdict,
+      label,
+      t: s,
+      overheadMs: authMs,
+    });
 
-    const block = ++this.blockHeight;
-    const short = `${hash.slice(0, 10)}…${hash.slice(-4)}`;
+    this.blockHeight = block.index;
+    const short = `${block.hash.slice(0, 10)}…${block.hash.slice(-4)}`;
     if (verdict === 'VERIFIED') {
-      this.log(`✓ block #${block} ${short} hmac ok`, 'ok');
+      this.log(`✓ block #${block.index} ${short} hmac ok`, 'ok');
     } else if (label === 'spoof') {
       this.log(
-        `✗ block #${block} forged nonce 0x${seq.toString(16)} · node ${copy.ROGUE_NODE}`,
+        `✗ block #${block.index} forged nonce 0x${frame.sequence.toString(16)} · node ${copy.ROGUE_NODE}`,
         'bad',
       );
+    } else if (label === 'tamper') {
+      this.log(`✗ block #${block.index} HASH MISMATCH · payload altered in transit`, 'bad');
+    } else if (verdict === 'REPLAY') {
+      this.log(`✗ block #${block.index} stale nonce 0x${frame.sequence.toString(16)}`, 'bad');
     } else {
-      this.log(`✗ PROOF FAIL #${block} · hmac mismatch · ROGUE-TX`, 'bad');
+      this.log(`✗ PROOF FAIL #${block.index} · hmac mismatch · ROGUE-TX`, 'bad');
     }
+
+    this.record({
+      t: s,
+      label,
+      underAttack,
+      source,
+      frame,
+      frameText: `${frame.satellite_id}|${frame.sequence}|${frame.timestamp.toFixed(6)}|${frame.hw_token}|${frame.payload}`,
+      mac,
+      expectedMac: auth.expectedMac,
+      frameDigest: auth.frameDigest,
+      keyEpoch: this.keyEpoch,
+      originalPayload: tamper?.originalPayload ?? null,
+      flipped: tamper?.flipped ?? null,
+      auth: { ok: auth.ok, reason: auth.reason },
+      block: { index: block.index, previous_hash: block.previous_hash, hash: block.hash },
+      rf,
+      detector: detection,
+      decision,
+      authMs,
+      detectorMs,
+    });
+  }
+
+  private record(r: Omit<PacketRecord, 'id'>) {
+    this.packets.unshift({ ...r, id: ++this.packetId });
+    if (this.packets.length > PACKET_RECORDS) this.packets.pop();
+
+    const key: StatKey = r.label === 'genuine' && r.underAttack ? 'genuineUnderAttack' : r.label;
+    const st = (this.layerStats[key] ??= {
+      frames: 0,
+      decoded: 0,
+      anchor: 0,
+      physics: 0,
+      forest: 0,
+      detector: 0,
+      blocked: 0,
+      firstBlockMs: [],
+    });
+    st.frames++;
+    if (r.frame) st.decoded++;
+    if (r.frame && !r.auth.ok) st.anchor++;
+    if (r.detector?.physics) st.physics++;
+    if (r.detector?.forest) st.forest++;
+    if (r.detector?.anomaly) st.detector++;
+    if (!r.decision.allow) st.blocked++;
+
+    const run = this.run;
+    if (run && r.label === run.kind && !r.decision.allow && run.firstBlockMs === null)
+      run.firstBlockMs = Math.max(0, (r.t - run.start) * 1000);
+  }
+
+  // ---------------------------------------------------------------- ledger checks
+
+  /** verify_chain() on the browser ledger: incremental by default, from genesis when `full`. */
+  checkChain(full: boolean): Promise<ChainStatus> {
+    const run = async () => {
+      const from = full ? 1 : this.verifiedUpTo + 1;
+      const end = this.anchor.chain.length - 1;
+      const result = await this.anchor.verifyChain(from);
+      if (result.ok) this.verifiedUpTo = Math.max(this.verifiedUpTo, end);
+      const status: ChainStatus = { ...result, full, blocks: end, at: this.s };
+      this.chainStatus = status;
+      this.emit();
+      return status;
+    };
+    const next = this.chainChecks.then(run, run);
+    this.chainChecks = next;
+    return next;
+  }
+
+  /** Red-team demo: edits a past block's recorded verdict, then lets verify_chain() find it. */
+  async tamperLedger(): Promise<void> {
+    const chain = this.anchor.chain;
+    if (this.ledgerTamper || chain.length < 4) return;
+    const index = Math.max(1, Math.floor(chain.length / 2));
+    const block = chain[index];
+    if (typeof block.payload === 'string') return;
+    this.ledgerTamperOriginal = block.payload;
+    const verdict = block.payload.verdict === 'AUTHENTIC' ? 'MAC_MISMATCH' : 'AUTHENTIC';
+    block.payload = { ...block.payload, verdict };
+    this.ledgerTamper = { index, until: this.s + 6 };
+    this.log(`!! red team edited ledger block #${index}: verdict → ${verdict}`, 'warn');
+    const status = await this.checkChain(true);
+    if (!status.ok) this.log(`✗ verify_chain(): ${status.message}`, 'bad');
+  }
+
+  private restoreLedger() {
+    const t = this.ledgerTamper;
+    const original = this.ledgerTamperOriginal;
+    this.ledgerTamper = null;
+    this.ledgerTamperOriginal = null;
+    if (!t || !original) return;
+    this.anchor.chain[t.index].payload = original;
+    this.log(`ledger block #${t.index} restored from the HSM-signed backup`, 'info');
+    void this.checkChain(true).then((status) => {
+      if (status.ok) this.log('✓ verify_chain(): intact again to genesis', 'ok');
+    });
   }
 
   private pushRow(row: Omit<LedgerRow, 'id' | 'original'>) {
@@ -702,7 +974,8 @@ export class Engine {
           run.latency[id] = d.latencyMs;
         }
       }
-      PHYSICS.evaded = run.kind === 'spoof' && !PHYSICS.flag && (TRUST.flag || AI.flag);
+      PHYSICS.evaded =
+        (run.kind === 'spoof' || run.kind === 'tamper') && !PHYSICS.flag && (TRUST.flag || AI.flag);
       if (this.votes >= 2 && run.escalatedAt === null) this.escalate(run, s);
     }
 
@@ -765,6 +1038,17 @@ export class Engine {
         );
         this.log(`!! QUARANTINE PROTOCOLS ENGAGED · node ${copy.ROGUE_NODE} isolated`, 'bad');
         break;
+      case 'tamper':
+        say('RF looks clean', 'the physics check sees nothing', 'telemetry', 'warn');
+        say('HMAC mismatch: payload altered in transit', undefined, 'ledger', 'bad');
+        say(
+          'Caught by the trust anchor',
+          'the hash no longer matches what the satellite sealed',
+          'fusion',
+          'bad',
+        );
+        this.log('!! ALERT data tampering · hash verification failing', 'bad');
+        break;
       case 'jam':
         say('RSSI collapsing to −96.5 dBm', 'driven live by the power slider', 'telemetry', 'warn');
         say('Broadband noise floods Zaghouan', undefined, 'station', 'warn');
@@ -790,6 +1074,15 @@ export class Engine {
         );
         this.handshake('re-key');
         break;
+      case 'tamper':
+        // The relay never had the key: no re-key needed, just drop and re-request.
+        this.quarantineUntil = s + 1.2;
+        this.statusLine = 'Tampered frames quarantined · retransmission requested';
+        this.log(
+          `quarantine: tampered frames dropped · retransmission requested · key epoch unchanged`,
+          'warn',
+        );
+        break;
       case 'jam':
         this.route = 'MAT';
         this.handoverAt = s;
@@ -812,7 +1105,7 @@ export class Engine {
         row.verdict = 'QUARANTINED';
       }
     }
-    if (run.kind === 'hijack' || run.kind === 'spoof') {
+    if (run.kind === 'hijack' || run.kind === 'spoof' || run.kind === 'tamper') {
       this.say(
         { text: 'Frames held at the provenance gate', sub: 'the pipeline never fails silently' },
         'ledger',
@@ -833,6 +1126,10 @@ export class Engine {
 
     if (!run.ended && s >= attack.tResponse) {
       run.ended = true;
+      if (run.firstBlockMs !== null) {
+        const st = this.layerStats[run.kind];
+        if (st) st.firstBlockMs.push(run.firstBlockMs);
+      }
       if (run.escalatedAt !== null && run.auto) {
         this.respond(run, s);
       } else if (run.escalatedAt !== null) {

@@ -30,7 +30,13 @@ SAT_ID = "LEO-SAT-542"
 SAT_TOKEN = "0x4FE2"
 ROGUE_NODE_TOKEN = "0x99A2"
 
-ATTACK_MODES = ("normal", "frequency_hijacking", "stealth_spoofing", "noise_jamming")
+ATTACK_MODES = (
+    "normal",
+    "frequency_hijacking",
+    "stealth_spoofing",
+    "noise_jamming",
+    "data_tampering",
+)
 
 #: Packets per horizon-to-horizon pass.
 PASS_PACKETS = 600
@@ -121,6 +127,8 @@ class TelemetryIngester:
             # Broadband Gaussian noise saturates the front end: the genuine carrier collapses.
             freq += rng.gauss(0.0, 0.8)
             rssi = JAMMED_RSSI_DBM + rng.uniform(-0.5, 0.5)
+        # data_tampering leaves the RF alone: the genuine satellite sends the frame, and a relay
+        # in the path alters it after sealing (below).
 
         packet = {
             "sequence": seq,
@@ -135,6 +143,12 @@ class TelemetryIngester:
             "attack_mode": attack_mode,
         }
         packet["mac"] = seal(key, packet)
+        if attack_mode == "data_tampering":
+            # One payload bit flipped in transit, after the satellite sealed the frame.
+            payload = bytearray.fromhex(packet["payload"])
+            payload[rng.randrange(len(payload))] ^= 1 << rng.randrange(8)
+            packet["payload"] = payload.hex()
+        # Digest of the frame as it reached the station.
         packet["sha256_hash"] = hashlib.sha256(frame_bytes(packet)).hexdigest()
         return packet
 

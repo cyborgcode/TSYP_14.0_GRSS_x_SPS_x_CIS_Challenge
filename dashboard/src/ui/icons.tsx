@@ -24,6 +24,19 @@ function Svg({ size = 16, children, ...rest }: IconProps & { children: React.Rea
   );
 }
 
+export const SearchIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M20 20l-4-4" />
+  </Svg>
+);
+
+export const CloseIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6 6l12 12M18 6L6 18" />
+  </Svg>
+);
+
 export const DishIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 10a8 8 0 0 0 10 10" />
@@ -152,8 +165,16 @@ export const MouseIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const TamperIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M7 12h3l2-3 2 6 1.5-3H17" />
+  </Svg>
+);
+
 export const ATTACK_ICONS = {
   hijack: HijackIcon,
   spoof: SpoofIcon,
   jam: JamIcon,
+  tamper: TamperIcon,
 } as const;
