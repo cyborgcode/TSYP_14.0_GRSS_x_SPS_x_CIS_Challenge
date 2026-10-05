@@ -36,9 +36,13 @@ export function Header() {
         <span className="header__subtitle">Earth-observation chain · Track 1</span>
       </div>
       <div className="header__right">
+        <nav className="header__nav" aria-label="Pages">
+          <a href="#noise">Noise mimicry</a>
+          <a href="/noise">Explainer video</a>
+        </nav>
         <div className="header__readout">
           <span className="overline">Downlink</span>
-          <span className="mono">X-band {(CARRIER_HZ / 1e9).toFixed(3)} GHz</span>
+          <span className="mono">X-band {(CARRIER_HZ / 1e6).toFixed(1)} MHz</span>
         </div>
         <div className="header__readout">
           <span className="overline">Frame MAC</span>

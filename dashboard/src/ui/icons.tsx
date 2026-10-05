@@ -151,6 +151,22 @@ export const ShieldIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const OrbitIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(-20 12 12)" />
+    <circle cx="12" cy="12" r="3" />
+    <circle cx="20.5" cy="9" r="1.4" fill="currentColor" />
+  </Svg>
+);
+
+export const ForestIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8 3l4.5 7h-3l3.5 5H3l3.5-5h-3L8 3z" />
+    <path d="M8 15v6M16 8l3 4.5h-2l2.5 3.5H13" />
+    <path d="M16 16v5" />
+  </Svg>
+);
+
 export const CubeIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 2l9 5v10l-9 5-9-5V7l9-5z" />

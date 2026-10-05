@@ -4,7 +4,10 @@
   "installCommand": "npm ci --prefix dashboard",
   "buildCommand": "npm run build --prefix dashboard",
   "outputDirectory": "dashboard/dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "rewrites": [
+    { "source": "/noise", "destination": "/noise.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",

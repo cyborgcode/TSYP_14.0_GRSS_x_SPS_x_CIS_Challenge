@@ -116,6 +116,11 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
 - **Resilience & trust metrics**: authenticated, rejected, held and corrupted-to-analyst
   counts; live `verify_chain()` with a red-team "edit a past block" test; and per-scenario
   detection by layer (trust anchor, detector, dropped, time to first drop).
+- **Hiding in the noise** (section under the dashboard and the `/noise` page): the chosen
+  signal (carrier 8477.8 MHz, ±197.7 kHz Doppler, received at −88.0 to −74.9 dBm, i.e. a
+  12.5–57.1 µV peak across 50 Ω, over a −100 dBm noise floor), three ways an attacker imitates
+  natural noise, an interactive stealth budget, and a narrated explainer video (source and
+  re-render steps in `dashboard/explainer/`).
 - **trust_anchor.py terminal**: live log of SHA-256 block validations from a genesis root hash,
   HMAC-SHA256 frame seals and Ed25519 handshakes, all computed with Web Crypto in the browser.
 - **Detection**: orbital-physics gates, the trust anchor and an Isolation Forest trained on

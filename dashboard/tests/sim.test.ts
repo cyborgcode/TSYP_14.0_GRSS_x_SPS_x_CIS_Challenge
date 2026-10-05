@@ -21,6 +21,14 @@ import {
 } from '../src/sim/geometry';
 import { IsolationForest } from '../src/sim/iforest';
 import { LinkDetector, zeroTrust } from '../src/sim/linkDetector';
+import {
+  NATURAL,
+  SIGNAL,
+  STEALTH,
+  peakMicrovolts,
+  rmsMicrovolts,
+  snrLossDb,
+} from '../src/sim/linkFacts';
 import { mulberry32 } from '../src/sim/noise';
 import { JAMMED_RSSI_DBM, checkGates, sample, type Attack } from '../src/sim/signals';
 import {
@@ -442,6 +450,55 @@ describe('engine scenarios', () => {
     expect(held).toBe(true);
     expect(engine.runs.every((r) => r.escalatedAt !== null && r.respondedAt !== null)).toBe(true);
     expect(engine.corruptedToAnalyst).toBe(0);
+  });
+});
+
+describe('signal facts quoted on the site', () => {
+  it('derives the carrier, Doppler, power and amplitude from the link model', () => {
+    expect(SIGNAL.carrierMHz).toBe(8477.8);
+    expect(SIGNAL.dopplerMaxKHz).toBeCloseTo(197.7, 0);
+    expect(SIGNAL.rxDbm.mask).toBeCloseTo(-88.0, 0);
+    expect(SIGNAL.rxDbm.zenith).toBeCloseTo(-74.9, 0);
+    expect(SIGNAL.amplitudeUv.mask).toBeCloseTo(12.5, 0);
+    expect(SIGNAL.amplitudeUv.zenith).toBeCloseTo(57.1, 0);
+    expect(SIGNAL.noiseUvRms).toBeCloseTo(2.24, 2);
+    expect(peakMicrovolts(-100)).toBeCloseTo(rmsMicrovolts(-100) * Math.SQRT2, 9);
+  });
+
+  it('caps a noise-shaped jammer at 1.8 dB above the floor to stay inside the 4 dB band', () => {
+    expect(STEALTH.maxNoiseAboveFloorDb).toBeCloseTo(1.8, 1);
+    expect(snrLossDb(STEALTH.maxNoiseAboveFloorDb)).toBeCloseTo(STEALTH.maxSnrLossDb, 9);
+    expect(STEALTH.maxNoiseDbm).toBeCloseTo(-98.2, 1);
+  });
+
+  it('keeps natural jitter well inside the physics gates, as quoted', () => {
+    const dop: number[] = [];
+    const pow: number[] = [];
+    const tim: number[] = [];
+    for (let s = 0; s < 69 * 120; s += 0.05) {
+      const p = passAt(s);
+      if (!p.linkActive) continue;
+      const x = sample(s, snrPredDb(p.rangeKm), {
+        attacks: [],
+        falseAlarm: 0,
+        dopplerPredHz: p.dopplerHz,
+      });
+      dop.push(x.dopplerHz);
+      pow.push(x.snrDb - x.snrModelDb);
+      tim.push(x.timingUs!);
+    }
+    const sd = (a: number[]) => {
+      const m = a.reduce((x, y) => x + y, 0) / a.length;
+      return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length);
+    };
+    const peak = (a: number[]) => a.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+    expect(sd(dop)).toBeCloseTo(NATURAL.carrierHz.sigma, 0);
+    expect(peak(dop)).toBeLessThanOrEqual(NATURAL.carrierHz.max + 0.5);
+    expect(sd(pow)).toBeCloseTo(NATURAL.powerDb.sigma, 1);
+    expect(peak(pow)).toBeLessThanOrEqual(NATURAL.powerDb.max + 0.02);
+    expect(peak(tim)).toBeLessThanOrEqual(NATURAL.timingUs.max + 0.1);
+    expect(NATURAL.carrierHz.gate).toBeGreaterThan(3 * NATURAL.carrierHz.max);
+    expect(NATURAL.powerDb.gate).toBeGreaterThan(4 * NATURAL.powerDb.max);
   });
 });
 

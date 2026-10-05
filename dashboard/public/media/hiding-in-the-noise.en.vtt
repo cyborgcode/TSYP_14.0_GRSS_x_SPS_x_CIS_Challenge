@@ -1,0 +1,76 @@
+WEBVTT
+
+00:00:02.200 --> 00:00:05.848
+Every satellite signal reaches the ground buried in natural noise.
+
+00:00:06.268 --> 00:00:10.236
+A careful attacker can shape an attack to look exactly like that noise.
+
+00:00:10.656 --> 00:00:14.976
+This is how it works, and how our ground-link testbed still catches it.
+
+00:00:16.776 --> 00:00:23.464
+Our satellite flies at 542.8 km and sends a fixed X-band carrier at 8477.8 MHz.
+
+00:00:23.884 --> 00:00:31.724
+The frequency is not random: it moves only with the Doppler shift, up to ±198 kHz, which the orbit predicts.
+
+00:00:32.144 --> 00:00:40.480
+At Zaghouan the carrier arrives between −88 and −75 dBm: an amplitude of 12.5 to 57 µV.
+
+00:00:40.900 --> 00:00:47.604
+The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 12 to 25 dB over the pass.
+
+00:00:49.504 --> 00:00:51.488
+Natural noise has a signature.
+
+00:00:51.908 --> 00:00:55.828
+Thermal noise is Gaussian and white: a flat floor across the band.
+
+00:00:56.248 --> 00:01:02.264
+Against the orbit model, the carrier wanders by less than 20 Hz and the power by less than 1 dB.
+
+00:01:02.684 --> 00:01:05.580
+That narrow envelope is where an attacker has to hide.
+
+00:01:07.480 --> 00:01:15.000
+One: noise-shaped jamming. Gaussian noise, raised slowly like a rain fade, so the floor creeps up instead of jumping.
+
+00:01:15.420 --> 00:01:23.436
+Two: fade-mimicking spoofing. A rogue node matches the Doppler and adds fake fading, so its power sits only 3 dB low.
+
+00:01:23.856 --> 00:01:31.248
+Three: bit flips disguised as channel errors. Chosen bits are flipped and the checksum recomputed, so the frame just looks noisy.
+
+00:01:33.248 --> 00:01:36.736
+Our idea is to make every imitation either harmless or visible.
+
+00:01:37.156 --> 00:01:48.356
+Layer one is physics. To stay hidden, the injected noise can be at most 1.8 dB above the thermal noise: that costs at most 4 dB of signal-to-noise ratio, and every frame still verifies.
+
+00:01:48.776 --> 00:01:51.256
+Push harder, and the physics gate fires.
+
+00:01:53.056 --> 00:01:56.592
+Layer two is an Isolation Forest trained only on clean passes.
+
+00:01:57.012 --> 00:02:03.924
+It scores each reading together with how fast it changed, so a disguise must copy the rhythm of nature, not just its level.
+
+00:02:05.724 --> 00:02:12.988
+Layer three is cryptography, which noise cannot imitate: every frame carries an HMAC-SHA256 tag made with a secret key.
+
+00:02:13.408 --> 00:02:19.616
+Change one bit, by accident or on purpose, and the tag breaks: the frame is dropped and requested again.
+
+00:02:20.036 --> 00:02:26.436
+One failure looks like weather. A burst of failures trips two of our three detectors, and the link is quarantined.
+
+00:02:28.236 --> 00:02:33.996
+In our tests, every attack packet was denied, and no corrupted frame reached the analyst.
+
+00:02:34.416 --> 00:02:37.248
+About one percent of genuine packets were held back.
+
+00:02:37.668 --> 00:02:39.732
+Try it live at tsyp-pi.vercel.app.

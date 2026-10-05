@@ -1,11 +1,17 @@
+import { fileURLToPath } from 'node:url';
+
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+
+const page = (name: string) => fileURLToPath(new URL(name, import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
   build: {
     // three.js + post-processing live in a lazily loaded chunk behind the dashboard.
     chunkSizeWarningLimit: 1300,
+    // The dashboard, and the explainer video page served at /noise.
+    rollupOptions: { input: { main: page('index.html'), noise: page('noise.html') } },
   },
   server: {
     port: 5173,

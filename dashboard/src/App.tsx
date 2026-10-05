@@ -6,6 +6,7 @@ import { Header } from './ui/Header';
 import { DishIcon } from './ui/icons';
 import { KpiTiles } from './ui/KpiTiles';
 import { LedgerPanel } from './ui/Ledger';
+import { NoiseSection } from './ui/NoiseSection';
 import { PacketDrawer } from './ui/PacketDrawer';
 import { ResiliencePanel } from './ui/Resilience';
 import { TelemetryPanel } from './ui/Telemetry';
@@ -64,6 +65,7 @@ function Dashboard() {
           </div>
         </div>
       </main>
+      <NoiseSection />
       <PacketDrawer />
       <footer className="footer">
         <p>
