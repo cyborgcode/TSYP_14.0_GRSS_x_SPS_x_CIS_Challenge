@@ -67,15 +67,16 @@ fusion suppresses.
 
 ## 6. Hiding in the noise
 
-Scroll below the dashboard, or use **Noise mimicry** in the header. The section gives the chosen
-signal precisely: a fixed carrier at 8477.8 MHz moved only by Doppler (±197.7 kHz at the 2°
+The top bar links the dashboard to four short pages, read in order with **Next** at the bottom of
+each. **Signal** (`/signal`) gives the chosen signal precisely: a fixed carrier at 8477.8 MHz moved only by Doppler (±197.7 kHz at the 2°
 elevation mask), received at −88.0 dBm at the mask and −74.9 dBm overhead, a carrier amplitude of
 12.5 to 57.1 µV peak across the 50 Ω input, over a −100 dBm noise floor (SNR 12.0 to 25.1 dB).
-It then shows three ways an attacker imitates natural noise (noise-shaped jamming, fade-mimicking
-spoofing, bit flips disguised as bit errors) and why each is either harmless or visible: a jammer
-can add at most 1.8 dB over the thermal noise before the physics gate fires, which costs at most
-4 dB of SNR. **Run a below-the-gate jam** shows that case live. **Explainer video** opens `/noise`,
-a 2:43 narrated video with chapters, captions and a transcript.
+**Noise attacks** (`/attacks`) shows three ways an attacker imitates natural noise (noise-shaped
+jamming, fade-mimicking spoofing, bit flips disguised as bit errors). **Protection**
+(`/protection`) shows why each is either harmless or visible: a jammer can add at most 1.8 dB over
+the thermal noise before the physics gate fires, which costs at most 4 dB of SNR. Its **Run a
+below-the-gate jam** button opens the dashboard and starts that case live. **Explainer video**
+(`/noise`) is a 2:43 narrated video with chapters, captions and a transcript.
 
 The browser ports produce the same frame text, HMAC seal and block hashes as the Python modules
 in `testbed/`; both test suites check the same golden vectors.

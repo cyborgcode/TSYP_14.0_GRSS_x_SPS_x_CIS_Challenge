@@ -10,8 +10,8 @@ export default defineConfig({
   build: {
     // three.js + post-processing live in a lazily loaded chunk behind the dashboard.
     chunkSizeWarningLimit: 1300,
-    // The dashboard, and the explainer video page served at /noise.
-    rollupOptions: { input: { main: page('index.html'), noise: page('noise.html') } },
+    // The dashboard, and pages.html behind /signal, /attacks, /protection and /noise.
+    rollupOptions: { input: { main: page('index.html'), pages: page('pages.html') } },
   },
   server: {
     port: 5173,

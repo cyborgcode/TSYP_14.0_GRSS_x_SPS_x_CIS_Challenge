@@ -2758,8 +2758,27 @@ button {
 
 /* ------------------------------------------------------------------ responsive */
 
+@media (max-width: 1840px) {
+  .header__subtitle,
+  .header__divider {
+    display: none;
+  }
+}
+
 @media (max-width: 1500px) {
   .header__readout {
+    display: none;
+  }
+}
+
+@media (max-width: 1360px) {
+  .mode-chip {
+    display: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .clock {
     display: none;
   }
 }
@@ -2800,6 +2819,10 @@ button {
   }
   .header__title {
     font-size: 18px;
+  }
+  .header .site-nav {
+    order: 3;
+    width: 100%;
   }
   .main {
     padding: 12px 16px 20px;

@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
 
 import { EngineProvider, useEngineCtx } from './engineContext';
+import { useBelowGateLink } from './ui/BelowGate';
 import { ControlDeckPanel } from './ui/ControlDeck';
 import { Header } from './ui/Header';
 import { DishIcon } from './ui/icons';
 import { KpiTiles } from './ui/KpiTiles';
 import { LedgerPanel } from './ui/Ledger';
-import { NoiseSection } from './ui/NoiseSection';
 import { PacketDrawer } from './ui/PacketDrawer';
 import { ResiliencePanel } from './ui/Resilience';
 import { TelemetryPanel } from './ui/Telemetry';
@@ -30,6 +30,7 @@ function Loading() {
 
 function Dashboard() {
   const { focus, setFocus } = useEngineCtx();
+  useBelowGateLink();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -65,7 +66,6 @@ function Dashboard() {
           </div>
         </div>
       </main>
-      <NoiseSection />
       <PacketDrawer />
       <footer className="footer">
         <p>

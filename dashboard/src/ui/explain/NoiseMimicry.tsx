@@ -77,67 +77,51 @@ const LAYERS: { name: string; Icon: ComponentType<{ size?: number }>; body: stri
   },
 ];
 
-export function NoiseMimicry() {
+export function Techniques() {
   return (
-    <>
-      <div className="xblock">
-        <div className="xblock__head">
-          <h3 className="xblock__title">How an attacker imitates natural noise</h3>
-          <p className="xblock__lead">
-            Natural noise has a signature: Gaussian and white, slow fades, a carrier that follows
-            the orbit. A careful attacker copies that signature so the attack blends in.
-          </p>
-        </div>
-        <div className="tech">
-          {TECHNIQUES.map(({ name, tone, Icon, imitates, how, gains, givesAway }) => (
-            <article key={name} className={`tech__card tech__card--${tone}`}>
-              <header className="tech__head">
-                <span className="tech__icon">
-                  <Icon size={18} />
-                </span>
-                <div>
-                  <h4 className="tech__name">{name}</h4>
-                  <p className="tech__imitates">imitates {imitates}</p>
-                </div>
-              </header>
-              <dl className="tech__list">
-                <dt>How</dt>
-                <dd>{how}</dd>
-                <dt>What it buys</dt>
-                <dd>{gains}</dd>
-                <dt>What gives it away</dt>
-                <dd>{givesAway}</dd>
-              </dl>
-            </article>
-          ))}
-        </div>
-      </div>
+    <div className="tech">
+      {TECHNIQUES.map(({ name, tone, Icon, imitates, how, gains, givesAway }) => (
+        <article key={name} className={`tech__card tech__card--${tone}`}>
+          <header className="tech__head">
+            <span className="tech__icon">
+              <Icon size={18} />
+            </span>
+            <div>
+              <h2 className="tech__name">{name}</h2>
+              <p className="tech__imitates">imitates {imitates}</p>
+            </div>
+          </header>
+          <dl className="tech__list">
+            <dt>How</dt>
+            <dd>{how}</dd>
+            <dt>What it buys</dt>
+            <dd>{gains}</dd>
+            <dt>What gives it away</dt>
+            <dd>{givesAway}</dd>
+          </dl>
+        </article>
+      ))}
+    </div>
+  );
+}
 
-      <div className="xblock">
-        <div className="xblock__head">
-          <h3 className="xblock__title">Our protection: harmless or visible</h3>
-          <p className="xblock__lead">
-            We do not try to tell every noise from every attack by its look. Each layer makes the
-            imitation either too weak to matter or impossible to hide.
-          </p>
-        </div>
-        <div className="defend">
-          <StealthBudget />
-          <ol className="layers">
-            {LAYERS.map(({ name, Icon, body }, i) => (
-              <li key={name} className="layers__item">
-                <span className="layers__num mono">{i + 1}</span>
-                <div>
-                  <h4 className="layers__name">
-                    <Icon size={15} /> {name}
-                  </h4>
-                  <p className="layers__body">{body}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </div>
-    </>
+export function Protection() {
+  return (
+    <div className="defend">
+      <StealthBudget />
+      <ol className="layers">
+        {LAYERS.map(({ name, Icon, body }, i) => (
+          <li key={name} className="layers__item">
+            <span className="layers__num mono">{i + 1}</span>
+            <div>
+              <h2 className="layers__name">
+                <Icon size={15} /> {name}
+              </h2>
+              <p className="layers__body">{body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }

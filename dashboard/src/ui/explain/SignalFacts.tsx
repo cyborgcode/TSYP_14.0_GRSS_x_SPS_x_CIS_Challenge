@@ -244,56 +244,47 @@ export function FrequencyPlan() {
 
 export function SignalFacts() {
   return (
-    <div className="xblock">
-      <div className="xblock__head">
-        <h3 className="xblock__title">The signal we chose</h3>
-        <p className="xblock__lead">
-          One fixed carrier, a power set by the link budget, and a noise floor the station knows.
-          Natural variation sits far inside the physics gates.
-        </p>
-      </div>
-      <div className="facts">
-        <div className="facts__tables">
-          <table className="facts__table">
-            <caption className="sr-only">Downlink signal parameters</caption>
-            <tbody>
-              {FACTS.map((f) => (
-                <tr key={f.k}>
-                  <th scope="row">{f.k}</th>
-                  <td>
-                    <span className="facts__value">{f.v}</span>
-                    <span className="facts__note">{f.note}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <table className="facts__table facts__table--jitter">
-            <caption className="facts__caption">
-              Natural variation on a clean pass vs the gates
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Measured against the orbit</th>
-                <th scope="col">Natural</th>
-                <th scope="col">Gate</th>
+    <div className="facts">
+      <div className="facts__tables">
+        <table className="facts__table">
+          <caption className="sr-only">Downlink signal parameters</caption>
+          <tbody>
+            {FACTS.map((f) => (
+              <tr key={f.k}>
+                <th scope="row">{f.k}</th>
+                <td>
+                  <span className="facts__value">{f.v}</span>
+                  <span className="facts__note">{f.note}</span>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {JITTER.map((j) => (
-                <tr key={j.k}>
-                  <th scope="row">{j.k}</th>
-                  <td className="mono">{j.natural}</td>
-                  <td className="mono facts__gate">{j.gate}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="facts__figures">
-          <PowerLevels />
-          <FrequencyPlan />
-        </div>
+            ))}
+          </tbody>
+        </table>
+        <table className="facts__table facts__table--jitter">
+          <caption className="facts__caption">
+            Natural variation on a clean pass vs the gates
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Measured against the orbit</th>
+              <th scope="col">Natural</th>
+              <th scope="col">Gate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {JITTER.map((j) => (
+              <tr key={j.k}>
+                <th scope="row">{j.k}</th>
+                <td className="mono">{j.natural}</td>
+                <td className="mono facts__gate">{j.gate}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="facts__figures">
+        <PowerLevels />
+        <FrequencyPlan />
       </div>
     </div>
   );

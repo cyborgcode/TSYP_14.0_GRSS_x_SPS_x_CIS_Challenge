@@ -5,6 +5,7 @@ import type { SystemState } from '../sim/engine';
 import { CARRIER_HZ } from '../sim/geometry';
 import { utcClock } from './format';
 import { DishIcon } from './icons';
+import { SiteNav } from './SiteNav';
 
 const PILL: Record<SystemState, string> = {
   NOMINAL: 'ok',
@@ -35,11 +36,8 @@ export function Header() {
         <span className="header__divider" aria-hidden="true" />
         <span className="header__subtitle">Earth-observation chain · Track 1</span>
       </div>
+      <SiteNav current="/" />
       <div className="header__right">
-        <nav className="header__nav" aria-label="Pages">
-          <a href="#noise">Noise mimicry</a>
-          <a href="/noise">Explainer video</a>
-        </nav>
         <div className="header__readout">
           <span className="overline">Downlink</span>
           <span className="mono">X-band {(CARRIER_HZ / 1e6).toFixed(1)} MHz</span>
