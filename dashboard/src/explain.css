@@ -679,6 +679,18 @@
   font-size: 13px;
   color: var(--text-2);
 }
+.npage__foot p {
+  margin: 4px 0;
+  max-width: 120ch;
+}
+.npage__foot em {
+  color: var(--warn);
+  font-style: normal;
+  font-weight: 600;
+}
+.npage__legal {
+  color: var(--text-3);
+}
 
 @media (max-width: 1000px) {
   .npage__watch,

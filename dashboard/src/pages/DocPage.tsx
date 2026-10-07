@@ -61,8 +61,21 @@ export function DocPage({
       </main>
 
       <footer className="npage__foot">
-        Emulation only: nothing here transmits or receives RF. Figures come from the testbed’s link
-        model and synthetic traffic, to be re-measured on the official reference datasets.
+        <p>
+          Emulation only: nothing here transmits or receives RF. Attacks are software injectors
+          acting on synthetic frames; figures come from the testbed’s link model and synthetic
+          traffic, to be re-measured on the official reference datasets.
+        </p>
+        <p>
+          Frames are sealed and verified for real with Web Crypto (HMAC-SHA256, SHA-256 hash chain
+          from a genesis root, Ed25519 handshakes); the Isolation Forest is trained in the browser
+          on nominal passes. Dashboard values marked <em>sample</em> are placeholders until measured
+          on the official reference dataset.
+        </p>
+        <p className="npage__legal">
+          Fonts: Space Grotesk, Inter, JetBrains Mono (SIL OFL 1.1) · Land outlines: Natural Earth
+          (public domain)
+        </p>
       </footer>
     </>
   );

@@ -2765,13 +2765,13 @@ button {
   }
 }
 
-@media (max-width: 1500px) {
+@media (max-width: 1760px) {
   .header__readout {
     display: none;
   }
 }
 
-@media (max-width: 1360px) {
+@media (max-width: 1480px) {
   .mode-chip {
     display: none;
   }
@@ -2962,6 +2962,10 @@ button {
    3D view, the control deck and the threat matrix. Bottom row: telemetry, and the
    trust_anchor.py terminal across the bottom right. */
 @media (min-width: 1200px) and (min-height: 560px) and (min-aspect-ratio: 3/2) {
+  /* The footer would push the page past one screen; its notes are on the other pages. */
+  .footer {
+    display: none;
+  }
   .header {
     height: 52px;
     padding: 0 18px;
@@ -3215,6 +3219,22 @@ button {
 }
 
 /* Narrower 16:9 screens (up to 1700 px): the left column is ~650–800 px wide. */
+/* Up to 1800 px the telemetry columns are too narrow for a title and a value on one line. */
+@media (min-width: 1200px) and (max-width: 1800px) and (min-height: 560px) and (min-aspect-ratio: 3/2) {
+  .chart__head {
+    flex-direction: column;
+    gap: 0;
+  }
+  .chart__head > div {
+    max-width: 100%;
+  }
+  .chart__title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 @media (min-width: 1200px) and (max-width: 1700px) and (min-height: 560px) and (min-aspect-ratio: 3/2) {
   /* The metrics card header carries the drawer button here. */
   .inspect-button,
@@ -3296,6 +3316,13 @@ button {
 }
 
 @media (min-width: 1200px) and (min-height: 560px) and (max-height: 900px) and (min-aspect-ratio: 3/2) {
+  /* The terminal needs the room; its title bar carries the key epoch instead. */
+  .anchor-line {
+    display: none;
+  }
+  .term__epoch {
+    display: inline;
+  }
   /* The proof line under the buttons says what each scenario shows. */
   .attack__sub {
     display: none;
