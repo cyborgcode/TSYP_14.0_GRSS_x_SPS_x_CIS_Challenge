@@ -23,11 +23,11 @@ const oceanFragment = /* glsl */ `
   varying vec3 vView;
   void main() {
     float day = smoothstep(-0.25, 0.35, dot(vNormal, uSun));
-    vec3 deep = vec3(0.020, 0.043, 0.075);
-    vec3 lit = vec3(0.055, 0.125, 0.200);
+    vec3 deep = vec3(0.010, 0.024, 0.044);
+    vec3 lit = vec3(0.028, 0.068, 0.115);
     vec3 col = mix(deep * 0.55, mix(deep, lit, 0.6), day);
     float rim = pow(clamp(1.0 - dot(vNormal, vView), 0.0, 1.0), 3.0);
-    col += vec3(0.30, 0.79, 0.94) * rim * 0.35;
+    col += vec3(0.30, 0.79, 0.94) * rim * 0.22;
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -56,10 +56,10 @@ const dotFragment = /* glsl */ `
     float d = length(c);
     if (d > 0.5) discard;
     float a = smoothstep(0.5, 0.18, d);
-    vec3 day = vec3(0.81, 0.90, 1.0);
-    vec3 night = vec3(0.30, 0.79, 0.94) * 0.45;
+    vec3 day = vec3(0.60, 0.74, 0.88);
+    vec3 night = vec3(0.30, 0.79, 0.94) * 0.32;
     vec3 col = mix(night, day, vLight);
-    gl_FragColor = vec4(col, a * (0.28 + 0.55 * vLight) * (0.35 + 0.65 * vFacing));
+    gl_FragColor = vec4(col, a * (0.22 + 0.40 * vLight) * (0.35 + 0.65 * vFacing));
   }
 `;
 
@@ -80,9 +80,9 @@ const rayleighFragment = /* glsl */ `
     float terminator = exp(-pow((sun + 0.02) / 0.16, 2.0));
     float cosT = dot(vView, uSun);
     float phase = 0.75 * (1.0 + cosT * cosT);
-    vec3 sky = vec3(0.22, 0.55, 1.0) * phase * day;
+    vec3 sky = vec3(0.16, 0.40, 0.78) * phase * day;
     vec3 dusk = vec3(1.0, 0.45, 0.18) * terminator * 0.9;
-    gl_FragColor = vec4((sky + dusk) * depth, depth * (0.2 + 0.55 * day + 0.4 * terminator));
+    gl_FragColor = vec4((sky + dusk) * depth, depth * (0.14 + 0.38 * day + 0.3 * terminator));
   }
 `;
 
@@ -95,7 +95,7 @@ const limbFragment = /* glsl */ `
     float rim = pow(clamp(1.0 - abs(dot(vNormal, vView)), 0.0, 1.0), 2.4);
     float lit = smoothstep(-0.35, 0.4, dot(vNormal, uSun));
     vec3 col = mix(vec3(0.10, 0.22, 0.45), vec3(0.30, 0.79, 0.94), lit);
-    gl_FragColor = vec4(col, rim * 0.6 * (0.3 + 0.7 * lit));
+    gl_FragColor = vec4(col, rim * 0.46 * (0.3 + 0.7 * lit));
   }
 `;
 
@@ -110,7 +110,7 @@ const mieFragment = /* glsl */ `
     float cosT = dot(-vView, uSun);
     float hg = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * cosT, 1.5);
     float lit = smoothstep(-0.2, 0.5, dot(vNormal, uSun));
-    gl_FragColor = vec4(vec3(0.95, 0.9, 0.82), rim * lit * min(0.5, 0.05 + 0.06 * hg));
+    gl_FragColor = vec4(vec3(0.95, 0.9, 0.82), rim * lit * min(0.36, 0.04 + 0.045 * hg));
   }
 `;
 

@@ -41,21 +41,26 @@ export function Spectrum({ className = 'chart__fill' }: { className?: string }) 
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 1;
-    for (const t of TICKS) {
+    // On a short plot, label every other tick so the labels never overlap.
+    const every = Math.ceil(14 / Math.abs(Y(TICKS[0]) - Y(TICKS[1])));
+    TICKS.forEach((t, i) => {
       ctx.strokeStyle = COLORS.line;
       ctx.beginPath();
       ctx.moveTo(left, Y(t));
       ctx.lineTo(w - right, Y(t));
       ctx.stroke();
+      if (i % every !== 0) return;
       ctx.fillStyle = COLORS.text2;
       ctx.fillText(`${t} dB`, left - 6, Y(t));
-    }
+    });
     const half = SPAN_HZ / 2e6;
     ctx.textBaseline = 'bottom';
     ctx.textAlign = 'left';
     ctx.fillText(`${(state.centreMHz - half).toFixed(1)}`, left, h);
-    ctx.textAlign = 'center';
-    ctx.fillText(`${state.centreMHz.toFixed(1)} MHz`, X(0), h);
+    if (pw > 240) {
+      ctx.textAlign = 'center';
+      ctx.fillText(`${state.centreMHz.toFixed(1)} MHz`, X(0), h);
+    }
     ctx.textAlign = 'right';
     ctx.fillText(`${(state.centreMHz + half).toFixed(1)}`, w - right, h);
 
