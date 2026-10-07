@@ -1,6 +1,14 @@
 import { Environment, Html, Lightformer, OrbitControls, Stars } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing';
+import {
+  Bloom,
+  ChromaticAberration,
+  EffectComposer,
+  Noise,
+  SMAA,
+  Vignette,
+} from '@react-three/postprocessing';
+import { BlendFunction } from 'postprocessing';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
@@ -15,6 +23,7 @@ import { Earth, SUN_DIR } from './Earth';
 import { ATTACKERS, STATIONS, orbitArcPoints, orbitPoint } from './geo';
 import { GroundStation, type StationHandle, type StationTone } from './GroundStation';
 import { Satellite, type SatelliteHandle } from './Satellite';
+import { Sky } from './Sky';
 
 const COLORS = {
   accent: new THREE.Color('#4CC9F0'),
@@ -27,6 +36,8 @@ const COLORS = {
 };
 
 const STATION_ORIGIN = new THREE.Vector3(0, 0, 0);
+/** Lens fringing at the frame edges, high tier only. */
+const CA_OFFSET = new THREE.Vector2(0.0007, 0.0005);
 const FALLBACK = stationPosition(HANDOVER_STATION);
 
 interface SceneProps {
@@ -127,7 +138,7 @@ function Scene(props: SceneProps) {
       >
         <color attach="background" args={['#04070C']} />
         <QualityGovernor tier={tier} onChange={changeTier} />
-        <SceneContent {...props} bloom={q.bloom} samples={q.samples} />
+        <SceneContent {...props} bloom={q.bloom} samples={q.samples} fine={tier === 2} />
       </Canvas>
       {lost && (
         <div className="viewport__loading">
@@ -204,7 +215,8 @@ function SceneContent({
   reduced,
   bloom,
   samples,
-}: SceneProps & { bloom: boolean; samples: number }) {
+  fine,
+}: SceneProps & { bloom: boolean; samples: number; fine: boolean }) {
   const sat = useRef<SatelliteHandle>(null);
   const station = useRef<StationHandle>(null);
   const satLabel = useRef<THREE.Group>(null!);
@@ -327,6 +339,7 @@ function SceneContent({
         />
       </Environment>
 
+      <Sky />
       <Stars
         radius={320}
         depth={90}
@@ -434,6 +447,12 @@ function SceneContent({
             luminanceSmoothing={0.25}
             radius={0.72}
           />
+          {fine ? (
+            <ChromaticAberration offset={CA_OFFSET} radialModulation modulationOffset={0.35} />
+          ) : (
+            <SMAA />
+          )}
+          <Noise premultiply blendFunction={BlendFunction.SOFT_LIGHT} opacity={0.12} />
           <Vignette offset={0.28} darkness={0.55} />
         </EffectComposer>
       )}

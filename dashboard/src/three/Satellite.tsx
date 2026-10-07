@@ -82,17 +82,26 @@ export const Satellite = forwardRef<SatelliteHandle, Props>(function Satellite(
       }),
       silver: new THREE.MeshStandardMaterial({ color: '#c8d0da', metalness: 0.85, roughness: 0.3 }),
       dark: new THREE.MeshStandardMaterial({ color: '#15191f', metalness: 0.4, roughness: 0.6 }),
-      panel: new THREE.MeshStandardMaterial({
+      // Cells under cover glass: a clear coat for the sharp sun reflection and a thin-film
+      // sheen that shifts blue to violet with the viewing angle.
+      panel: new THREE.MeshPhysicalMaterial({
         map: solar,
-        metalness: 0.25,
-        roughness: 0.55,
+        metalness: 0.15,
+        roughness: 0.5,
+        clearcoat: 0.55,
+        clearcoatRoughness: 0.22,
+        iridescence: 0.5,
+        iridescenceIOR: 1.5,
+        iridescenceThicknessRange: [180, 420],
+        envMapIntensity: 0.35,
         emissive: '#06213f',
-        emissiveIntensity: 0.25,
+        emissiveIntensity: 0.2,
       }),
+      // Carbon-fibre substrate on the back, dark enough not to flare under the sun.
       panelBack: new THREE.MeshStandardMaterial({
-        color: '#dfe5ec',
-        metalness: 0.3,
-        roughness: 0.55,
+        color: '#2b3038',
+        metalness: 0.35,
+        roughness: 0.62,
       }),
       white: new THREE.MeshStandardMaterial({ color: '#eef2f6', metalness: 0.2, roughness: 0.5 }),
     };
