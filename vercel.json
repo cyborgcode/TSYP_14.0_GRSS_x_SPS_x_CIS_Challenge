@@ -6,7 +6,7 @@
   "outputDirectory": "dashboard/dist",
   "rewrites": [
     {
-      "source": "/(signal|attacks|protection|noise)/?",
+      "source": "/:page(signal|attacks|protection|noise)",
       "destination": "/pages.html"
     },
     { "source": "/(.*)", "destination": "/index.html" }
