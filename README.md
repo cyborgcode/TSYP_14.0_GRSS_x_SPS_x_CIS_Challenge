@@ -55,12 +55,14 @@ reference datasets must replace the simulator before anything is reported.
 
 ## Digital twin — SGP4 orbit, CCSDS packets, three security layers
 
-`digital_twin/` builds the source-code architecture end to end: 13 modules in three phases.
-An SGP4 orbit and an X-band link budget give the truth at every instant; the satellite frames
-its telemetry as a CCSDS space packet (CRC-16) sealed with SHA-256 and HMAC-SHA256; a red team
-attacks what arrives; and three independent layers judge it. Crypto or physics failing
-rejects the packet, the Isolation Forest alone holds it for review, and every decision goes to
-a hash-chained audit log rooted in the testbed's genesis block.
+`digital_twin/` builds the source-code architecture end to end: 13 modules in three phases
+([its README](digital_twin/README.md)). An SGP4 orbit and an X-band link budget with ITU-R
+P.618 path loss give the truth at every instant; the satellite frames its telemetry as a CCSDS
+space packet (CRC-16) sealed with SHA-256 and HMAC-SHA256; a red team attacks what arrives; and
+three independent layers judge it. Crypto or physics failing rejects the packet, the Isolation
+Forest alone holds it for review, and every decision goes to a hash-chained audit log rooted in
+the testbed's genesis block. Uplink commands are sealed the same way: a tampered or injected
+telecommand is rejected on board.
 
 ```bash
 pip install -e ".[dev,twin]"
@@ -75,14 +77,27 @@ Doppler, RSSI, carrier phase), each divided by its natural noise:
 $$\chi^2=\sum_{i=1}^{4}\left(\frac{x_i^{\text{rx}}-x_i^{\text{SGP4}}}{\sigma_i}\right)^2>\chi^2_{4}\left(1-10^{-4}\right)\left(1+2e^{-\theta/6^\circ}\right)$$
 
 The gate is 23.5 at high elevation and widens up to 3× toward the 2° mask, where the residuals
-spread. One pass per threat vector over Zaghouan, the threat active from 30% to 70% of it:
+spread. The expected RSSI carries the ITU-R P.618-13 attenuation (gases P.676, rain P.838 and
+P.839, clouds P.840, scintillation), with the ITU-R map values at Zaghouan: the median
+atmosphere for the live link, about 1 dB at the mask, and the fade exceeded p % of the year for
+margins (at 10° elevation: 2.2 dB for 99.9 %, 5.4 dB for 99.99 %). A second test, kinematic
+coupling, needs no orbit at all: the range change since the last trusted measurement must equal
+the integrated Doppler,
 
-| Threat vector | Stopped | Crypto | Physics | ML | Clean ticks held |
-| --- | --- | --- | --- | --- | --- |
-| None | — | 0% | 0% | 0% | 2% |
-| Delay spoofing (meaconing, +72.5 km) | 100% | 0% | 100% | 100% | 0% |
-| Coherent phase slip (+47°, +18 Hz) | 100% | 0% | 100% | 100% | 0% |
-| CCSDS sequence hijack (+512, SAFE_HOLD) | 100% | 100% | 0% | 0% | 0% |
+$$\Delta\rho=-\frac{c}{f_c}\int_{t_0}^{t_1}f_d\,dt$$
+
+checked against the range and Doppler noise at the same $10^{-4}$ false-alarm rate. It catches
+the step of a meaconer's delay even with a stale element set.
+
+One pass per threat vector over Zaghouan, the threat active from 30% to 70% of it:
+
+| Threat vector | Stopped | Crypto | Physics | Kinematic | ML | Clean ticks held |
+| --- | --- | --- | --- | --- | --- | --- |
+| None | — | 0% | 0% | 0% | 0% | 2% |
+| Delay spoofing (meaconing, +72.5 km) | 100% | 0% | 100% | 12% (onset) | 100% | 0% |
+| Coherent phase slip (+47°, +18 Hz) | 100% | 0% | 100% | 0% | 100% | 0% |
+| CCSDS sequence hijack (+512, SAFE_HOLD) | 100% | 100% | 0% | 0% | 0% | 0% |
+| Uplink command tampering / injection | 100% | 100% | — | — | — | — |
 
 The HMAC key comes from `GROUNDLINK_HMAC_KEY` (hex) and is random per run when unset; the audit
 log path from `GROUNDLINK_AUDIT_LOG` (default `security_audit.jsonl`). LEO-SAT's element set is
@@ -111,19 +126,19 @@ testbed/           the dashboard's four attacks as Python modules
   validator.py     red-team audit and the measured evaluation report
 digital_twin/      SGP4 digital twin of the ground link, 13 modules
   ephemeris_loader.py           phase 1: TLE (built-in LEO-SAT or CelesTrak)
-  propagation.py                SGP4 state in TEME
-  link_budget.py                range, Doppler, path loss, SNR, RSSI
+  propagation.py                SGP4 with J2-J4 zonal harmonics, state in TEME
+  link_budget.py                range, Doppler, ITU-R P.618 path loss, SNR, RSSI
   visibility_calculator.py      look angles and passes over Zaghouan
   ccsds_framing.py              phase 2: CCSDS space packet with CRC-16
-  attack_injector.py            meaconing, coherent phase slip, sequence hijack
+  attack_injector.py            meaconing, phase slip, sequence hijack, uplink forgery
   crypto_hash_verifier.py       SHA-256 + HMAC-SHA256                  ← data layer
   isolation_forest_detector.py  Isolation Forest on link features      ← statistical layer
-  security_detector.py          chi-square physics gate                ← physical layer
+  security_detector.py          chi-square gate + kinematic coupling   ← physical layer
   audit_logger.py               phase 3: hash-chained JSONL audit log
   physics_validator.py          master orchestrator and red-team report
   api_gateway.py                FastAPI service
   dashboard_ui.py               Streamlit causal-chain inspector
-tests/             102 tests
+tests/             126 tests
 docs/              one document per deliverable, plus roadmap and decisions
 dashboard/         React app — the Phase 2 live-demo surface
 data/              official datasets (gitignored)

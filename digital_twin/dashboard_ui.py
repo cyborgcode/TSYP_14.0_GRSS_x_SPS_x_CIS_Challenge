@@ -6,8 +6,9 @@ Digital twin, phase 3: Streamlit mission control, the causal-chain inspector.
     streamlit run digital_twin/dashboard_ui.py
 
 Pick a threat vector and a moment in the next pass over Zaghouan. The page walks the causal
-chain: what the signal claims, what orbital physics says it must be, the chi-square gap
-between them, and each layer's verdict. A full-pass sweep shows the chi-square against its
+chain: what the signal claims, what orbital physics and the ITU-R P.618 link budget say it
+must be, the chi-square gap between them, whether its range and Doppler agree with each
+other, and each layer's verdict. A full-pass sweep shows the chi-square against its
 adaptive gate across the pass, with the threat active in the middle of it.
 """
 
@@ -31,7 +32,7 @@ from digital_twin.attack_injector import ATTACK_VECTORS
 from digital_twin.audit_logger import AuditLogger
 from digital_twin.physics_validator import MasterTelemetryValidator
 
-st.set_page_config(page_title="TSYP 14 Ground-Link Control", layout="wide")
+st.set_page_config(page_title="TSYP 14 Mission Control", layout="wide")
 
 
 @st.cache_resource
@@ -82,9 +83,10 @@ if run_tick:
 res = st.session_state.get("tick")
 if res and res["link_available"]:
     phys = res["security_result"]
+    kinematic = phys["kinematic_coupling"]
 
     # Causal chain, steps 1 and 2
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Elevation Angle", f"{res['elevation_deg']:.2f}°")
         st.metric("Adaptive Threshold", f"{phys['adaptive_threshold']:.1f}")
@@ -92,6 +94,10 @@ if res and res["link_available"]:
         st.metric("Chi-Square Metric", f"{phys['chi_square_value']:.1f}")
         st.metric("Dominant residual", phys["dominant_residual"])
     with col3:
+        z = f"{kinematic['z_score']:+.1f} sigma" if kinematic["available"] else "no reference"
+        st.metric("Range-Doppler coupling", z)
+        st.metric("Atmospheric loss (ITU-R P.618)", f"{res['atmospheric_loss_db']:.2f} dB")
+    with col4:
         st.metric("Final decision", res["final_decision"])
         st.metric("CCSDS sequence", res["sequence_count"])
 
@@ -125,16 +131,34 @@ if res and res["link_available"]:
             ],
         }
     )
+    if kinematic["available"]:
+        claims.loc[len(claims)] = [
+            f"Range change over {kinematic['interval_s']:.0f} s (km)",
+            kinematic["range_change_km"],
+            kinematic["doppler_range_change_km"],
+            kinematic["z_score"],
+        ]
+        st.caption(
+            "Last row: the range change claimed since the last trusted measurement against "
+            "the change the measured Doppler implies (kinematic coupling, no orbit needed)."
+        )
     st.dataframe(claims.round(3), hide_index=True)
 
     st.markdown("### Three independent layers")
+    chi_square_verdict = "PHYSICS_VIOLATION" if phys["chi_square_breach"] else "PHYSICS_CONSISTENT"
     layers = pd.DataFrame(
         {
-            "Layer": [res["crypto_result"]["layer"], res["ml_result"]["layer"], phys["layer"]],
+            "Layer": [
+                res["crypto_result"]["layer"],
+                res["ml_result"]["layer"],
+                phys["layer"],
+                "Physical Layer (Kinematic Coupling)",
+            ],
             "Verdict": [
                 res["crypto_result"]["verdict"],
                 res["ml_result"]["verdict"],
-                phys["verdict"],
+                chi_square_verdict,
+                kinematic["verdict"],
             ],
         }
     )

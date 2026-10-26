@@ -2,6 +2,7 @@ import json
 import math
 import os
 
+import numpy as np
 import pytest
 
 pytest.importorskip("sgp4")
@@ -10,11 +11,14 @@ from digital_twin.attack_injector import (  # noqa: E402
     ATTACK_VECTORS,
     HIJACK_SEQUENCE_JUMP,
     MEACONING_RANGE_INFLATION_KM,
+    ROGUE_COMMAND,
+    UPLINK_THREATS,
     AerospaceAttackInjector,
 )
 from digital_twin.audit_logger import GENESIS_HASH, AuditLogger  # noqa: E402
 from digital_twin.ccsds_framing import (  # noqa: E402
     SEQUENCE_MODULO,
+    TELECOMMAND,
     CCSDSFrameHandler,
     crc16_ccitt,
 )
@@ -30,14 +34,20 @@ from digital_twin.ephemeris_loader import (  # noqa: E402
     tle_checksum,
 )
 from digital_twin.isolation_forest_detector import MLAnomalyDetector  # noqa: E402
-from digital_twin.link_budget import LinkBudgetCalculator, air_mass  # noqa: E402
+from digital_twin.link_budget import (  # noqa: E402
+    LinkBudgetCalculator,
+    cloud_specific_attenuation,
+    rain_coefficients,
+)
 from digital_twin.physics_validator import MasterTelemetryValidator  # noqa: E402
-from digital_twin.propagation import OrbitPropagator  # noqa: E402
+from digital_twin.propagation import ZONAL_HARMONICS, OrbitPropagator  # noqa: E402
 from digital_twin.security_detector import (  # noqa: E402
     NATURAL_SIGMA,
+    SPEED_OF_LIGHT_KM_S,
     PhysicsSecurityEngine,
     chi_square_quantile,
     chi_square_sf,
+    normal_two_sided_quantile,
 )
 from digital_twin.visibility_calculator import VisibilityCalculator, geodetic_to_ecef  # noqa: E402
 from testbed.trust_anchor import TrustAnchorLedger  # noqa: E402
@@ -45,6 +55,8 @@ from testbed.trust_anchor import TrustAnchorLedger  # noqa: E402
 KEY = os.urandom(32)
 TLE = EphemerisLoader().fetch_latest_tle()
 PAYLOAD = {"satellite_id": "LEO-SAT-542", "mode": "IMAGING", "battery_v": 28.0}
+COMMAND = {"opcode": "SET_MODE", "mode": "IMAGING"}
+LINK = LinkBudgetCalculator()
 
 
 @pytest.fixture(scope="module")
@@ -92,11 +104,71 @@ def test_sgp4_state_matches_the_orbit():
     assert speed == pytest.approx(7.59, abs=0.05)
 
 
+def test_j2_turns_the_orbit_plane_at_the_sun_synchronous_rate():
+    propagator = OrbitPropagator(TLE)
+
+    def node_deg(t):
+        state = propagator.propagate_eci_state(t)
+        hx, hy, _ = np.cross(state["position_eci_km"], state["velocity_eci_km_s"])
+        return math.degrees(math.atan2(hx, -hy))
+
+    drift = (node_deg(TLE["epoch_unix"] + 10 * 86400.0) - node_deg(TLE["epoch_unix"])) % 360.0
+    assert ZONAL_HARMONICS["J2"] == pytest.approx(1.082616e-3)
+    assert drift / 10.0 == pytest.approx(360.0 / 365.2422, abs=0.01)
+
+
 def test_free_space_loss_at_the_mask_range():
     # FSPL = 20 log10(4 pi d f / c) at 2470 km and 8477.8 MHz.
-    assert LinkBudgetCalculator().free_space_loss_db(2470.0) == pytest.approx(178.86, abs=0.01)
-    assert air_mass(90.0) == pytest.approx(1.0, abs=1e-3)
-    assert air_mass(2.0) > 15.0
+    assert LINK.free_space_loss_db(2470.0) == pytest.approx(178.86, abs=0.01)
+
+
+def test_rain_coefficients_match_the_p838_table():
+    # ITU-R P.838-3 at 10 GHz: k_H 0.01217, alpha_H 1.2571, k_V 0.01129, alpha_V 1.2156.
+    assert rain_coefficients(10.0, 0.0, 0.0) == pytest.approx((0.01217, 1.2571), rel=1e-3)
+    assert rain_coefficients(10.0, 0.0, 90.0) == pytest.approx((0.01129, 1.2156), rel=1e-3)
+    assert cloud_specific_attenuation(8.4778) == pytest.approx(0.06671, rel=1e-3)
+
+
+@pytest.mark.parametrize(
+    ("contribution", "elevation", "percent", "reference_db"),
+    [
+        # Reference values: the itur implementation of P.618-13, P.840-7 and P.676-10
+        # Annex 2, with the same Zaghouan inputs.
+        ("rain_attenuation_db", 30.0, 0.01, 2.2479),
+        ("rain_attenuation_db", 10.0, 0.1, 1.4316),
+        ("rain_attenuation_db", 5.0, 1.0, 0.5533),
+        ("rain_attenuation_db", 2.0, 0.01, 13.3225),
+        ("cloud_attenuation_db", 30.0, 5.0, 0.04836),
+        ("scintillation_attenuation_db", 10.0, 1.0, 0.76323),
+        ("gaseous_attenuation_db", 90.0, 50.0, 0.0472),
+        ("gaseous_attenuation_db", 20.0, 50.0, 0.1379),
+    ],
+)
+def test_itu_r_attenuation_matches_the_reference(contribution, elevation, percent, reference_db):
+    assert getattr(LINK, contribution)(elevation, percent) == pytest.approx(reference_db, rel=3e-3)
+
+
+def test_low_elevation_gas_follows_the_curved_path():
+    # Full P.676 ray tracing gives 1.116 dB at 2 deg; the plain cosecant law gives 1.35 dB.
+    assert LINK.gaseous_attenuation_db(2.0, 50.0) == pytest.approx(1.116, rel=0.06)
+
+
+def test_the_median_atmosphere_is_clear_sky_and_fades_deepen_with_availability():
+    median = LINK.atmospheric_attenuation(10.0)
+    fades = [LINK.atmospheric_loss_db(10.0, p) for p in (5.0, 1.0, 0.1, 0.01, 0.001)]
+
+    assert median["exceedance_percent"] == 50.0
+    assert median["rain_db"] == median["cloud_db"] == 0.0
+    assert median["total_db"] == pytest.approx(median["gaseous_db"], abs=1e-3)
+    assert fades == sorted(fades)
+    assert LINK.rain_attenuation_db(10.0, 6.0) == 0.0
+
+
+def test_scintillation_grows_toward_the_horizon():
+    sigmas = [LINK.scintillation_sigma_db(el) for el in (90.0, 30.0, 10.0, 5.0)]
+
+    assert sigmas == sorted(sigmas)
+    assert sigmas[-1] / sigmas[0] > 10.0
 
 
 def test_an_approaching_satellite_shifts_the_carrier_up():
@@ -225,6 +297,32 @@ def test_a_hijacked_packet_has_a_valid_crc_but_a_stale_tag():
 def test_an_unknown_vector_is_refused():
     with pytest.raises(ValueError):
         AerospaceAttackInjector().inject_threat({}, {}, "JAMMING")
+    with pytest.raises(ValueError):
+        AerospaceAttackInjector().inject_uplink_threat({}, "JAMMING")
+
+
+def test_a_telecommand_round_trips_as_packet_type_1():
+    packet = CCSDSFrameHandler().build_telecommand_packet(3, COMMAND, 1e9)
+    parsed = CCSDSFrameHandler.parse_telemetry_packet(bytes.fromhex(packet["raw_hex"]))
+
+    assert parsed["ccsds_header"]["packet_type"] == TELECOMMAND
+    assert parsed["crc_valid"]
+    assert parsed["payload"] == COMMAND
+
+
+@pytest.mark.parametrize("threat", ["COMMAND_TAMPERING", "COMMAND_INJECTION"])
+def test_a_tampered_or_injected_command_fails_the_tag(threat):
+    crypto = CryptoIntegrityVerifier(KEY)
+    sealed = crypto.seal_packet(CCSDSFrameHandler().build_telecommand_packet(3, COMMAND, 1e9))
+    received = AerospaceAttackInjector(digest=sha256_digest).inject_uplink_threat(sealed, threat)
+    parsed = CCSDSFrameHandler.parse_telemetry_packet(bytes.fromhex(received["raw_hex"]))
+    verdict = crypto.verify_packet_integrity(received)
+
+    assert parsed["crc_valid"]
+    assert parsed["ccsds_header"]["packet_type"] == TELECOMMAND
+    assert parsed["payload"]["opcode"] == ROGUE_COMMAND["opcode"]
+    assert verdict["hash_valid"]
+    assert not verdict["signature_valid"]
 
 
 def test_chi_square_gate_matches_the_false_alarm_rate():
@@ -251,6 +349,56 @@ def test_physics_names_the_residual_that_breaks_the_gate():
     assert verdict["chi_square_value"] == pytest.approx(100.0)
     assert verdict["dominant_residual"] == "doppler_shift_hz"
     assert verdict["verdict"] == "PHYSICS_VIOLATION"
+
+
+def closing_pair(range_rate_km_s: float = -5.0, dt: float = 10.0) -> tuple[dict, dict]:
+    """Two noiseless measurements, `dt` apart, of a satellite closing at a steady rate."""
+    doppler = -range_rate_km_s / SPEED_OF_LIGHT_KM_S * 8477.8e6
+    first = {**dict.fromkeys(NATURAL_SIGMA, 0.0), "slant_range_km": 1500.0}
+    first["doppler_shift_hz"] = doppler
+    return first, {**first, "slant_range_km": 1500.0 + range_rate_km_s * dt}
+
+
+def test_the_kinematic_gate_matches_the_false_alarm_rate():
+    gate = normal_two_sided_quantile(1e-4)
+
+    assert math.erfc(gate / math.sqrt(2.0)) == pytest.approx(1e-4, rel=1e-6)
+    assert gate == pytest.approx(3.89, abs=0.01)
+
+
+def test_a_range_that_follows_its_doppler_is_consistent():
+    first, second = closing_pair()
+    engine = PhysicsSecurityEngine()
+    opening = engine.evaluate_telemetry_physics(first, first, 45.0, 0.0)
+    verdict = engine.evaluate_telemetry_physics(second, second, 45.0, 10.0)["kinematic_coupling"]
+
+    assert opening["kinematic_coupling"]["verdict"] == "KINEMATIC_NO_REFERENCE"
+    assert verdict["verdict"] == "KINEMATIC_CONSISTENT"
+    assert verdict["residual_km"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_a_range_step_without_its_doppler_breaks_the_coupling():
+    # The orbit prediction agrees with each claim, as a stale element set could; only the
+    # coupling between range and Doppler gives the 5 km step away.
+    first, second = closing_pair()
+    stepped = {**second, "slant_range_km": second["slant_range_km"] + 5.0}
+    engine = PhysicsSecurityEngine()
+    engine.evaluate_telemetry_physics(first, first, 45.0, 0.0)
+    verdict = engine.evaluate_telemetry_physics(stepped, stepped, 45.0, 10.0)
+
+    assert not verdict["chi_square_breach"]
+    assert verdict["kinematic_coupling"]["verdict"] == "KINEMATIC_VIOLATION"
+    assert verdict["verdict"] == "PHYSICS_VIOLATION"
+    assert engine.anchor["timestamp"] == 0.0  # a rejected measurement never anchors
+
+
+def test_a_stale_reference_is_not_used():
+    first, second = closing_pair(dt=60.0)
+    engine = PhysicsSecurityEngine()
+    engine.evaluate_telemetry_physics(first, first, 45.0, 0.0)
+    verdict = engine.evaluate_telemetry_physics(second, second, 45.0, 60.0)
+
+    assert verdict["kinematic_coupling"]["verdict"] == "KINEMATIC_NO_REFERENCE"
 
 
 def test_the_ml_layer_needs_training_first():
@@ -330,9 +478,31 @@ def test_every_attack_tick_in_a_pass_is_stopped(twin, first_pass, vector, layer)
     assert report["clean_rejected"] == 0.0
 
 
+def test_the_meaconing_onset_breaks_the_range_doppler_coupling(twin, first_pass):
+    report = twin.run_pass("DELAY_SPOOFING_MEACONING", start=first_pass["aos_unix"])
+    onset = next(t for t in report["ticks"] if t["red_team_vector"] != "NONE")
+    clean = [t for t in report["ticks"] if t["red_team_vector"] == "NONE" and t["link_available"]]
+
+    assert onset["security_result"]["kinematic_coupling"]["verdict"] == "KINEMATIC_VIOLATION"
+    assert not any(t["security_result"]["kinematic_coupling"]["kinematic_breach"] for t in clean)
+
+
+@pytest.mark.parametrize(
+    ("threat", "decision"),
+    [("NONE", "EXECUTED"), ("COMMAND_TAMPERING", "REJECTED"), ("COMMAND_INJECTION", "REJECTED")],
+)
+def test_only_genuine_uplink_commands_execute(twin, threat, decision):
+    result = twin.run_uplink_command(COMMAND, threat, timestamp=TLE["epoch_unix"])
+
+    assert result["direction"] == "UPLINK"
+    assert result["final_decision"] == decision
+
+
 def test_the_validator_refuses_an_unknown_vector(twin, first_pass):
     with pytest.raises(ValueError):
         twin.run_simulation_tick(first_pass["tca_unix"], "JAMMING")
+    with pytest.raises(ValueError):
+        twin.run_uplink_command(COMMAND, "JAMMING")
 
 
 def test_every_tick_reaches_an_intact_audit_log(twin):
@@ -373,6 +543,17 @@ def test_api_gateway(twin, first_pass, monkeypatch):
     ).json()
     assert report["attack_stopped"] == 1.0
     assert set(report["ticks"][0]) == {"utc", "elevation_deg", "red_team_vector", "final_decision"}
+
+    assert client.get("/uplink/threats").json() == list(UPLINK_THREATS)
+    uplink = client.post(
+        "/uplink/command", json={"command": COMMAND, "threat": "COMMAND_INJECTION"}
+    )
+    assert uplink.json()["final_decision"] == "REJECTED"
+    assert client.post("/uplink/command", json={"threat": "JAMMING"}).status_code == 400
+
+    fade = client.get("/link/attenuation", params={"elevation_deg": 10.0, "p": 0.01}).json()
+    assert fade["total_db"] == pytest.approx(LINK.atmospheric_loss_db(10.0, 0.01))
+    assert client.get("/link/attenuation", params={"elevation_deg": 95.0}).status_code == 422
     assert client.get("/audit/verify").json()["intact"]
 
 
@@ -384,9 +565,18 @@ def test_dashboard_runs_a_tick(tmp_path, monkeypatch):
     app = AppTest.from_file("../digital_twin/dashboard_ui.py", default_timeout=120).run()
     assert not app.exception
 
+    # A clean tick at culmination, then a meaconed one 15 s later.
+    app.sidebar.button[0].click().run()
+    labels = {metric.label: metric.value for metric in app.metric}
+    assert labels["Range-Doppler coupling"] == "no reference"
+    assert labels["Atmospheric loss (ITU-R P.618)"].endswith(" dB")
+
+    app.sidebar.slider[0].set_value(app.sidebar.slider[0].value + 0.25)
     app.sidebar.selectbox[0].set_value("DELAY_SPOOFING_MEACONING")
     app.sidebar.button[0].click().run()
     assert not app.exception
     labels = {metric.label: metric.value for metric in app.metric}
     assert labels["Final decision"] == "REJECTED"
     assert labels["Dominant residual"] == "slant_range_km"
+    assert labels["Range-Doppler coupling"].endswith("sigma")
+    assert len(app.dataframe[0].value) == 5  # the kinematic row joins the four residuals

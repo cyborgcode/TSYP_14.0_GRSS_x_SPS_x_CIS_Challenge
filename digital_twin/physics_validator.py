@@ -6,9 +6,14 @@ Digital twin, phase 3: the master orchestrator, the ground link end to end, one 
 1. Truth: SGP4 state, station geometry and link budget at this instant.
 2. The satellite frames its telemetry as a CCSDS packet and seals it (SHA-256, HMAC-SHA256).
 3. The receiver measures the link with its natural noise; a threat vector, if any, acts here.
-4. Three independent layers judge what arrived: crypto, Isolation Forest, chi-square physics.
+4. Three independent layers judge what arrived: crypto, Isolation Forest, and the physics
+   engine (chi-square against the orbit, kinematic coupling of range and Doppler).
 5. Either deterministic layer (crypto or physics) rejects the packet; the statistical layer
    alone holds it for review; otherwise it is accepted. Each tick can go to the audit log.
+
+Uplink commands take the reverse path: mission control seals a CCSDS telecommand, a threat
+may tamper with it or inject a forged one, and the spacecraft executes only what passes
+the crypto layer.
 
 The red-team label travels with each result for scoring only; no layer ever reads it.
 
@@ -26,7 +31,7 @@ import numpy as np
 
 from testbed.ingester import SAT_ID, SAT_TOKEN
 
-from .attack_injector import ATTACK_VECTORS, AerospaceAttackInjector
+from .attack_injector import ATTACK_VECTORS, UPLINK_THREATS, AerospaceAttackInjector
 from .audit_logger import AuditLogger
 from .ccsds_framing import CCSDSFrameHandler
 from .crypto_hash_verifier import CryptoIntegrityVerifier, sha256_digest
@@ -66,6 +71,7 @@ class MasterTelemetryValidator:
         self.audit = audit_logger
         self.rng = np.random.default_rng(seed)
         self.sequence = 0
+        self.uplink_sequence = 0
         self._train_statistical_layer(training_passes)
 
     # ------------------------------------------------------------------ physics
@@ -157,7 +163,7 @@ class MasterTelemetryValidator:
         crypto = self.crypto.verify_packet_integrity(rx_packet)
         ml = self.ml_detector.evaluate_packet(rx_link)
         physics = self.physics_engine.evaluate_telemetry_physics(
-            rx_link, true_link, vis["elevation_deg"]
+            rx_link, true_link, vis["elevation_deg"], timestamp
         )
 
         # Step 5: decision.
@@ -185,12 +191,43 @@ class MasterTelemetryValidator:
             claimed_phase_error_deg=rx_link["received_phase_error_deg"],
             expected_phase_error_deg=true_link["received_phase_error_deg"],
             snr_db=rx_link["snr_db"],
+            atmospheric_loss_db=true_link["atmospheric_loss_db"],
             crypto_result=crypto,
             ml_result=ml,
             security_result=physics,
             final_decision=decision,
             reasons=reasons,
         )
+        if self.audit:
+            self.audit.log_telemetry_event(result)
+        return result
+
+    # ------------------------------------------------------------------ uplink
+
+    def run_uplink_command(
+        self, command: dict, threat: str = "NONE", timestamp: float | None = None
+    ) -> dict:
+        """Mission control seals a telecommand; the spacecraft verifies what reaches it."""
+        if threat not in UPLINK_THREATS:
+            raise ValueError(f"unknown uplink threat {threat!r}; expected {UPLINK_THREATS}")
+        timestamp = time.time() if timestamp is None else timestamp
+        packet = self.framer.build_telecommand_packet(self.uplink_sequence, command, timestamp)
+        sealed = self.crypto.seal_packet(packet)
+        self.uplink_sequence += 1
+        received = self.injector.inject_uplink_threat(sealed, threat)
+        crypto = self.crypto.verify_packet_integrity(received)
+        passed = crypto["integrity_passed"]
+        result = {
+            "timestamp": timestamp,
+            "utc": datetime.fromtimestamp(timestamp, UTC).isoformat(timespec="seconds"),
+            "direction": "UPLINK",
+            "red_team_vector": threat,
+            "sequence_count": received["ccsds_header"]["sequence_count"],
+            "command": received["payload"],
+            "crypto_result": crypto,
+            "final_decision": "EXECUTED" if passed else "REJECTED",
+            "reasons": [] if passed else ["crypto: " + crypto["verdict"]],
+        }
         if self.audit:
             self.audit.log_telemetry_event(result)
         return result
@@ -232,6 +269,10 @@ def summarise(ticks: list[dict]) -> dict:
         "physics_flagged": share(
             attacked, lambda r: r["security_result"]["physical_breach_detected"]
         ),
+        "kinematic_flagged": share(
+            attacked,
+            lambda r: r["security_result"]["kinematic_coupling"]["kinematic_breach"],
+        ),
         "ml_flagged": share(attacked, lambda r: r["ml_result"]["threat_detected"]),
         "clean_ticks": len(clean),
         "clean_rejected": share(clean, lambda r: r["final_decision"] == "REJECTED"),
@@ -244,8 +285,8 @@ def main() -> None:
     start = validator.tle["epoch_unix"]
     tle = validator.tle
     print(f"Digital twin: {tle['sat_name']} over Zaghouan, TLE epoch {tle['epoch_utc']}")
-    columns = "stopped  crypto  physics  ml  clean held"
-    print(f"{'threat vector':26} {'pass (UTC)':17} {'max el':>6}  {columns}")
+    columns = "stopped  crypto  physics  kinematic  ml  clean held"
+    print(f"{'downlink threat':26} {'pass (UTC)':17} {'max el':>6}  {columns}")
     for vector in ATTACK_VECTORS:
         report = validator.run_pass(vector, start=start)
         found = report["pass"]
@@ -253,10 +294,23 @@ def main() -> None:
         print(
             f"{vector:26} {aos:17} {found['max_elevation_deg']:5.1f}°"
             f"  {report['attack_stopped']:7.0%}  {report['crypto_flagged']:6.0%}"
-            f"  {report['physics_flagged']:7.0%}  {report['ml_flagged']:3.0%}"
-            f"  {report['clean_held']:10.0%}"
+            f"  {report['physics_flagged']:7.0%}  {report['kinematic_flagged']:9.0%}"
+            f"  {report['ml_flagged']:3.0%}  {report['clean_held']:10.0%}"
         )
         start = found["los_unix"] + 60.0
+
+    print(f"\n{'uplink threat':26} decision")
+    for threat in UPLINK_THREATS:
+        result = validator.run_uplink_command({"opcode": "SET_MODE", "mode": "IMAGING"}, threat)
+        print(f"{threat:26} {result['final_decision']} {' '.join(result['reasons'])}".rstrip())
+
+    link = validator.link_calc
+    median = link.atmospheric_loss_db(10.0)
+    margins = ", ".join(
+        f"{100.0 - p:g} % {link.atmospheric_loss_db(10.0, p) - median:.1f} dB"
+        for p in (1.0, 0.1, 0.01)
+    )
+    print(f"\nITU-R P.618 fade margin over the median atmosphere at 10° elevation: {margins}")
 
 
 if __name__ == "__main__":

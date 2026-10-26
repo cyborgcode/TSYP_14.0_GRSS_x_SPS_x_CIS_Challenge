@@ -3,10 +3,11 @@ crypto_hash_verifier.py
 TSYP 14 Track 1: Secure Ground-Link Testbed
 Digital twin, phase 2: the data layer. A SHA-256 digest and an HMAC-SHA256 tag on every packet.
 
-Both cover the CCSDS headers and the telemetry, so a changed sequence count breaks them as
-surely as a changed reading. The digest detects corruption; only the tag proves origin,
-because it needs the key shared by satellite and station: anyone can recompute a CRC or a
-SHA-256, nobody without the key can produce a valid tag. Comparisons are constant-time.
+Both cover the CCSDS headers and the user data, telemetry down or commands up, so a changed
+sequence count breaks them as surely as a changed reading or a rewritten command. The
+digest detects corruption; only the tag proves origin, because it needs the key shared by
+satellite and station: anyone can recompute a CRC or a SHA-256, nobody without the key can
+produce a valid tag. Comparisons are constant-time.
 The key is never in the source code: pass it in, set GROUNDLINK_HMAC_KEY (hex), or get a
 fresh random 256-bit key for the run.
 """

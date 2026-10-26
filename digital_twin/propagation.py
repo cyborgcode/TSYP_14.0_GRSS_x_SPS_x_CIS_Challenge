@@ -15,10 +15,14 @@ import math
 
 import numpy as np
 from sgp4.api import SGP4_ERRORS, WGS72, Satrec
+from sgp4.earth_gravity import wgs72 as wgs72_gravity
 
 logger = logging.getLogger("SGP4Propagator")
 
 UNIX_EPOCH_JD = 2440587.5
+#: The zonal harmonics SGP4 applies (WGS-72). J2 turns LEO-SAT's orbit plane ~0.98 deg/day
+#: eastward, the sun-synchronous rate; J3 and J4 add the smaller periodic terms.
+ZONAL_HARMONICS = {"J2": wgs72_gravity.j2, "J3": wgs72_gravity.j3, "J4": wgs72_gravity.j4}
 
 
 def unix_to_jd(epoch_timestamp: float) -> tuple[float, float]:
