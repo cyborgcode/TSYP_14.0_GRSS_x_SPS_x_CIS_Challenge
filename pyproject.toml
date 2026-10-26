@@ -7,22 +7,32 @@ dependencies = [
   "numpy>=1.26",
   "scikit-learn>=1.4",
   "cryptography>=42",
+  "sgp4>=2.22",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 higgsfield = ["higgsfield-client>=0.2", "python-dotenv>=1.0"]
+twin = [
+  "fastapi>=0.95",
+  "uvicorn>=0.20",
+  "httpx>=0.24",
+  "streamlit>=1.28",
+  "pandas>=1.5",
+  "requests>=2.28",
+]
 
 [project.scripts]
 groundlink = "groundlink.cli:main"
 testbed-validate = "testbed.validator:main"
+twin-validate = "digital_twin.physics_validator:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["groundlink*", "testbed*"]
+include = ["groundlink*", "testbed*", "digital_twin*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

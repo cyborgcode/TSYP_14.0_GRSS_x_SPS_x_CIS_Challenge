@@ -1,0 +1,131 @@
+"""
+api_gateway.py
+TSYP 14 Track 1: Secure Ground-Link Testbed
+Digital twin, phase 3: the FastAPI service in front of the master validator.
+
+    uvicorn digital_twin.api_gateway:app
+
+GET  /health            liveness and the satellite in use
+GET  /attack-vectors    the red-team vectors the twin can inject
+GET  /pass/next         next pass over Zaghouan (rise, culmination, set, max elevation)
+POST /simulate/tick     one tick of the ground link, all three layers and the decision
+POST /simulate/pass     a whole pass with a threat window, per-layer detection rates
+GET  /audit/verify      re-walks the hash-chained audit log from its genesis root
+
+The audit log path comes from GROUNDLINK_AUDIT_LOG (default security_audit.jsonl).
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import threading
+from functools import lru_cache
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+from .attack_injector import ATTACK_VECTORS
+from .audit_logger import AuditLogger
+from .physics_validator import MasterTelemetryValidator
+
+logger = logging.getLogger("APIGateway")
+
+AUDIT_ENV = "GROUNDLINK_AUDIT_LOG"
+
+app = FastAPI(
+    title="TSYP 14 Secure Ground-Link Digital Twin",
+    version="1.0.0",
+    description="Three-layer verification of a LEO X-band downlink: crypto, ML, physics.",
+)
+_lock = threading.Lock()
+
+
+@lru_cache(maxsize=1)
+def get_validator() -> MasterTelemetryValidator:
+    return MasterTelemetryValidator(
+        audit_logger=AuditLogger(os.environ.get(AUDIT_ENV, "security_audit.jsonl"))
+    )
+
+
+class TickRequest(BaseModel):
+    attack_vector: str = "NONE"
+    timestamp: float | None = Field(
+        None, description="Unix time; default is the culmination of the next pass"
+    )
+
+
+class PassRequest(BaseModel):
+    attack_vector: str = "NONE"
+    start: float | None = Field(None, description="Unix time to search from; default now")
+    step_s: float = Field(10.0, gt=0.0, le=120.0)
+    attack_start: float = Field(0.3, ge=0.0, le=1.0, description="Pass fraction")
+    attack_end: float = Field(0.7, ge=0.0, le=1.0, description="Pass fraction")
+
+
+def _check_vector(vector: str) -> None:
+    if vector not in ATTACK_VECTORS:
+        raise HTTPException(
+            400, f"unknown attack vector {vector!r}; expected one of {ATTACK_VECTORS}"
+        )
+
+
+@app.get("/health")
+def health() -> dict:
+    validator = get_validator()
+    return {
+        "status": "ok",
+        "satellite": validator.tle["sat_name"],
+        "tle_epoch": validator.tle["epoch_utc"],
+    }
+
+
+@app.get("/attack-vectors")
+def attack_vectors() -> list[str]:
+    return list(ATTACK_VECTORS)
+
+
+@app.get("/pass/next")
+def next_pass(start: float | None = None) -> dict:
+    with _lock:
+        return get_validator().next_pass(start)
+
+
+@app.post("/simulate/tick")
+def simulate_tick(request: TickRequest) -> dict:
+    _check_vector(request.attack_vector)
+    with _lock:
+        validator = get_validator()
+        timestamp = request.timestamp
+        if timestamp is None:
+            timestamp = validator.next_pass()["tca_unix"]
+        return validator.run_simulation_tick(timestamp, request.attack_vector)
+
+
+@app.post("/simulate/pass")
+def simulate_pass(request: PassRequest) -> dict:
+    _check_vector(request.attack_vector)
+    if request.attack_end < request.attack_start:
+        raise HTTPException(400, "attack_end must not precede attack_start")
+    with _lock:
+        report = get_validator().run_pass(
+            request.attack_vector,
+            start=request.start,
+            step_s=request.step_s,
+            attack_window=(request.attack_start, request.attack_end),
+        )
+    report["ticks"] = [
+        {
+            key: tick.get(key)
+            for key in ("utc", "elevation_deg", "red_team_vector", "final_decision")
+        }
+        for tick in report["ticks"]
+    ]
+    return report
+
+
+@app.get("/audit/verify")
+def audit_verify() -> dict:
+    with _lock:
+        ok, message = get_validator().audit.verify_log()
+    return {"intact": ok, "message": message}

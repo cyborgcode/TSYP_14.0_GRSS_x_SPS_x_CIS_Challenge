@@ -23,19 +23,22 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,twin]"
 
       - name: Lint
-        run: ruff check groundlink testbed tests
+        run: ruff check groundlink testbed digital_twin tests
 
       - name: Format check
-        run: ruff format --check groundlink testbed tests
+        run: ruff format --check groundlink testbed digital_twin tests
 
       - name: Test
         run: python -m pytest
 
       - name: Standard scenario
         run: python -m groundlink.cli
+
+      - name: Digital twin red-team report
+        run: python -m digital_twin.physics_validator
 
   dashboard:
     name: Dashboard

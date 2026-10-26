@@ -18,6 +18,7 @@ Thumbs.db
 logs/
 npm-debug.log*
 yarn-error.log*
+security_audit.jsonl
 
 # Dependencies
 node_modules/
