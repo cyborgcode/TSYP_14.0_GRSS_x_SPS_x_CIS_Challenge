@@ -30,6 +30,7 @@ import streamlit as st
 from digital_twin.api_gateway import AUDIT_ENV
 from digital_twin.attack_injector import ATTACK_VECTORS
 from digital_twin.audit_logger import AuditLogger
+from digital_twin.ephemeris_loader import describe
 from digital_twin.physics_validator import MasterTelemetryValidator
 
 st.set_page_config(page_title="TSYP 14 Mission Control", layout="wide")
@@ -69,9 +70,10 @@ minutes = st.sidebar.slider(
     0.25,
 )
 st.sidebar.caption(
-    f"{validator.tle['sat_name']} over Zaghouan: rises {utc(pass_info['aos_unix'])}, "
+    f"Next pass over Zaghouan: rises {utc(pass_info['aos_unix'])}, "
     f"{duration_min:.1f} min, max elevation {pass_info['max_elevation_deg']:.1f} deg."
 )
+st.sidebar.caption(f"Orbit: {describe(validator.tle)}.")
 run_tick = st.sidebar.button("Run Simulation Pass")
 run_sweep = st.sidebar.button("Sweep the whole pass")
 

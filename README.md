@@ -89,7 +89,8 @@ $$\Delta\rho=-\frac{c}{f_c}\int_{t_0}^{t_1}f_d\,dt$$
 checked against the range and Doppler noise at the same $10^{-4}$ false-alarm rate. It catches
 the step of a meaconer's delay even with a stale element set.
 
-One pass per threat vector over Zaghouan, the threat active from 30% to 70% of it:
+One pass per threat vector over Zaghouan on the fixed LEO-SAT orbit (`GROUNDLINK_OFFLINE=1`), the
+threat active from 30% to 70% of it:
 
 | Threat vector | Stopped | Crypto | Physics | Kinematic | ML | Clean ticks held |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -99,10 +100,23 @@ One pass per threat vector over Zaghouan, the threat active from 30% to 70% of i
 | CCSDS sequence hijack (+512, SAFE_HOLD) | 100% | 100% | 0% | 0% | 0% | 0% |
 | Uplink command tampering / injection | 100% | 100% | — | — | — | — |
 
-The HMAC key comes from `GROUNDLINK_HMAC_KEY` (hex) and is random per run when unset; the audit
-log path from `GROUNDLINK_AUDIT_LOG` (default `security_audit.jsonl`). LEO-SAT's element set is
-built in, so every run gives the same passes offline; `EphemerisLoader().fetch_latest_tle(online=True)`
-loads a live CelesTrak set instead. **Synthetic traffic**, like the standard scenario above.
+**Live orbit.** The twin flies a real satellite on its current orbit: by default TerraSAR-X
+(NORAD 31698), an X-band radar satellite on a ~510 km sun-synchronous orbit, with its latest
+element set downloaded from CelesTrak's public GP service at start-up. A download is reused for
+two hours, as CelesTrak asks; when the network or CelesTrak fails, the twin flies the last good
+download, and if it was never online, the built-in LEO-SAT reference orbit. `/health`, `/orbit`,
+the dashboard and the red-team report all say which orbit is flown and where it came from. CI
+checks the live download on every push:
+
+```bash
+python -m digital_twin.ephemeris_loader --require-live
+```
+
+`GROUNDLINK_NORAD_ID` picks another satellite, `GROUNDLINK_OFFLINE=1` stays off the network
+(the test suite runs this way, on the fixed LEO-SAT orbit), `GROUNDLINK_TLE_CACHE` moves the
+cache. The HMAC key comes from `GROUNDLINK_HMAC_KEY` (hex) and is random per run when unset; the
+audit log path from `GROUNDLINK_AUDIT_LOG` (default `security_audit.jsonl`). The orbit is live;
+the RF measurements and attacks are **synthetic**, like the standard scenario above.
 
 ## Repository layout
 
@@ -125,7 +139,7 @@ testbed/           the dashboard's four attacks as Python modules
   zero_trust.py    policy engine: registry, token, trust anchor, detector
   validator.py     red-team audit and the measured evaluation report
 digital_twin/      SGP4 digital twin of the ground link, 13 modules
-  ephemeris_loader.py           phase 1: TLE (built-in LEO-SAT or CelesTrak)
+  ephemeris_loader.py           phase 1: live CelesTrak TLE, cached, offline fallback
   propagation.py                SGP4 with J2-J4 zonal harmonics, state in TEME
   link_budget.py                range, Doppler, ITU-R P.618 path loss, SNR, RSSI
   visibility_calculator.py      look angles and passes over Zaghouan

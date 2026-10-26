@@ -1,22 +1,58 @@
 """
 ephemeris_loader.py
 TSYP 14 Track 1: Secure Ground-Link Testbed
-Digital twin, phase 1: two-line element sets (TLE) for the SGP4 propagator.
+Digital twin, phase 1: live two-line element sets (TLE) from CelesTrak, with an offline fallback.
 
-The built-in set describes LEO-SAT, the testbed's 542.8 km sun-synchronous satellite, so the
-twin runs offline and gives the same passes on every run. `fetch_latest_tle(online=True)`
-downloads the current set for any NORAD catalogue number from CelesTrak and falls back to
-the built-in set when the network or the response fails.
+The twin flies a real satellite on its current orbit: by default TerraSAR-X (NORAD 31698),
+an X-band radar satellite on a ~510 km sun-synchronous orbit much like the testbed's
+LEO-SAT. `fetch_latest_tle()` downloads its latest element set from CelesTrak's public GP
+service and keeps the last good download on disk. In order, it flies:
+
+1. a download younger than two hours, reused without touching the network: CelesTrak
+   refreshes its data about every two hours and asks clients not to fetch more often;
+2. a fresh download from CelesTrak;
+3. the last good download, however old, when the network or CelesTrak fails;
+4. the built-in element set of LEO-SAT, the testbed's 542.8 km reference orbit, when the
+   twin has never been online.
+
+Every element set is tagged with its source and age, so the twin always says which orbit
+it flies. GROUNDLINK_NORAD_ID picks another satellite, GROUNDLINK_OFFLINE=1 keeps the twin
+off the network, GROUNDLINK_TLE_CACHE moves the cache directory.
+
+    python -m digital_twin.ephemeris_loader --require-live
 """
 
 from __future__ import annotations
 
+import argparse
+import http.client
+import json
 import logging
+import os
+import time
+import urllib.request
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 logger = logging.getLogger("EphemerisLoader")
 
 CELESTRAK_URL = "https://celestrak.org/NORAD/elements/gp.php?CATNR={norad_id}&FORMAT=TLE"
+USER_AGENT = "groundlink-digital-twin/1.0 (TSYP 14 secure ground-link testbed)"
+#: TerraSAR-X: X-band SAR, ~510 km sun-synchronous orbit, 97.44 deg.
+DEFAULT_NORAD_ID = 31698
+NORAD_ENV = "GROUNDLINK_NORAD_ID"
+OFFLINE_ENV = "GROUNDLINK_OFFLINE"
+CACHE_ENV = "GROUNDLINK_TLE_CACHE"
+#: CelesTrak updates GP data about every two hours; a younger download is reused.
+CACHE_FRESH_S = 2 * 3600.0
+
+#: Where each element set came from.
+SOURCES = {
+    "celestrak": "live from CelesTrak",
+    "cache": "CelesTrak download from the last two hours",
+    "stale-cache": "last good CelesTrak download (offline)",
+    "builtin": "built-in LEO-SAT reference orbit (offline, never downloaded)",
+}
 
 LEO_SAT_NORAD_ID = 99542
 #: LEO-SAT: 15.078 rev/day (542.8 km mean altitude), 97.54 deg sun-synchronous inclination,
@@ -59,7 +95,7 @@ def parse_tle(text: str) -> dict:
     elif len(lines) == 3:
         name, line1, line2 = lines[0].strip(), lines[1], lines[2]
     else:
-        raise ValueError(f"expected 2 or 3 TLE lines, got {len(lines)}")
+        raise ValueError(f"expected 2 or 3 TLE lines, got {len(lines)}: {text.strip()[:60]!r}")
     validate_tle(line1, line2)
     epoch = tle_epoch(line1)
     return {
@@ -72,32 +108,129 @@ def parse_tle(text: str) -> dict:
     }
 
 
+def default_cache_dir() -> Path:
+    if os.environ.get(CACHE_ENV):
+        return Path(os.environ[CACHE_ENV])
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "groundlink"
+
+
+def is_offline() -> bool:
+    return os.environ.get(OFFLINE_ENV, "").strip().lower() in ("1", "true", "yes")
+
+
 class EphemerisLoader:
-    def __init__(self, target_sat_id: int = LEO_SAT_NORAD_ID, timeout_s: float = 5.0):
+    def __init__(
+        self,
+        target_sat_id: int | None = None,
+        timeout_s: float = 10.0,
+        cache_dir: str | Path | None = None,
+    ):
+        if target_sat_id is None:
+            target_sat_id = int(os.environ.get(NORAD_ENV) or DEFAULT_NORAD_ID)
         self.target_sat_id = target_sat_id
         self.timeout_s = timeout_s
         self.celestrak_url = CELESTRAK_URL.format(norad_id=target_sat_id)
+        self.cache_path = Path(cache_dir or default_cache_dir()) / f"tle-{target_sat_id}.json"
 
-    def fetch_latest_tle(self, online: bool = False) -> dict:
-        """The element set for the propagator: CelesTrak when `online`, else LEO-SAT."""
+    def fetch_latest_tle(self, online: bool | None = None) -> dict:
+        """The element set to fly, tagged with its source (see SOURCES) and age.
+
+        `online` defaults to True unless GROUNDLINK_OFFLINE is set.
+        """
+        online = not is_offline() if online is None else online
+        cached = self._read_cache()
         if online:
+            if cached and time.time() - cached["fetched_unix"] < CACHE_FRESH_S:
+                return self._tag(cached["tle"], "cache", cached["fetched_unix"])
             try:
-                tle = self._download()
-                logger.info("Loaded TLE for NORAD %s from CelesTrak", self.target_sat_id)
-                return tle
-            except (ImportError, OSError, ValueError) as exc:
-                logger.warning("CelesTrak fetch failed (%s); using the built-in LEO-SAT set", exc)
-        tle = self.builtin()
-        logger.info("Loaded built-in TLE for %s (NORAD %s)", tle["sat_name"], tle["norad_id"])
-        return tle
+                text = self._download()
+                tle = parse_tle(text)
+                if tle["norad_id"] != self.target_sat_id:
+                    raise ValueError(f"CelesTrak answered with NORAD {tle['norad_id']}")
+            except (OSError, ValueError, http.client.HTTPException) as exc:
+                logger.warning("CelesTrak fetch for NORAD %s failed: %s", self.target_sat_id, exc)
+            else:
+                fetched = time.time()
+                self._write_cache(text, fetched)
+                return self._tag(tle, "celestrak", fetched)
+        if cached:
+            return self._tag(cached["tle"], "stale-cache", cached["fetched_unix"])
+        return self._tag(self.builtin(), "builtin", None)
 
     @staticmethod
     def builtin() -> dict:
         return parse_tle("\n".join(LEO_SAT_TLE))
 
-    def _download(self) -> dict:
-        import requests  # optional dependency, needed only for live element sets
+    def _download(self) -> str:
+        request = urllib.request.Request(self.celestrak_url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
+            return response.read().decode("utf-8", errors="replace")
 
-        response = requests.get(self.celestrak_url, timeout=self.timeout_s)
-        response.raise_for_status()
-        return parse_tle(response.text)
+    def _read_cache(self) -> dict | None:
+        try:
+            record = json.loads(self.cache_path.read_text(encoding="utf-8"))
+            tle = parse_tle(record["text"])
+            if tle["norad_id"] != self.target_sat_id:
+                return None
+            return {"tle": tle, "fetched_unix": float(record["fetched_unix"])}
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def _write_cache(self, text: str, fetched_unix: float) -> None:
+        record = {"norad_id": self.target_sat_id, "fetched_unix": fetched_unix, "text": text}
+        try:
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+            partial = self.cache_path.with_suffix(".tmp")
+            partial.write_text(json.dumps(record), encoding="utf-8")
+            partial.replace(self.cache_path)
+        except OSError as exc:  # a read-only disk only costs the offline fallback
+            logger.warning("Could not cache the element set: %s", exc)
+
+    @staticmethod
+    def _tag(tle: dict, source: str, fetched_unix: float | None) -> dict:
+        fetched = None
+        if fetched_unix is not None:
+            fetched = datetime.fromtimestamp(fetched_unix, UTC).isoformat(timespec="seconds")
+        logger.info("Flying %s (NORAD %s): %s", tle["sat_name"], tle["norad_id"], SOURCES[source])
+        return {
+            **tle,
+            "source": source,
+            "source_detail": SOURCES[source],
+            "fetched_utc": fetched,
+            "epoch_age_days": (time.time() - tle["epoch_unix"]) / 86400.0,
+        }
+
+
+def describe(tle: dict) -> str:
+    """One line on the orbit flown: satellite, where its elements came from, their age."""
+    source = tle.get("source_detail", "element set given by the caller")
+    age_days = (time.time() - tle["epoch_unix"]) / 86400.0
+    return (
+        f"{tle['sat_name']} (NORAD {tle['norad_id']}): {source}, "
+        f"epoch {tle['epoch_utc']} ({age_days:.1f} days old)"
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Load the twin's element set and its source.")
+    parser.add_argument(
+        "--norad", type=int, help=f"NORAD catalogue number (default {DEFAULT_NORAD_ID})"
+    )
+    parser.add_argument(
+        "--require-live",
+        action="store_true",
+        help="exit 1 unless the set came from CelesTrak in the last two hours",
+    )
+    args = parser.parse_args(argv)
+    tle = EphemerisLoader(args.norad).fetch_latest_tle(online=True)
+    print(describe(tle))
+    print(tle["line1"])
+    print(tle["line2"])
+    if args.require_live and tle["source"] not in ("celestrak", "cache"):
+        print("not live: CelesTrak was not reachable")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

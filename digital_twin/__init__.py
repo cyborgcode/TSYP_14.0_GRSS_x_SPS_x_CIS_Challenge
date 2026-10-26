@@ -7,6 +7,7 @@ isolation_forest_detector, security_detector (chi-square and kinematic physics e
 Phase 3, orchestration and mission control: physics_validator, audit_logger,
 api_gateway (FastAPI), dashboard_ui (Streamlit).
 
-The mission is the testbed's: LEO-SAT on a 542.8 km sun-synchronous orbit, an 8477.8 MHz
+The twin flies a real satellite's live orbit from CelesTrak (TerraSAR-X by default), with
+the testbed's LEO-SAT 542.8 km sun-synchronous orbit as the offline fallback, an 8477.8 MHz
 X-band downlink to the Zaghouan ground station, frames sealed with HMAC-SHA256.
 """

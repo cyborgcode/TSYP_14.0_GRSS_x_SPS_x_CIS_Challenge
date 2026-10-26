@@ -35,11 +35,17 @@ from .attack_injector import ATTACK_VECTORS, UPLINK_THREATS, AerospaceAttackInje
 from .audit_logger import AuditLogger
 from .ccsds_framing import CCSDSFrameHandler
 from .crypto_hash_verifier import CryptoIntegrityVerifier, sha256_digest
-from .ephemeris_loader import EphemerisLoader
+from .ephemeris_loader import EphemerisLoader, describe
 from .isolation_forest_detector import MLAnomalyDetector
 from .link_budget import LinkBudgetCalculator
 from .propagation import OrbitPropagator
-from .security_detector import NATURAL_SIGMA, PhysicsSecurityEngine, elevation_spread_factor
+from .security_detector import (
+    EARTH_SURFACE_SPEED_KM_S,
+    NATURAL_SIGMA,
+    PhysicsSecurityEngine,
+    elevation_spread_factor,
+    range_jerk_bound,
+)
 from .visibility_calculator import VisibilityCalculator
 
 logger = logging.getLogger("MasterOrchestrator")
@@ -58,6 +64,8 @@ class MasterTelemetryValidator:
         crypto: CryptoIntegrityVerifier | None = None,
         training_passes: int = 8,
     ):
+        # The live CelesTrak element set unless one is given; see EphemerisLoader for the
+        # offline fallbacks. The tag says which orbit the twin flies.
         self.loader = EphemerisLoader()
         self.tle = tle or self.loader.fetch_latest_tle()
         self.propagator = OrbitPropagator(self.tle)
@@ -67,7 +75,13 @@ class MasterTelemetryValidator:
         self.injector = AerospaceAttackInjector(self.framer, digest=sha256_digest)
         self.crypto = crypto or CryptoIntegrityVerifier()
         self.ml_detector = MLAnomalyDetector()
-        self.physics_engine = PhysicsSecurityEngine()
+        # The kinematic test's integration-error bound follows the orbit actually flown.
+        self.physics_engine = PhysicsSecurityEngine(
+            range_jerk_bound_km_s3=range_jerk_bound(
+                self.propagator.perigee_altitude_km - self.vis_calc.gs_alt_km,
+                self.propagator.mean_orbital_speed_km_s + EARTH_SURFACE_SPEED_KM_S,
+            )
+        )
         self.audit = audit_logger
         self.rng = np.random.default_rng(seed)
         self.sequence = 0
@@ -100,12 +114,17 @@ class MasterTelemetryValidator:
         measured["light_time_us"] = measured["slant_range_km"] / 0.299792458
         return measured
 
-    def next_pass(self, start: float | None = None) -> dict:
+    def next_pass(self, start: float | None = None, min_peak_deg: float = 0.0) -> dict:
+        """Next pass over the station whose culmination reaches `min_peak_deg`."""
         start = time.time() if start is None else start
-        found = self.vis_calc.find_next_pass(self.propagator, start)
-        if found is None:
-            raise RuntimeError("no pass over the station in the next 36 hours")
-        return found
+        for _ in range(50):
+            found = self.vis_calc.find_next_pass(self.propagator, start)
+            if found is None:
+                break
+            if found["max_elevation_deg"] >= min_peak_deg:
+                return found
+            start = found["los_unix"] + 60.0
+        raise RuntimeError(f"no pass above {min_peak_deg} deg over the station")
 
     def _train_statistical_layer(self, passes: int) -> None:
         samples, start = [], self.tle["epoch_unix"]
@@ -240,9 +259,10 @@ class MasterTelemetryValidator:
         start: float | None = None,
         step_s: float = 10.0,
         attack_window: tuple[float, float] = (0.3, 0.7),
+        min_peak_deg: float = 0.0,
     ) -> dict:
         """Ticks across the next pass; the threat acts during `attack_window` (pass fractions)."""
-        found = self.next_pass(start)
+        found = self.next_pass(start, min_peak_deg)
         ticks = []
         for t in np.arange(found["aos_unix"], found["los_unix"], step_s):
             fraction = (t - found["aos_unix"]) / found["duration_s"]
@@ -283,12 +303,11 @@ def summarise(ticks: list[dict]) -> dict:
 def main() -> None:
     validator = MasterTelemetryValidator()
     start = validator.tle["epoch_unix"]
-    tle = validator.tle
-    print(f"Digital twin: {tle['sat_name']} over Zaghouan, TLE epoch {tle['epoch_utc']}")
+    print(f"Digital twin over Zaghouan, orbit: {describe(validator.tle)}")
     columns = "stopped  crypto  physics  kinematic  ml  clean held"
     print(f"{'downlink threat':26} {'pass (UTC)':17} {'max el':>6}  {columns}")
     for vector in ATTACK_VECTORS:
-        report = validator.run_pass(vector, start=start)
+        report = validator.run_pass(vector, start=start, min_peak_deg=10.0)
         found = report["pass"]
         aos = datetime.fromtimestamp(found["aos_unix"], UTC).strftime("%m-%d %H:%M")
         print(

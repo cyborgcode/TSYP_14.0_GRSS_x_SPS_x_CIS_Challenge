@@ -48,10 +48,22 @@ NATURAL_SIGMA = {
 
 #: Longest interval over which the last trusted measurement anchors the kinematic test.
 KINEMATIC_MAX_GAP_S = 30.0
-#: Bound on the range jerk over a pass, 0.859 v^3 / rho_min^2 with v = 7.6 km/s and an
-#: overhead pass at 542.8 km (1.14e-3 km/s^3 measured over 60 passes). The trapezoidal
-#: error of the Doppler integral over dt is at most this times dt^3 / 12.
-RANGE_JERK_BOUND_KM_S3 = 1.3e-3
+#: Speed of the ground at the equator, added to the orbital speed for a safe bound.
+EARTH_SURFACE_SPEED_KM_S = 0.465
+
+
+def range_jerk_bound(min_range_km: float, relative_speed_km_s: float) -> float:
+    """Largest |d^3 range / dt^3| of a pass (km/s^3): 0.859 v^3 / rho_min^2, at u = 1/2.
+
+    For a straight pass at speed v and closest range rho_min, the range jerk peaks at
+    3 v^3 / rho_min^2 * u / (1 + u^2)^(5/2) with u = 1/2. The trapezoidal error of the
+    Doppler integral over dt is at most this times dt^3 / 12.
+    """
+    return 0.859 * relative_speed_km_s**3 / min_range_km**2
+
+
+#: LEO-SAT overhead at 542.8 km; 1.14e-3 km/s^3 was measured over 60 of its passes.
+DEFAULT_RANGE_JERK_BOUND_KM_S3 = range_jerk_bound(542.8, 7.59 + EARTH_SURFACE_SPEED_KM_S)
 
 NO_REFERENCE = {
     "available": False,
@@ -108,6 +120,7 @@ class PhysicsSecurityEngine:
         sigmas: dict | None = None,
         carrier_hz: float = NOMINAL_CARRIER_MHZ * 1e6,
         max_gap_s: float = KINEMATIC_MAX_GAP_S,
+        range_jerk_bound_km_s3: float = DEFAULT_RANGE_JERK_BOUND_KM_S3,
     ):
         self.sigmas = dict(sigmas or NATURAL_SIGMA)
         self.false_alarm_rate = false_alarm_rate
@@ -116,6 +129,7 @@ class PhysicsSecurityEngine:
         self.kinematic_gate_z = normal_two_sided_quantile(false_alarm_rate)
         self.carrier_hz = carrier_hz
         self.max_gap_s = max_gap_s
+        self.range_jerk_bound_km_s3 = range_jerk_bound_km_s3
         # The last measurement the layer found consistent: the kinematic test's reference.
         self.anchor: dict | None = None
 
@@ -146,7 +160,7 @@ class PhysicsSecurityEngine:
                 self.sigma_at("doppler_shift_hz", elevation_deg) ** 2
                 + self.sigma_at("doppler_shift_hz", anchor["elevation_deg"]) ** 2
             )
-            + (RANGE_JERK_BOUND_KM_S3 * dt**3 / 12.0) ** 2
+            + (self.range_jerk_bound_km_s3 * dt**3 / 12.0) ** 2
         )
         z = residual / math.sqrt(variance)
         breach = abs(z) > self.kinematic_gate_z

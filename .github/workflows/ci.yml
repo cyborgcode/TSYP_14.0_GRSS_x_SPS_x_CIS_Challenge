@@ -37,6 +37,12 @@ jobs:
       - name: Standard scenario
         run: python -m groundlink.cli
 
+      # The twin flies TerraSAR-X's live orbit from CelesTrak's public GP service. An
+      # outage there only sends the twin to its offline fallback, so it does not fail CI.
+      - name: Live orbit from CelesTrak
+        continue-on-error: true
+        run: python -m digital_twin.ephemeris_loader --require-live
+
       - name: Digital twin red-team report
         run: python -m digital_twin.physics_validator
 

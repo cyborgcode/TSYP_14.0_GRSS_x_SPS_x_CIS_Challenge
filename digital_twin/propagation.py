@@ -37,6 +37,14 @@ class OrbitPropagator:
         self.tle = tle_data
         self.satellite = Satrec.twoline2rv(tle_data["line1"], tle_data["line2"], WGS72)
 
+    @property
+    def perigee_altitude_km(self) -> float:
+        return self.satellite.altp * self.satellite.radiusearthkm
+
+    @property
+    def mean_orbital_speed_km_s(self) -> float:
+        return math.sqrt(self.satellite.mu / (self.satellite.a * self.satellite.radiusearthkm))
+
     def propagate_eci_state(self, epoch_timestamp: float) -> dict:
         """Satellite state at a Unix time: position (km) and velocity (km/s) in TEME."""
         jd, fraction = unix_to_jd(epoch_timestamp)

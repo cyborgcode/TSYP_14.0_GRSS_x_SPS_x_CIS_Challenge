@@ -5,7 +5,8 @@ Digital twin, phase 3: the FastAPI service in front of the master validator.
 
     uvicorn digital_twin.api_gateway:app
 
-GET  /health             liveness and the satellite in use
+GET  /health             liveness, the satellite flown and where its orbit came from
+GET  /orbit              the element set flown: TLE lines, source (CelesTrak or fallback), age
 GET  /attack-vectors     the red-team vectors the twin can inject into the downlink
 GET  /uplink/threats     the red-team threats against uplink commands
 GET  /pass/next          next pass over Zaghouan (rise, culmination, set, max elevation)
@@ -30,6 +31,7 @@ from pydantic import BaseModel, Field
 
 from .attack_injector import ATTACK_VECTORS, UPLINK_THREATS
 from .audit_logger import AuditLogger
+from .ephemeris_loader import describe
 from .physics_validator import MasterTelemetryValidator
 
 logger = logging.getLogger("APIGateway")
@@ -81,11 +83,20 @@ def _check_vector(vector: str) -> None:
 @app.get("/health")
 def health() -> dict:
     validator = get_validator()
+    tle = validator.tle
     return {
         "status": "ok",
-        "satellite": validator.tle["sat_name"],
-        "tle_epoch": validator.tle["epoch_utc"],
+        "satellite": tle["sat_name"],
+        "norad_id": tle["norad_id"],
+        "orbit_source": tle.get("source", "given"),
+        "tle_epoch": tle["epoch_utc"],
     }
+
+
+@app.get("/orbit")
+def orbit() -> dict:
+    tle = get_validator().tle
+    return {**tle, "summary": describe(tle)}
 
 
 @app.get("/attack-vectors")

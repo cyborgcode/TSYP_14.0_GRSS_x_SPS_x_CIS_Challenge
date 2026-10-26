@@ -1,6 +1,8 @@
+import http.client
 import json
 import math
 import os
+import urllib.error
 
 import numpy as np
 import pytest
@@ -28,11 +30,17 @@ from digital_twin.crypto_hash_verifier import (  # noqa: E402
     sha256_digest,
 )
 from digital_twin.ephemeris_loader import (  # noqa: E402
+    CACHE_ENV,
+    DEFAULT_NORAD_ID,
+    LEO_SAT_NORAD_ID,
     LEO_SAT_TLE,
+    NORAD_ENV,
+    OFFLINE_ENV,
     EphemerisLoader,
     parse_tle,
     tle_checksum,
 )
+from digital_twin.ephemeris_loader import main as orbit_check  # noqa: E402
 from digital_twin.isolation_forest_detector import MLAnomalyDetector  # noqa: E402
 from digital_twin.link_budget import (  # noqa: E402
     LinkBudgetCalculator,
@@ -53,16 +61,40 @@ from digital_twin.visibility_calculator import VisibilityCalculator, geodetic_to
 from testbed.trust_anchor import TrustAnchorLedger  # noqa: E402
 
 KEY = os.urandom(32)
-TLE = EphemerisLoader().fetch_latest_tle()
+TLE = EphemerisLoader.builtin()  # a fixed orbit, so every run sees the same passes
+#: LEO-SAT's element set the way CelesTrak serves one: padded name line, CRLF line ends.
+CELESTRAK_REPLY = "LEO-SAT-542             \r\n" + "\r\n".join(LEO_SAT_TLE[1:]) + "\r\n"
 PAYLOAD = {"satellite_id": "LEO-SAT-542", "mode": "IMAGING", "battery_v": 28.0}
 COMMAND = {"opcode": "SET_MODE", "mode": "IMAGING"}
 LINK = LinkBudgetCalculator()
 
 
+@pytest.fixture(autouse=True)
+def offline(tmp_path, monkeypatch):
+    """No test reaches the network: CelesTrak is served by `celestrak()` where a test needs it."""
+    monkeypatch.setenv(OFFLINE_ENV, "1")
+    monkeypatch.setenv(CACHE_ENV, str(tmp_path / "tle-cache"))
+    monkeypatch.delenv(NORAD_ENV, raising=False)
+
+
+def celestrak(monkeypatch, reply) -> list:
+    """Stands in for CelesTrak: every download returns `reply`, or raises it."""
+    calls = []
+
+    def download(loader):
+        calls.append(loader.celestrak_url)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(EphemerisLoader, "_download", download)
+    return calls
+
+
 @pytest.fixture(scope="module")
 def twin(tmp_path_factory) -> MasterTelemetryValidator:
     audit = AuditLogger(tmp_path_factory.mktemp("audit") / "security_audit.jsonl")
-    return MasterTelemetryValidator(audit_logger=audit)
+    return MasterTelemetryValidator(tle=TLE, audit_logger=audit)
 
 
 @pytest.fixture(scope="module")
@@ -90,8 +122,89 @@ def test_a_corrupted_tle_is_refused():
         parse_tle("\n".join((name, line1, line2[:20] + "9" + line2[21:])))
 
 
-def test_offline_loading_falls_back_to_the_builtin_set():
-    assert EphemerisLoader().fetch_latest_tle(online=False) == EphemerisLoader.builtin()
+def test_the_twin_asks_celestrak_for_a_real_satellite(monkeypatch):
+    assert EphemerisLoader().target_sat_id == DEFAULT_NORAD_ID == 31698  # TerraSAR-X
+    assert EphemerisLoader().celestrak_url == (
+        "https://celestrak.org/NORAD/elements/gp.php?CATNR=31698&FORMAT=TLE"
+    )
+    monkeypatch.setenv(NORAD_ENV, "25544")
+    assert EphemerisLoader().target_sat_id == 25544
+
+
+def test_a_live_download_is_flown_and_reused_for_two_hours(monkeypatch):
+    calls = celestrak(monkeypatch, CELESTRAK_REPLY)
+    loader = EphemerisLoader(LEO_SAT_NORAD_ID)
+    live = loader.fetch_latest_tle(online=True)
+    again = loader.fetch_latest_tle(online=True)
+
+    assert live["source"] == "celestrak"
+    assert live["sat_name"] == "LEO-SAT-542"
+    assert live["line2"] == LEO_SAT_TLE[2]
+    assert live["fetched_utc"] is not None
+    assert loader.cache_path.exists()
+    assert again["source"] == "cache"
+    assert len(calls) == 1  # CelesTrak refreshes every two hours: no second download
+
+
+def test_the_network_is_the_default_and_offline_mode_stays_off_it(monkeypatch):
+    calls = celestrak(monkeypatch, CELESTRAK_REPLY)
+    monkeypatch.delenv(OFFLINE_ENV)
+    assert EphemerisLoader(LEO_SAT_NORAD_ID).fetch_latest_tle()["source"] == "celestrak"
+
+    monkeypatch.setenv(OFFLINE_ENV, "1")
+    assert EphemerisLoader(LEO_SAT_NORAD_ID).fetch_latest_tle()["source"] == "stale-cache"
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        urllib.error.URLError("no route to celestrak.org"),
+        urllib.error.HTTPError("https://celestrak.org", 503, "Service Unavailable", None, None),
+        TimeoutError("timed out"),
+        http.client.IncompleteRead(b"1 99542U"),
+    ],
+)
+def test_offline_the_last_good_download_flies(monkeypatch, failure):
+    celestrak(monkeypatch, CELESTRAK_REPLY)
+    loader = EphemerisLoader(LEO_SAT_NORAD_ID)
+    loader.fetch_latest_tle(online=True)
+    record = json.loads(loader.cache_path.read_text())
+    record["fetched_unix"] -= 3 * 3600.0  # older than CelesTrak's refresh: go back online
+    loader.cache_path.write_text(json.dumps(record))
+    celestrak(monkeypatch, failure)
+    fallback = loader.fetch_latest_tle(online=True)
+
+    assert fallback["source"] == "stale-cache"
+    assert fallback["line1"] == LEO_SAT_TLE[1]
+
+
+@pytest.mark.parametrize("reply", ["No GP data found", CELESTRAK_REPLY])
+def test_a_bad_reply_with_no_cache_flies_the_builtin_orbit(monkeypatch, reply):
+    # TerraSAR-X is asked for; an empty answer or another satellite's elements are refused.
+    celestrak(monkeypatch, reply)
+    tle = EphemerisLoader(DEFAULT_NORAD_ID).fetch_latest_tle(online=True)
+
+    assert tle["source"] == "builtin"
+    assert tle["norad_id"] == LEO_SAT_NORAD_ID
+    assert not EphemerisLoader(DEFAULT_NORAD_ID).cache_path.exists()
+
+
+def test_the_live_check_fails_without_celestrak(monkeypatch, capsys):
+    celestrak(monkeypatch, urllib.error.URLError("blocked"))
+    assert orbit_check(["--require-live"]) == 1
+
+    celestrak(monkeypatch, CELESTRAK_REPLY)
+    assert orbit_check(["--require-live", "--norad", str(LEO_SAT_NORAD_ID)]) == 0
+    assert "live from CelesTrak" in capsys.readouterr().out
+
+
+def test_the_twin_flies_the_live_orbit_by_default(monkeypatch):
+    celestrak(monkeypatch, CELESTRAK_REPLY)
+    monkeypatch.delenv(OFFLINE_ENV)
+    monkeypatch.setenv(NORAD_ENV, str(LEO_SAT_NORAD_ID))
+
+    assert MasterTelemetryValidator(training_passes=2).tle["source"] == "celestrak"
 
 
 def test_sgp4_state_matches_the_orbit():
@@ -359,6 +472,11 @@ def closing_pair(range_rate_km_s: float = -5.0, dt: float = 10.0) -> tuple[dict,
     return first, {**first, "slant_range_km": 1500.0 + range_rate_km_s * dt}
 
 
+def test_the_kinematic_error_bound_follows_the_orbit(twin):
+    # 1.14e-3 km/s^3 is the largest range jerk measured over 60 LEO-SAT passes.
+    assert 1.14e-3 < twin.physics_engine.range_jerk_bound_km_s3 < 2e-3
+
+
 def test_the_kinematic_gate_matches_the_false_alarm_rate():
     gate = normal_two_sided_quantile(1e-4)
 
@@ -524,7 +642,10 @@ def test_api_gateway(twin, first_pass, monkeypatch):
     monkeypatch.setattr(api_gateway, "get_validator", lambda: twin)
     client = TestClient(api_gateway.app)
 
-    assert client.get("/health").json()["satellite"] == "LEO-SAT-542"
+    health = client.get("/health").json()
+    assert health["satellite"] == "LEO-SAT-542"
+    assert health["orbit_source"] == "given"
+    assert client.get("/orbit").json()["line2"] == TLE["line2"]
     assert client.get("/attack-vectors").json() == list(ATTACK_VECTORS)
     found = client.get("/pass/next", params={"start": TLE["epoch_unix"]}).json()
     assert found["tca_unix"] == pytest.approx(first_pass["tca_unix"])
