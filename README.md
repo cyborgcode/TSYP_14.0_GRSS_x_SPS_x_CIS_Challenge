@@ -176,9 +176,16 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
 
 `dashboard/` is the interactive web testbed, deployed on Vercel from `main`:
 
-- **3D ground link**: a 542.8 km sun-synchronous LEO pass over the Zaghouan (Tunisia) ground
-  station in real-time WebGL (ACES Filmic tone mapping, layered atmospheric scattering, gold MLI
-  satellite bus). Click the satellite or the station to fly in and watch the signal live.
+- **Live orbit**: the next real pass of TerraSAR-X (NORAD 31698, ~510 km sun-synchronous) over
+  the Zaghouan (Tunisia) ground station. `api/tle.ts` relays its latest element set from
+  CelesTrak's public GP service, cached two hours at Vercel's edge as CelesTrak asks; the browser
+  propagates it with SGP4 (satellite.js), picks the next pass that culminates at least 10° high
+  and replays it, time-compressed, with its real elevation, range, Doppler and received power.
+  Offline it flies the last element set the browser downloaded, and with none, the reference
+  overhead pass of a 542.8 km orbit. The header, the orbit readout and the footer say which.
+- **3D ground link**: that pass over the station in real-time WebGL (ACES Filmic tone mapping,
+  layered atmospheric scattering, gold MLI satellite bus), the camera turned toward where it
+  culminates. Click the satellite or the station to fly in and watch the signal live.
 - **One continuous signal beam**: its colour and distortion, the Carrier Frequency (MHz) and RSSI
   (dBm) charts (Chart.js), the received spectrum, the security banner and the ledger all change
   together with the scenario.

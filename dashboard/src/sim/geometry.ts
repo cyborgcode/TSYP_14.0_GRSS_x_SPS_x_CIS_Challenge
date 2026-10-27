@@ -1,8 +1,13 @@
 // Pass geometry for one EO satellite over the Zaghouan ground station.
 //
-// Physics uses the real orbit (542.8 km sun-synchronous LEO) at X-band; the 3D scene uses a
-// stylised orbit radius so both bodies stay readable. The two are tied by central angle, so
-// the satellite rises, culminates and sets in the scene exactly when the real pass does.
+// The pass replayed is a pass profile: the real geometry (elevation, range, range rate,
+// Doppler) from horizon to horizon. By default it is the next real pass of a live orbit,
+// propagated with SGP4 from CelesTrak's latest element set (orbit.ts); before that loads, and
+// whenever it cannot, it is the reference pass: an overhead pass of a circular 542.8 km
+// sun-synchronous orbit. The 3D scene uses a stylised orbit radius so both bodies stay
+// readable, with its orbit plane tilted so the scene pass culminates as high as the real one;
+// the two are tied by pass fraction, so the satellite rises, culminates and sets in the scene
+// exactly when the real pass does.
 
 import { clamp } from './noise';
 
@@ -65,7 +70,37 @@ export function snrPredDb(dKm: number): number {
   return cn0 - 10 * Math.log10(LINK.bandwidthHz);
 }
 
-function realFromCentralAngle(phi: number) {
+export interface RealGeometry {
+  rangeKm: number;
+  elevationDeg: number;
+  rangeRateKmS: number;
+  dopplerHz: number;
+}
+
+export interface PassProfile {
+  /** `celestrak`: live element set; `cache`: the last good download; `reference`: built in. */
+  source: 'celestrak' | 'cache' | 'reference';
+  satName: string;
+  noradId: number | null;
+  /** Mean altitude of the orbit, km. */
+  altitudeKm: number;
+  /** Real duration of the pass from horizon to horizon, s. */
+  realPassS: number;
+  maxElevationDeg: number;
+  /** Azimuth of the satellite at culmination and of its motion there, degrees from north. */
+  culminationAzDeg: number;
+  trackAzDeg: number;
+  /** Tilt of the scene orbit plane from the station's zenith. */
+  sceneTiltDeg: number;
+  /** Rise of the real pass, and the element set's epoch and download time (Unix ms). */
+  aosMs: number | null;
+  tleEpochMs: number | null;
+  fetchedMs: number | null;
+  /** Real geometry at fraction u of the pass, from horizon (0) to horizon (1). */
+  at: (u: number) => RealGeometry;
+}
+
+function realFromCentralAngle(phi: number): RealGeometry {
   const r = EARTH_RADIUS_KM;
   const ro = ORBIT_RADIUS_KM;
   const rangeKm = Math.sqrt(r * r + ro * ro - 2 * r * ro * Math.cos(phi));
@@ -79,17 +114,68 @@ function realFromCentralAngle(phi: number) {
   };
 }
 
+/** Overhead pass of the circular 542.8 km orbit: the testbed's reference geometry. */
+export const REFERENCE_PROFILE: PassProfile = {
+  source: 'reference',
+  satName: 'LEO-SAT',
+  noradId: null,
+  altitudeKm: ALTITUDE_KM,
+  realPassS: REAL_PASS_S,
+  maxElevationDeg: 90,
+  culminationAzDeg: 90,
+  trackAzDeg: 180,
+  sceneTiltDeg: 10,
+  aosMs: null,
+  tleEpochMs: null,
+  fetchedMs: null,
+  at: (u) => realFromCentralAngle((clamp(u) * 2 - 1) * HORIZON_ANGLE),
+};
+
+let profile: PassProfile = REFERENCE_PROFILE;
+let sceneHorizon = sceneHorizonAngle(profile.sceneTiltDeg);
+
+/** The pass the testbed replays. */
+export const passProfile = (): PassProfile => profile;
+
+export function setPassProfile(next: PassProfile): void {
+  profile = next;
+  sceneHorizon = sceneHorizonAngle(next.sceneTiltDeg);
+}
+
+/** How much faster than real time the scene plays the pass. */
+export const timeCompression = (): number => profile.realPassS / PASS_S;
+
+/** Scene orbit angle, from culmination, at which the tilted scene orbit meets the horizon. */
+export function sceneHorizonAngle(tiltDeg: number): number {
+  return Math.acos(1 / (SCENE_ORBIT_RADIUS * Math.cos((tiltDeg * Math.PI) / 180)));
+}
+
+/** Scene orbit tilt at which the stylised pass culminates at `maxElevationDeg`. */
+export function sceneTiltFor(maxElevationDeg: number): number {
+  const target = (clamp(maxElevationDeg, 0, 90) * Math.PI) / 180;
+  const elevationAt = (tilt: number) =>
+    Math.atan2(SCENE_ORBIT_RADIUS * Math.cos(tilt) - 1, SCENE_ORBIT_RADIUS * Math.sin(tilt));
+  // Elevation falls from 90° at zero tilt to 0° where the scene orbit grazes the horizon.
+  let lo = 0;
+  let hi = SCENE_HORIZON_ANGLE;
+  for (let i = 0; i < 50; i++) {
+    const mid = (lo + hi) / 2;
+    if (elevationAt(mid) > target) lo = mid;
+    else hi = mid;
+  }
+  return (((lo + hi) / 2) * 180) / Math.PI;
+}
+
 /** Pass state at scene time t (seconds). */
 export function passAt(t: number): PassState {
   const local = ((t % PERIOD_S) + PERIOD_S) % PERIOD_S;
 
   if (local < PASS_S) {
     const u = local / PASS_S;
-    const phi = (u * 2 - 1) * HORIZON_ANGLE;
-    const real = realFromCentralAngle(phi);
+    const real = profile.at(u);
     return {
-      centralAngle: phi,
-      sceneAngle: (phi / HORIZON_ANGLE) * SCENE_HORIZON_ANGLE,
+      centralAngle: (u * 2 - 1) * HORIZON_ANGLE,
+      sceneAngle: (u * 2 - 1) * sceneHorizon,
       ...real,
       inView: true,
       linkActive: real.elevationDeg >= MASK_ELEVATION_DEG,
@@ -99,7 +185,7 @@ export function passAt(t: number): PassState {
 
   // Below the horizon: sweep the rest of the orbit quickly, back to the next rise.
   const u = (local - PASS_S) / HIDDEN_S;
-  const sceneAngle = SCENE_HORIZON_ANGLE + u * (2 * Math.PI - 2 * SCENE_HORIZON_ANGLE);
+  const sceneAngle = sceneHorizon + u * (2 * Math.PI - 2 * sceneHorizon);
   return {
     centralAngle: Math.PI,
     sceneAngle,

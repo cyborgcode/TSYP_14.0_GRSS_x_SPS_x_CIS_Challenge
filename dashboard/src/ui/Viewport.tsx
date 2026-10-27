@@ -2,10 +2,10 @@ import { lazy, Suspense } from 'react';
 
 import { useEngine, useEngineCtx, usePrefersReducedMotion } from '../engineContext';
 import { SATELLITE, STATION_PLACE } from '../sim/copy';
-import { ALTITUDE_KM } from '../sim/geometry';
 import { fmtHz, MINUS } from './format';
 import { FocusOverlay } from './FocusOverlay';
 import { AlertIcon, ArrowIcon, CheckIcon, CubeIcon, MouseIcon } from './icons';
+import { orbitReadout } from './orbitText';
 import { Panel } from './Panel';
 
 const Scene = lazy(() => import('../three/Scene'));
@@ -39,7 +39,7 @@ function Hud() {
     <>
       <div className="hud hud--tl">
         <Readout label="Segment" value="Ground link · Track 1" className="readout--segment" />
-        <Readout label="Orbit" value={`${ALTITUDE_KM} km sun-synchronous LEO`} />
+        <Readout label="Orbit" value={orbitReadout()} />
       </div>
       <div className="hud hud--tr">
         <Readout

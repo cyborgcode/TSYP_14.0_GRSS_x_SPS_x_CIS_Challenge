@@ -37,7 +37,15 @@ import {
   type ChainCheck,
   type Frame,
 } from './trustAnchor';
-import { PERIOD_S, passAt, snrPredDb, timeAfterAos, type PassState } from './geometry';
+import {
+  PERIOD_S,
+  passAt,
+  setPassProfile,
+  snrPredDb,
+  timeAfterAos,
+  type PassState,
+} from './geometry';
+import { loadPassProfile } from './orbit';
 import { clamp, easeInOutCubic, mulberry32, win } from './noise';
 import {
   GATES,
@@ -367,12 +375,15 @@ export class Engine {
   }
 
   static async create(): Promise<Engine> {
-    const [hsm, attackerKey, anchor, signer] = await Promise.all([
+    const [hsm, attackerKey, anchor, signer, profile] = await Promise.all([
       EmulatedHsm.create(),
       importMacKey(crypto.getRandomValues(new Uint8Array(32))),
       TrustAnchorLedger.create(),
       createEd25519(),
+      loadPassProfile(),
     ]);
+    // The live pass is in place before the models train on nominal passes.
+    setPassProfile(profile);
     return new Engine(hsm, attackerKey, new AiModel(), anchor, signer);
   }
 

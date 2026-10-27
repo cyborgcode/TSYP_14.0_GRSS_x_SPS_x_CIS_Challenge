@@ -7,6 +7,7 @@ import { Header } from './ui/Header';
 import { DishIcon } from './ui/icons';
 import { KpiTiles } from './ui/KpiTiles';
 import { LedgerPanel } from './ui/Ledger';
+import { orbitSource } from './ui/orbitText';
 import { PacketDrawer } from './ui/PacketDrawer';
 import { ResiliencePanel } from './ui/Resilience';
 import { TelemetryPanel } from './ui/Telemetry';
@@ -21,7 +22,8 @@ function Loading() {
       </span>
       <h1 className="loading__title">Secure Ground-Link Testbed</h1>
       <p className="loading__text">
-        Training the Isolation Forest on nominal passes · deriving key epochs…
+        Training the Isolation Forest on nominal passes · loading the live orbit from CelesTrak ·
+        deriving key epochs…
       </p>
       <span className="loading__bar" />
     </div>
@@ -70,7 +72,7 @@ function Dashboard() {
       <footer className="footer">
         <p>
           Emulation only: nothing on this page transmits or receives RF. Attacks are software
-          injectors acting on synthetic frames inside the testbed.
+          injectors acting on synthetic frames inside the testbed. {orbitSource()}
         </p>
         <p>
           Frames are sealed and verified for real with Web Crypto (HMAC-SHA256, SHA-256 hash chain

@@ -4,6 +4,7 @@ import { useEngine } from '../engineContext';
 import type { SystemState } from '../sim/engine';
 import { CARRIER_HZ } from '../sim/geometry';
 import { utcClock } from './format';
+import { passChip } from './orbitText';
 import { DishIcon } from './icons';
 import { SiteNav } from './SiteNav';
 
@@ -48,7 +49,7 @@ export function Header() {
         </div>
         <span className="mode-chip">
           <span className="mode-chip__dot" />
-          {engine.demo.active ? 'Demo · four scenarios' : 'Emulated pass · standard scenario'}
+          {engine.demo.active ? 'Demo · four scenarios' : passChip()}
         </span>
         <span className="clock mono" aria-label="UTC time">
           UTC {utcClock(now)}

@@ -2,7 +2,7 @@ import { useRef } from 'react';
 
 import { useEngine, useEngineCtx } from '../engineContext';
 import { HANDOVER_STATION, ROGUE_NODE, SATELLITE, STATION, STATION_PLACE } from '../sim/copy';
-import { ALTITUDE_KM, CARRIER_HZ, TIME_COMPRESSION } from '../sim/geometry';
+import { CARRIER_HZ, passProfile, timeCompression } from '../sim/geometry';
 import { GATES, evmFromSnr } from '../sim/signals';
 import { fmtDb, fmtEpoch, fmtHz, MINUS } from './format';
 import { BackIcon, DishIcon, SatelliteIcon } from './icons';
@@ -213,7 +213,8 @@ function SatellitePanel() {
         <div>
           <div className="focus__name">{SATELLITE} · downlink transmitter</div>
           <div className="focus__sub">
-            X-band {(CARRIER_HZ / 1e6).toFixed(1)} MHz · {ALTITUDE_KM} km SSO ·{' '}
+            X-band {(CARRIER_HZ / 1e6).toFixed(1)} MHz ·{' '}
+            {Math.round(passProfile().altitudeKm * 10) / 10} km SSO ·{' '}
             {pass.linkActive ? `serving ${serving}` : 'LOS · recording on board'}
           </div>
         </div>
@@ -266,7 +267,7 @@ function SatellitePanel() {
       </div>
       <div className="focus__foot">
         <span>{engine.framesSent.toLocaleString('en-US')} frames sealed this session</span>
-        <span>pass played ×{Math.round(TIME_COMPRESSION)} faster than real time</span>
+        <span>pass played ×{Math.round(timeCompression())} faster than real time</span>
       </div>
     </>
   );

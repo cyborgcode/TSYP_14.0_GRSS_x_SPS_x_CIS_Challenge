@@ -17,6 +17,7 @@ import type { Focus } from '../engineContext';
 import { HANDOVER_STATION, SATELLITE, STATION, STATION_LABEL, STATION_PLACE } from '../sim/copy';
 import { clamp, easeInOutCubic, smooth } from '../sim/noise';
 import type { Engine } from '../sim/engine';
+import { passProfile } from '../sim/geometry';
 import { Beam, type BeamState } from './Beam';
 import { Jammer, RelayArcs, RogueTransmitter, StationMarker, stationPosition } from './Actors';
 import { Earth, SUN_DIR } from './Earth';
@@ -111,7 +112,12 @@ function Scene(props: SceneProps) {
       <Canvas
         dpr={Math.min(window.devicePixelRatio || 1, q.dpr)}
         frameloop={onScreen && !lost ? 'always' : 'never'}
-        camera={{ fov: 38, near: 0.1, far: 900, position: [26, 11, 20] }}
+        camera={{
+          fov: 38,
+          near: 0.1,
+          far: 900,
+          position: new THREE.Vector3(26, 11, 20).applyAxisAngle(UP, overviewTurn()),
+        }}
         gl={{
           antialias: false,
           powerPreference: 'high-performance',
@@ -462,6 +468,28 @@ function SceneContent({
 
 type Mode = Focus | 'attack';
 
+/**
+ * The overview looks at the station from the south-east (azimuth 127°), framed for the
+ * reference pass, which culminates near the zenith. A live pass is lower, so the overview
+ * turns about the station to look toward the azimuth where it culminates: the pass then
+ * crosses the sky beyond the station, as seen from the same three-quarter angle.
+ */
+function overviewTurn(): number {
+  const profile = passProfile();
+  // A positive turn about +Y lowers the azimuth: the camera ends up at culmination + 217°.
+  return profile.source === 'reference' ? 0 : -((profile.culminationAzDeg + 90) * Math.PI) / 180;
+}
+
+const UP = new THREE.Vector3(0, 1, 0);
+
+function overviewPose(): { target: THREE.Vector3; offset: THREE.Vector3 } {
+  const turn = overviewTurn();
+  return {
+    target: new THREE.Vector3(0.5, 4.4, 0).applyAxisAngle(UP, turn),
+    offset: new THREE.Vector3(21, 6.4, 16).applyAxisAngle(UP, turn),
+  };
+}
+
 const POSES: Record<Exclude<Mode, 'sat'>, { target: THREE.Vector3; offset: THREE.Vector3 }> = {
   overview: { target: new THREE.Vector3(0.5, 4.4, 0), offset: new THREE.Vector3(21, 6.4, 16) },
   attack: { target: new THREE.Vector3(-0.6, 1.4, 0.4), offset: new THREE.Vector3(9.5, 4.6, 10.5) },
@@ -499,17 +527,19 @@ function CameraRig({
   } | null>(null);
   const followed = useRef(new THREE.Vector3());
   const focusPoint = useRef(new THREE.Vector3());
+  // The overview follows the pass flown (live or reference); the other poses frame the station.
+  const poses = useMemo(() => ({ ...POSES, overview: overviewPose() }), []);
 
   const pointFor = (m: Mode, out: THREE.Vector3) =>
-    m === 'sat' ? out.copy(satPos) : out.copy(POSES[m].target);
+    m === 'sat' ? out.copy(satPos) : out.copy(poses[m].target);
   // Portrait screens need the camera further back to keep both bodies in frame.
   const aspectScale = Math.max(1, Math.pow(1.5 / (size.width / Math.max(size.height, 1)), 0.85));
   const offsetFor = (m: Mode) =>
     m === 'sat'
       ? SAT_OFFSET
       : m === 'station'
-        ? POSES[m].offset
-        : POSES[m].offset.clone().multiplyScalar(aspectScale);
+        ? poses[m].offset
+        : poses[m].offset.clone().multiplyScalar(aspectScale);
 
   const go = (m: Mode) => {
     const c = controls.current;

@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 
-import { SCENE_ORBIT_RADIUS, passAt } from '../sim/geometry';
+import { SCENE_ORBIT_RADIUS, passAt, passProfile, type PassProfile } from '../sim/geometry';
 
 export const EARTH_R = 16;
 export const EARTH_CENTER = new THREE.Vector3(0, -EARTH_R, 0);
@@ -105,12 +105,32 @@ export const ATTACKERS = {
 
 export const stationById = (id: string) => STATIONS.find((s) => s.id === id)!;
 
-// Pass plane: descending north → south, tilted so culmination sits a little east of zenith.
-const TILT = rad(10);
-const PLANE_UP = new THREE.Vector3(Math.sin(TILT), Math.cos(TILT), 0);
-const TRACK = new THREE.Vector3(0, 0, 1);
+// Pass plane, from the pass profile: tilted from the zenith toward the azimuth where the real
+// pass culminates, so the scene pass culminates as high, and swept along the real direction of
+// travel. The reference pass descends north → south and culminates a little east of zenith.
+const PLANE_UP = new THREE.Vector3();
+const TRACK = new THREE.Vector3();
+let planeFor: PassProfile | null = null;
+
+/** Horizontal unit vector toward an azimuth (degrees from north, clockwise), in scene axes. */
+const horizontal = (azDeg: number) =>
+  new THREE.Vector3(Math.sin(rad(azDeg)), 0, -Math.cos(rad(azDeg)));
+
+function orbitPlane(): void {
+  const profile = passProfile();
+  if (profile === planeFor) return;
+  const tilt = rad(profile.sceneTiltDeg);
+  PLANE_UP.set(0, Math.cos(tilt), 0).addScaledVector(
+    horizontal(profile.culminationAzDeg),
+    Math.sin(tilt),
+  );
+  const track = horizontal(profile.trackAzDeg);
+  TRACK.copy(track).addScaledVector(PLANE_UP, -track.dot(PLANE_UP)).normalize();
+  planeFor = profile;
+}
 
 export function orbitPoint(sceneAngle: number, out = new THREE.Vector3()): THREE.Vector3 {
+  orbitPlane();
   return out
     .copy(PLANE_UP)
     .multiplyScalar(Math.cos(sceneAngle) * ORBIT_R)
