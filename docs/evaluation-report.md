@@ -8,11 +8,11 @@
 ## 1. Executive Summary
 
 This report gives the measured detection accuracy, false-alarm rate and processing overhead of the
-testbed pipeline (`testbed/`). Telemetry comes from a sun-synchronous LEO satellite at 542.8 km
-downlinking at X-band (8477.8 MHz) to the Zaghouan ground station in Tunisia, with the four
+testbed pipeline (`testbed/`). Telemetry comes from TerraSAR-X, a sun-synchronous LEO satellite at
+514 km, downlinking at X-band (8477.8 MHz) to the Zaghouan ground station in Tunisia, with the four
 red-team vectors of the live dashboard injected in bursts.
 
-Every attack packet was denied, in every run, from the first packet of each burst. Only 0.8–1.3%
+Every attack packet was denied, in every run, from the first packet of each burst. Only 0.7–1.4%
 of genuine packets were held back, all of them by the Isolation Forest. The two security layers
 are complementary: stealth spoofing fools the RF checks about half the time and data tampering
 always does, and both are caught by cryptography; noise jamming carries authentic frames and is
@@ -32,9 +32,9 @@ packets (5 passes), then scores 6,000 held-out nominal packets interleaved with 
 
 | Evaluation Metric | Target | Measured (6 seeds) | Status |
 | :--- | :--- | :--- | :--- |
-| **False-alarm rate** (genuine packets denied) | $< 2.0\%$ | $0.82$–$1.30\%$, median $0.96\%$ | ✅ Met |
-| **Per-packet processing time** (detector + trust anchor + policy) | $< 100\text{ ms}$ | $6.5\text{ ms}$ mean, $\le 9.2\text{ ms}$ p95 | ✅ Met |
-| **Ledger overhead** (authenticate + SHA-256 chain one block) | $< 10\text{ ms}$ | $0.05\text{ ms}$ mean | ✅ Met |
+| **False-alarm rate** (genuine packets denied) | $< 2.0\%$ | $0.73$–$1.43\%$, median $0.94\%$ | ✅ Met |
+| **Per-packet processing time** (detector + trust anchor + policy) | $< 100\text{ ms}$ | $5.8\text{ ms}$ mean, $\le 7.9\text{ ms}$ p95 | ✅ Met |
+| **Ledger overhead** (authenticate + SHA-256 chain one block) | $< 10\text{ ms}$ | $0.06\text{ ms}$ mean | ✅ Met |
 | **Attack packets denied** | $100\%$ | $100\%$ of 6,000 per run, all four vectors | ✅ Met |
 | **Time to first denial** | first packet | packet 1 of every burst | ✅ Met |
 | **Ledger tamper test** (one verdict edited mid-chain) | detected | detected in every run | ✅ Met |
@@ -50,9 +50,9 @@ Share of packets flagged by each layer (range over the six seeds):
 
 | Traffic | Physics gate | Isolation Forest | Trust anchor | Zero trust: denied |
 | :--- | ---: | ---: | ---: | ---: |
-| Genuine | 0% | 0.8–1.3% | 0% | 0.8–1.3% |
+| Genuine | 0% | 0.7–1.4% | 0% | 0.7–1.4% |
 | Frequency Hijacking | 100% | 100% | 100% | **100%** |
-| Stealth Spoofing | 16–18% | 35–50% | 100% | **100%** |
+| Stealth Spoofing | 16–18% | 36–52% | 100% | **100%** |
 | Noise Jamming | 100% | 98–99% | 0% | **100%** |
 | Data Tampering | 0% | 0.5–1.1% | 100% | **100%** |
 

@@ -140,7 +140,7 @@ python -m pytest
 
 ```
 attack    crypto Pd   ML Pd  both Pd  both Pfa  ML AUC  caught by  driver
-tamper        1.000   0.000    1.000     0.012   0.507  crypto     —
+tamper        1.000   0.000    1.000     0.012   0.512  crypto     —
 relay         0.000   1.000    1.000     0.012   1.000  ml         latency_residual_ms
 ```
 
@@ -153,7 +153,7 @@ relay         0.000   1.000    1.000     0.012   1.000  ml         latency_resid
 | **caught by** | Which lock did the work |
 | **driver** | Which measurement gave the attack away |
 
-Read the **tamper** row: the ML score is 0.507, a coin flip. That's expected, because
+Read the **tamper** row: the ML score is 0.512, a coin flip. That's expected, because
 changing bytes doesn't change the physics. Read the **relay** row: crypto catches nothing,
 because the frames are genuine. That's the whole argument for having two locks.
 

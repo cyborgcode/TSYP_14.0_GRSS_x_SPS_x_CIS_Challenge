@@ -7,7 +7,7 @@ isolation_forest_detector, security_detector (chi-square and kinematic physics e
 Phase 3, orchestration and mission control: physics_validator, audit_logger,
 api_gateway (FastAPI), dashboard_ui (Streamlit).
 
-The twin flies a real satellite's live orbit from CelesTrak (TerraSAR-X by default), with
-the testbed's LEO-SAT 542.8 km sun-synchronous orbit as the offline fallback, an 8477.8 MHz
-X-band downlink to the Zaghouan ground station, frames sealed with HMAC-SHA256.
+The twin flies TerraSAR-X on its live orbit from CelesTrak (a built-in element set when
+offline): a 514 km sun-synchronous orbit, an 8477.8 MHz X-band downlink to the Zaghouan
+ground station, frames sealed with HMAC-SHA256.
 """

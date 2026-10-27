@@ -32,16 +32,16 @@ const MONO = (w, s) => `${w} ${s}px "JetBrains Mono", monospace`;
 // Signal facts, as in src/sim/linkFacts.ts (tests/sim.test.ts pins them).
 const F = {
   carrierMHz: 8477.8,
-  altitudeKm: 542.8,
-  dopplerKHz: 197.7,
-  rxMask: -88.0,
-  rxZenith: -74.9,
-  ampMask: 12.5,
-  ampZenith: 57.1,
+  altitudeKm: 514,
+  dopplerKHz: 199.0,
+  rxMask: -87.8,
+  rxZenith: -74.4,
+  ampMask: 12.9,
+  ampZenith: 60.3,
   floor: -100,
   noiseUv: 2.24,
-  snrMask: 12.0,
-  snrZenith: 25.1,
+  snrMask: 12.2,
+  snrZenith: 25.6,
   stealthDb: 1.8,
 };
 
@@ -374,31 +374,56 @@ function spectrum(ctx, a, levelDbm, floorDbm, q, color = C.accent, extra = null)
   polyline(ctx, pts, color, 2.2);
 }
 
+// TerraSAR-X from the side: the hexagonal body with solar cells on its upper facet, the
+// radar antenna along its lower facet, gold end bulkheads and the downlink antenna on a boom.
 function satellite(ctx, x, y, ang, s = 1) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(ang);
   ctx.scale(s, s);
+  ctx.lineWidth = 1.5;
+  // Upper facet: solar cells.
   ctx.fillStyle = '#2A5D8F';
   ctx.strokeStyle = '#7FB6E8';
-  ctx.lineWidth = 1.5;
+  ctx.fillRect(-58, -20, 116, 13);
+  ctx.beginPath();
+  for (let i = -58 + 14.5; i < 58; i += 14.5) {
+    ctx.moveTo(i, -20);
+    ctx.lineTo(i, -7);
+  }
+  ctx.stroke();
+  // Middle facet: silver insulation.
+  ctx.fillStyle = '#C8D0DA';
+  ctx.fillRect(-58, -7, 116, 14);
+  // Lower facet: the phased-array radar antenna.
+  ctx.fillStyle = '#E8EEF4';
+  ctx.fillRect(-58, 7, 116, 13);
+  ctx.strokeStyle = '#5B6573';
+  ctx.beginPath();
+  for (let i = -58 + 9.7; i < 58; i += 9.7) {
+    ctx.moveTo(i, 7);
+    ctx.lineTo(i, 20);
+  }
+  ctx.stroke();
+  // Gold end bulkheads.
+  ctx.fillStyle = C.gold;
   for (const side of [-1, 1]) {
     ctx.beginPath();
-    ctx.rect(side > 0 ? 30 : -102, -13, 72, 26);
+    ctx.moveTo(side * 58, -20);
+    ctx.lineTo(side * 64, -14);
+    ctx.lineTo(side * 64, 14);
+    ctx.lineTo(side * 58, 20);
+    ctx.closePath();
     ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(side * 22, 0);
-    ctx.lineTo(side * 30, 0);
-    ctx.stroke();
   }
-  ctx.fillStyle = C.gold;
-  ctx.fillRect(-22, -17, 44, 34);
-  ctx.fillStyle = '#F2D38A';
-  ctx.fillRect(-22, -17, 44, 7);
+  // Downlink antenna on its boom.
   ctx.strokeStyle = '#E8EEF4';
   ctx.beginPath();
-  ctx.arc(0, 26, 9, Math.PI, 0);
+  ctx.moveTo(-26, 20);
+  ctx.lineTo(-26, 44);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(-26, 52, 8, Math.PI, 0);
   ctx.stroke();
   ctx.restore();
 }
@@ -512,7 +537,15 @@ function intro(ctx, lt, sc, t) {
   }
   satellite(ctx, sat[0], sat[1], a, 1);
   dish(ctx, st[0], st[1], 1.1, C.text0);
-  text(ctx, 'LEO-SAT · 542.8 km', sat[0] - 70, sat[1] - 48, MONO(500, 22), C.text1, 'left');
+  text(
+    ctx,
+    `TerraSAR-X · ${F.altitudeKm} km`,
+    sat[0] - 70,
+    sat[1] - 48,
+    MONO(500, 22),
+    C.text1,
+    'left',
+  );
   text(ctx, 'Zaghouan ground station', st[0] - 30, st[1] + 52, MONO(500, 22), C.text1, 'left');
 
   if (attackA > 0) {
@@ -1227,7 +1260,7 @@ function crypto(ctx, lt, sc, t) {
 
   rise(ctx, lt, 0.3, () => {
     const parts = [
-      ['satellite', 'LEO-SAT-542', 300],
+      ['satellite', 'TERRASAR-X', 300],
       ['sequence', '1048590', 220],
       ['payload · 16 bytes', null, 760],
       ['HMAC-SHA256 tag', `${hex(5, 6)}…${hex(6, 4)}`, 316],

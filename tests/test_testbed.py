@@ -35,7 +35,7 @@ def test_attack_signatures_match_the_dashboard():
     assert abs(jam["rssi_dbm"] - JAMMED_RSSI_DBM) <= 0.5
     spoof = ing.generate_packet("stealth_spoofing")
     assert spoof["hw_token"] == ROGUE_NODE_TOKEN
-    assert spoof["satellite_id"] == "LEO-SAT-542"
+    assert spoof["satellite_id"] == "TERRASAR-X"
     assert abs(predicted_link(0.5)[0] - NOMINAL_CARRIER_MHZ) < 1e-9
 
 
@@ -67,19 +67,19 @@ def test_golden_vectors_match_the_browser_port():
     """Same values as dashboard/tests/sim.test.ts: the browser ledger is byte-identical."""
     key = bytes(range(32))
     frame = {
-        "satellite_id": "LEO-SAT-542",
+        "satellite_id": "TERRASAR-X",
         "sequence": 1001,
         "timestamp": 1790000000.123456,
         "hw_token": "0x4FE2",
         "payload": "00112233445566778899aabbccddeeff",
     }
     assert frame_bytes(frame) == (
-        b"LEO-SAT-542|1001|1790000000.123456|0x4FE2|00112233445566778899aabbccddeeff"
+        b"TERRASAR-X|1001|1790000000.123456|0x4FE2|00112233445566778899aabbccddeeff"
     )
     mac = seal(key, frame)
-    assert mac == "e4821a19a7a2f113ff115e8a5664f37e333a8a24171f0fea8c8676b525cbbb7d"
+    assert mac == "7d8434838567fa40b26a6959945cb66df548cd76094ad2a5b04cf7d72eb86231"
     digest = hashlib.sha256(frame_bytes(frame)).hexdigest()
-    assert digest == "9eccc3bc5eaa0ea3aec07ec636a053087bb91bc07b3d2303ba728928522c7a8e"
+    assert digest == "a33eaae585206cce592e6233a3b597a469727b56c59c807ceec59401ac153187"
 
     ledger = TrustAnchorLedger(key)
     assert ledger.genesis_root == (
@@ -88,10 +88,10 @@ def test_golden_vectors_match_the_browser_port():
     packet = frame | {"mac": mac, "sha256_hash": digest}
     block, ok, reason = ledger.ingest(packet)
     assert (ok, reason) == (True, "AUTHENTIC")
-    assert block["hash"] == "39d8d1aeec5d1d1ada1077e49298aff6936b6dada21cf0efd4d9aad67372872e"
+    assert block["hash"] == "50672d025f1b97fcf710509759e25e68257ca99fa301219dfc74753b74217fa2"
     block, ok, reason = ledger.ingest(packet)
     assert (ok, reason) == (False, "STALE_OR_REUSED_NONCE")
-    assert block["hash"] == "ba618dbeb83416b31b54a49755733c6beef1f61860cb0fe1d9ccf8ae967ae2be"
+    assert block["hash"] == "98c284840bae540bb7d1df9924602d4c72a85410231e0bb7ff369a7b309916e2"
 
 
 def test_data_tampering_keeps_a_clean_rf_profile_and_fails_the_mac(pipe):

@@ -26,20 +26,20 @@
       "tailS": 1.0,
       "lines": [
         {
-          "text": "Our satellite flies at 542.8 km and sends a fixed X-band carrier at 8477.8 MHz.",
-          "say": "Our satellite sends a fixed X band carrier, at eight thousand, four hundred and seventy-seven point eight megahertz."
+          "text": "TerraSAR-X flies at 514 km and sends a fixed X-band carrier at 8477.8 MHz.",
+          "say": "Our satellite, Terra Sar X, flies at five hundred and fourteen kilometres, and sends a fixed X band carrier, at eight thousand, four hundred and seventy-seven point eight megahertz."
         },
         {
-          "text": "The frequency is not random: it moves only with the Doppler shift, up to ±198 kHz, which the orbit predicts.",
+          "text": "The frequency is not random: it moves only with the Doppler shift, up to ±199 kHz, which the orbit predicts.",
           "say": "The frequency is not random. It moves only with the Doppler shift, up to about two hundred kilohertz either way, and the orbit predicts it."
         },
         {
-          "text": "At Zaghouan the carrier arrives between −88 and −75 dBm: an amplitude of 12.5 to 57 µV.",
-          "say": "At Zagwan, it arrives between minus eighty-eight and minus seventy-five D B M: an amplitude of twelve and a half to fifty-seven microvolts."
+          "text": "At Zaghouan the carrier arrives between −88 and −74 dBm: an amplitude of 12.9 to 60 µV.",
+          "say": "At Zagwan, it arrives between minus eighty-eight and minus seventy-four D B M: an amplitude of thirteen to sixty microvolts."
         },
         {
-          "text": "The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 12 to 25 dB over the pass.",
-          "say": "The noise floor is minus one hundred D B M, so the signal-to-noise ratio runs from twelve to twenty-five decibels."
+          "text": "The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 12 to 26 dB over the pass.",
+          "say": "The noise floor is minus one hundred D B M, so the signal-to-noise ratio runs from twelve to twenty-six decibels."
         }
       ]
     },

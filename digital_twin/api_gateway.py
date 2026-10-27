@@ -41,7 +41,7 @@ AUDIT_ENV = "GROUNDLINK_AUDIT_LOG"
 app = FastAPI(
     title="TSYP 14 Secure Ground-Link Digital Twin",
     version="1.0.0",
-    description="Three-layer verification of a LEO X-band downlink: crypto, ML, physics.",
+    description="Three-layer verification of TerraSAR-X's X-band downlink: crypto, ML, physics.",
 )
 _lock = threading.Lock()
 

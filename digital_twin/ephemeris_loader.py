@@ -3,17 +3,17 @@ ephemeris_loader.py
 TSYP 14 Track 1: Secure Ground-Link Testbed
 Digital twin, phase 1: live two-line element sets (TLE) from CelesTrak, with an offline fallback.
 
-The twin flies a real satellite on its current orbit: by default TerraSAR-X (NORAD 31698),
-an X-band radar satellite on a ~510 km sun-synchronous orbit much like the testbed's
-LEO-SAT. `fetch_latest_tle()` downloads its latest element set from CelesTrak's public GP
-service and keeps the last good download on disk. In order, it flies:
+The twin flies TerraSAR-X (NORAD 31698), an X-band radar satellite on a 514 km
+sun-synchronous orbit, on its current orbit. `fetch_latest_tle()` downloads its latest
+element set from CelesTrak's public GP service and keeps the last good download on disk.
+In order, it flies:
 
 1. a download younger than two hours, reused without touching the network: CelesTrak
    refreshes its data about every two hours and asks clients not to fetch more often;
 2. a fresh download from CelesTrak;
 3. the last good download, however old, when the network or CelesTrak fails;
-4. the built-in element set of LEO-SAT, the testbed's 542.8 km reference orbit, when the
-   twin has never been online.
+4. the element set built into the twin, TerraSAR-X as CelesTrak served it on 27 October
+   2026, when the twin has never been online.
 
 Every element set is tagged with its source and age, so the twin always says which orbit
 it flies. GROUNDLINK_NORAD_ID picks another satellite, GROUNDLINK_OFFLINE=1 keeps the twin
@@ -51,16 +51,15 @@ SOURCES = {
     "celestrak": "live from CelesTrak",
     "cache": "CelesTrak download from the last two hours",
     "stale-cache": "last good CelesTrak download (offline)",
-    "builtin": "built-in LEO-SAT reference orbit (offline, never downloaded)",
+    "builtin": "built-in element set of 27 Oct 2026 (offline, never downloaded)",
 }
 
-LEO_SAT_NORAD_ID = 99542
-#: LEO-SAT: 15.078 rev/day (542.8 km mean altitude), 97.54 deg sun-synchronous inclination,
-#: epoch 2026-10-26 12:00 UTC.
-LEO_SAT_TLE = (
-    "LEO-SAT-542",
-    "1 99542U 26299A   26299.50000000  .00001000  00000-0  45000-4 0  9994",
-    "2 99542  97.5400 299.0000 0001000  90.0000 270.0000 15.07841879    16",
+#: TerraSAR-X as CelesTrak served it on 27 Oct 2026: 15.19 rev/day, 97.45 deg, epoch
+#: 2026-10-26 11:12 UTC. The same set ships with the website (dashboard/src/sim/orbit.ts).
+BUILTIN_TLE = (
+    "TERRASAR-X",
+    "1 31698U 07026A   26299.46724549 -.00000045  00000+0  10706-5 0  9999",
+    "2 31698  97.4456 305.3111 0001816  81.2566 278.8874 15.19151530 73153",
 )
 
 
@@ -159,7 +158,7 @@ class EphemerisLoader:
 
     @staticmethod
     def builtin() -> dict:
-        return parse_tle("\n".join(LEO_SAT_TLE))
+        return parse_tle("\n".join(BUILTIN_TLE))
 
     def _download(self) -> str:
         request = urllib.request.Request(self.celestrak_url, headers={"User-Agent": USER_AGENT})

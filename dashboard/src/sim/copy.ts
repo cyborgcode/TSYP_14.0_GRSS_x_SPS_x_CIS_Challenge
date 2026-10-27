@@ -7,7 +7,7 @@ export const STATION_LABEL = 'Zaghouan GS (TN)';
 export const STATION_PLACE = 'Zaghouan, Tunisia';
 export const HANDOVER_STATION = 'GS-MAT';
 export const HANDOVER_PLACE = 'Matera, Italy';
-export const SATELLITE = 'LEO-SAT';
+export const SATELLITE = 'TerraSAR-X';
 export const ROGUE_NODE = '0x99A2';
 
 export const ATTACK_BUTTONS: Record<AttackKind, { label: string; sub: string; running: string }> = {

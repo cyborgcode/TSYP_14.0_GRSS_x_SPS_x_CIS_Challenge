@@ -1,3 +1,4 @@
+import { SATELLITE } from '../../sim/copy';
 import { ATTACK_SIGNALS, NATURAL, SIGNAL, STEALTH } from '../../sim/linkFacts';
 import { MINUS } from '../format';
 
@@ -173,7 +174,7 @@ export function PowerLevels() {
       marker={{ at: SIGNAL.noiseFloorDbm, label: 'thermal floor' }}
       rows={[
         {
-          label: 'LEO-SAT carrier',
+          label: `${SATELLITE} carrier`,
           span: [SIGNAL.rxDbm.mask, SIGNAL.rxDbm.zenith],
           tone: 'accent',
           value: `${SIGNAL.amplitudeUv.mask.toFixed(1)}–${SIGNAL.amplitudeUv.zenith.toFixed(1)} µV`,
@@ -219,7 +220,7 @@ export function FrequencyPlan() {
       tick={(v) => v.toFixed(1)}
       rows={[
         {
-          label: 'LEO-SAT downlink',
+          label: `${SATELLITE} downlink`,
           span: [c - half, c + half],
           tone: 'accent',
           value: `±${SIGNAL.dopplerMaxKHz.toFixed(0)} kHz Doppler`,

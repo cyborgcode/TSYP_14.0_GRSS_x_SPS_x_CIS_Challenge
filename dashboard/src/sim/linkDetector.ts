@@ -16,7 +16,7 @@ export const MAX_CARRIER_STEP_MHZ = 0.5;
 export const MAX_RSSI_RESIDUAL_DB = 4.0;
 export const CONTAMINATION = 0.01;
 
-export const SAT_ID = 'LEO-SAT-542';
+export const SAT_ID = 'TERRASAR-X';
 export const SAT_TOKEN = '0x4FE2';
 export const ROGUE_TOKEN = '0x99A2';
 

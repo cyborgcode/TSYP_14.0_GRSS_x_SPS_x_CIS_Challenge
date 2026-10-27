@@ -6,18 +6,21 @@ real-time threat detection and cryptographic resilience, running entirely in the
 
 ## 1. Mission parameters and 3D viewport
 
-- **Orbit and ground node**: sun-synchronous Low Earth Orbit satellite (LEO-SAT) at 542.8 km,
-  downlinking at X-band (8477.8 MHz) to our ground station in Zaghouan, Tunisia (GS-ZAG).
+- **Orbit and ground node**: TerraSAR-X (NORAD 31698), a sun-synchronous Low Earth Orbit radar
+  satellite at 514 km, downlinking at X-band (8477.8 MHz) to our ground station in Zaghouan,
+  Tunisia (GS-ZAG). The dashboard replays its next real pass over Zaghouan, from CelesTrak's
+  latest element set (offline: the last download, then an element set built into the site).
 - **Graphics**: Three.js with ACES Filmic tone mapping, a three-layer atmosphere (Rayleigh
-  scattering, limb glow, Mie haze), and a satellite bus in gold-foil MLI thermal shielding with
-  solar array wings.
+  scattering, limb glow, Mie haze), and TerraSAR-X to scale: a hexagonal body in multi-layer
+  insulation with gold end bulkheads, body-mounted solar cells, the phased-array radar antenna
+  along a side facet and the X-band downlink antenna on its boom.
 - **Controls**: drag with the mouse or a finger to orbit the camera around the Earth and the
   satellite; pinch or scroll to zoom. Click the satellite or the station to fly in and open its
   live signal view.
 
 ## 2. One continuous signal beam
 
-The beam between LEO-SAT and Zaghouan is one continuous signal. When an attack is triggered,
+The beam between TerraSAR-X and Zaghouan is one continuous signal. When an attack is triggered,
 everything changes together: the beam's colour and distortion, the Carrier Frequency chart, the
 RSSI chart, the received spectrum, the security banner and the cryptographic ledger.
 
@@ -30,7 +33,7 @@ drawer on the live frames (section 5).
 |---|---|---|
 | **Frequency Hijacking** | A rogue carrier sweeping around +14.2 MHz is injected into the link. | The carrier chart jumps to ~8492 MHz, the beam turns red with a rapid oscillation, and the ledger logs `PROOF FAIL` for every rogue frame. Keys are rotated after quarantine. |
 | **Stealth Spoofing** | Node `0x99A2` injects frames with forged MAC headers and cryptographic nonces. The carrier stays on track, so the physics check is evaded. | The beam turns amber, RSSI degrades, the banner reads *Quarantine protocols engaged*, and the trust anchor and AI model escalate 2 of 3. |
-| **Data Tampering** | A relay between LEO-SAT and Zaghouan flips one payload bit after the satellite sealed the frame. The RF is untouched. | The beam turns pink, the physics check and the AI model see nothing, and the trust anchor logs `HASH MISMATCH` for every altered frame. The frames are quarantined and a retransmission is requested; keys are not rotated, since the relay never had them. |
+| **Data Tampering** | A relay between TerraSAR-X and Zaghouan flips one payload bit after the satellite sealed the frame. The RF is untouched. | The beam turns pink, the physics check and the AI model see nothing, and the trust anchor logs `HASH MISMATCH` for every altered frame. The frames are quarantined and a retransmission is requested; keys are not rotated, since the relay never had them. |
 | **Noise Jamming** | Broadband Gaussian white noise saturates the receiver. | The beam turns purple with high-frequency static, RSSI drops to −96.5 dBm, frames go missing, and fallback routing to GS-MAT (Matera, Italy) is forced. |
 
 The attack-power slider changes the jammer power and the hijacker's excess power live.
@@ -68,9 +71,9 @@ fusion suppresses.
 ## 6. Hiding in the noise
 
 The top bar links the dashboard to four short pages, read in order with **Next** at the bottom of
-each. **Signal** (`/signal`) gives the chosen signal precisely: a fixed carrier at 8477.8 MHz moved only by Doppler (±197.7 kHz at the 2°
-elevation mask), received at −88.0 dBm at the mask and −74.9 dBm overhead, a carrier amplitude of
-12.5 to 57.1 µV peak across the 50 Ω input, over a −100 dBm noise floor (SNR 12.0 to 25.1 dB).
+each. **Signal** (`/signal`) gives the chosen signal precisely: a fixed carrier at 8477.8 MHz moved only by Doppler (±199.0 kHz at the 2°
+elevation mask), received at −87.8 dBm at the mask and −74.4 dBm overhead, a carrier amplitude of
+12.9 to 60.3 µV peak across the 50 Ω input, over a −100 dBm noise floor (SNR 12.2 to 25.6 dB).
 **Noise attacks** (`/attacks`) shows three ways an attacker imitates natural noise (noise-shaped
 jamming, fade-mimicking spoofing, bit flips disguised as bit errors). **Protection**
 (`/protection`) shows why each is either harmless or visible: a jammer can add at most 1.8 dB over

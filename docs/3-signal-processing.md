@@ -24,8 +24,8 @@ the cryptographic layer and each can be evaluated on its own.
 
 ## Link model
 
-`groundlink/channel.py`: 550 km altitude, 7.6 km/s ground speed, 600 s pass, S-band carrier
-at 2.2 GHz, free-space power loss, measurement noise of 1 dB (power), 20 Hz (Doppler),
+`groundlink/channel.py`: TerraSAR-X's 514 km altitude, 7.6 km/s ground speed, 600 s pass,
+S-band carrier at 2.2 GHz (its TT&C band), free-space power loss, measurement noise of 1 dB (power), 20 Hz (Doppler),
 0.2 ms (timing). Flat-Earth pass geometry — sufficient for one pass, and replaceable by a
 real propagator without changing any caller.
 

@@ -6,7 +6,7 @@
 // (satellite.js), finds the next pass that culminates at least 10° high, and samples its
 // elevation, slant range, range rate and Doppler second by second. That pass profile is what
 // the testbed replays. The last good download is kept in the browser; when /api/tle cannot be
-// reached it flies that, and with none, the built-in reference pass of geometry.ts.
+// reached it flies that, and with none, the TerraSAR-X element set shipped with the site.
 
 import {
   degreesToRadians,
@@ -35,6 +35,15 @@ const SEARCH_HOURS = 48;
 const COARSE_STEP_S = 30;
 const FETCH_TIMEOUT_MS = 4000;
 const CACHE_KEY = `groundlink:tle:${LIVE_NORAD_ID}`;
+
+/** TerraSAR-X as CelesTrak served it on 27 Oct 2026 (epoch 26 Oct 11:12 UTC): the offline orbit. */
+export const BUILTIN_TLE: TleRecord = {
+  name: 'TERRASAR-X',
+  noradId: LIVE_NORAD_ID,
+  line1: '1 31698U 07026A   26299.46724549 -.00000045  00000+0  10706-5 0  9999',
+  line2: '2 31698  97.4456 305.3111 0001816  81.2566 278.8874 15.19151530 73153',
+  fetchedUtc: '2026-10-27T20:02:37.594Z',
+};
 const EARTH_RADIUS_WGS72_KM = 6378.135;
 
 /** Zaghouan ground station (GS-ZAG). */
@@ -155,7 +164,7 @@ export function findPass(
 export function passProfileFor(
   record: TleRecord,
   fromMs: number,
-  source: 'celestrak' | 'cache',
+  source: 'celestrak' | 'cache' | 'builtin',
 ): PassProfile | null {
   const satrec = twoline2satrec(record.line1, record.line2);
   const window = findPass(satrec, fromMs);
@@ -254,8 +263,9 @@ async function download(fetcher: typeof fetch): Promise<TleRecord | null> {
 }
 
 /**
- * The pass to replay: from a fresh download, else the last good one, else the reference.
- * Tests run on the reference pass, with no network.
+ * The pass to replay: from a fresh download, else the last good one, else the built-in
+ * element set (the analytic reference only if no pass can be found). Tests run on the
+ * reference pass, with no network.
  */
 export async function loadPassProfile(
   nowMs = Date.now(),
@@ -269,5 +279,9 @@ export async function loadPassProfile(
     if (profile) return profile;
   }
   const cached = readCache();
-  return (cached && passProfileFor(cached, nowMs, 'cache')) || REFERENCE_PROFILE;
+  return (
+    (cached && passProfileFor(cached, nowMs, 'cache')) ||
+    passProfileFor(BUILTIN_TLE, nowMs, 'builtin') ||
+    REFERENCE_PROFILE
+  );
 }

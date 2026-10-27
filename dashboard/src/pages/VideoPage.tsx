@@ -29,10 +29,11 @@ export function VideoPage() {
       eyebrow={`Explainer video · ${fmtClock(EXPLAINER.duration)}`}
       lead={
         <>
-          How an attacker can imitate the natural noise on our LEO downlink, and the idea that keeps
-          the ground link safe anyway. The carrier sits at {SIGNAL.carrierMHz} MHz and reaches
-          Zaghouan at {dbm(SIGNAL.rxDbm.mask)} to {dbm(SIGNAL.rxDbm.zenith)} dBm, an amplitude of{' '}
-          {SIGNAL.amplitudeUv.mask.toFixed(1)} to {SIGNAL.amplitudeUv.zenith.toFixed(1)} µV.
+          How an attacker can imitate the natural noise on the TerraSAR-X downlink, and the idea
+          that keeps the ground link safe anyway. The carrier sits at {SIGNAL.carrierMHz} MHz and
+          reaches Zaghouan at {dbm(SIGNAL.rxDbm.mask)} to {dbm(SIGNAL.rxDbm.zenith)} dBm, an
+          amplitude of {SIGNAL.amplitudeUv.mask.toFixed(1)} to{' '}
+          {SIGNAL.amplitudeUv.zenith.toFixed(1)} µV.
         </>
       }
     >

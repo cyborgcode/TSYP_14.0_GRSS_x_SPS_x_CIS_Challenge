@@ -89,22 +89,22 @@ $$\Delta\rho=-\frac{c}{f_c}\int_{t_0}^{t_1}f_d\,dt$$
 checked against the range and Doppler noise at the same $10^{-4}$ false-alarm rate. It catches
 the step of a meaconer's delay even with a stale element set.
 
-One pass per threat vector over Zaghouan on the fixed LEO-SAT orbit (`GROUNDLINK_OFFLINE=1`), the
-threat active from 30% to 70% of it:
+One pass per threat vector over Zaghouan on TerraSAR-X's built-in element set
+(`GROUNDLINK_OFFLINE=1`), the threat active from 30% to 70% of it:
 
 | Threat vector | Stopped | Crypto | Physics | Kinematic | ML | Clean ticks held |
 | --- | --- | --- | --- | --- | --- | --- |
-| None | — | 0% | 0% | 0% | 0% | 2% |
-| Delay spoofing (meaconing, +72.5 km) | 100% | 0% | 100% | 12% (onset) | 100% | 0% |
+| None | — | 0% | 0% | 0% | 0% | 0% |
+| Delay spoofing (meaconing, +72.5 km) | 100% | 0% | 100% | 13% (onset) | 100% | 0% |
 | Coherent phase slip (+47°, +18 Hz) | 100% | 0% | 100% | 0% | 100% | 0% |
-| CCSDS sequence hijack (+512, SAFE_HOLD) | 100% | 100% | 0% | 0% | 0% | 0% |
+| CCSDS sequence hijack (+512, SAFE_HOLD) | 100% | 100% | 0% | 0% | 0% | 3% |
 | Uplink command tampering / injection | 100% | 100% | — | — | — | — |
 
-**Live orbit.** The twin flies a real satellite on its current orbit: by default TerraSAR-X
-(NORAD 31698), an X-band radar satellite on a ~510 km sun-synchronous orbit, with its latest
-element set downloaded from CelesTrak's public GP service at start-up. A download is reused for
-two hours, as CelesTrak asks; when the network or CelesTrak fails, the twin flies the last good
-download, and if it was never online, the built-in LEO-SAT reference orbit. `/health`, `/orbit`,
+**Live orbit.** The twin flies TerraSAR-X (NORAD 31698), an X-band radar satellite on a 514 km
+sun-synchronous orbit, on its current orbit: its latest element set is downloaded from
+CelesTrak's public GP service at start-up. A download is reused for two hours, as CelesTrak asks;
+when the network or CelesTrak fails, the twin flies the last good download, and if it was never
+online, the TerraSAR-X element set built into it (as CelesTrak served it on 27 October 2026). `/health`, `/orbit`,
 the dashboard and the red-team report all say which orbit is flown and where it came from. CI
 checks the live download on every push:
 
@@ -113,7 +113,7 @@ python -m digital_twin.ephemeris_loader --require-live
 ```
 
 `GROUNDLINK_NORAD_ID` picks another satellite, `GROUNDLINK_OFFLINE=1` stays off the network
-(the test suite runs this way, on the fixed LEO-SAT orbit), `GROUNDLINK_TLE_CACHE` moves the
+(the test suite runs this way, on the built-in element set), `GROUNDLINK_TLE_CACHE` moves the
 cache. The HMAC key comes from `GROUNDLINK_HMAC_KEY` (hex) and is random per run when unset; the
 audit log path from `GROUNDLINK_AUDIT_LOG` (default `security_audit.jsonl`). The orbit is live;
 the RF measurements and attacks are **synthetic**, like the standard scenario above.
@@ -176,16 +176,17 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
 
 `dashboard/` is the interactive web testbed, deployed on Vercel from `main`:
 
-- **Live orbit**: the next real pass of TerraSAR-X (NORAD 31698, ~510 km sun-synchronous) over
+- **Live orbit**: the next real pass of TerraSAR-X (NORAD 31698, 514 km sun-synchronous) over
   the Zaghouan (Tunisia) ground station. `api/tle.ts` relays its latest element set from
   CelesTrak's public GP service, cached two hours at Vercel's edge as CelesTrak asks; the browser
   propagates it with SGP4 (satellite.js), picks the next pass that culminates at least 10° high
   and replays it, time-compressed, with its real elevation, range, Doppler and received power.
-  Offline it flies the last element set the browser downloaded, and with none, the reference
-  overhead pass of a 542.8 km orbit. The header, the orbit readout and the footer say which.
+  Offline it flies the last element set the browser downloaded, and with none, the TerraSAR-X
+  element set built into the site. The header, the orbit readout and the footer say which.
 - **3D ground link**: that pass over the station in real-time WebGL (ACES Filmic tone mapping,
-  layered atmospheric scattering, gold MLI satellite bus), the camera turned toward where it
-  culminates. Click the satellite or the station to fly in and watch the signal live.
+  layered atmospheric scattering), with TerraSAR-X to scale: hexagonal body, body-mounted solar
+  cells, radar antenna along a side facet, downlink antenna on its boom; the camera turned toward
+  where the pass culminates. Click the satellite or the station to fly in and watch the signal live.
 - **One continuous signal beam**: its colour and distortion, the Carrier Frequency (MHz) and RSSI
   (dBm) charts (Chart.js), the received spectrum, the security banner and the ledger all change
   together with the scenario.
@@ -203,8 +204,8 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
   counts; live `verify_chain()` with a red-team "edit a past block" test; and per-scenario
   detection by layer (trust anchor, detector, dropped, time to first drop).
 - **Hiding in the noise**, on its own pages linked from the top bar: `/signal` (the chosen
-  signal (carrier 8477.8 MHz, ±197.7 kHz Doppler, received at −88.0 to −74.9 dBm, i.e. a
-  12.5–57.1 µV peak across 50 Ω, over a −100 dBm noise floor), `/attacks` (three ways an attacker
+  signal (carrier 8477.8 MHz, ±199.0 kHz Doppler, received at −87.8 to −74.4 dBm, i.e. a
+  12.9–60.3 µV peak across 50 Ω, over a −100 dBm noise floor), `/attacks` (three ways an attacker
   imitates natural noise), `/protection` (an interactive stealth budget and the four layers) and
   `/noise` (a narrated explainer video; source and re-render steps in `dashboard/explainer/`).
 - **trust_anchor.py terminal**: live log of SHA-256 block validations from a genesis root hash,

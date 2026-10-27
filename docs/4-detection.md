@@ -47,17 +47,17 @@ Attack window 200–260 s of a 600 s pass, target Pfa 1%:
 
 | Attack | Crypto Pd | ML Pd | Combined Pd | Combined Pfa | ML AUC | Caught by | Driving feature |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Tamper | 1.000 | 0.000 | 1.000 | 0.012 | 0.507 | crypto | — |
+| Tamper | 1.000 | 0.000 | 1.000 | 0.012 | 0.512 | crypto | — |
 | Inject | 1.000 | 1.000 | 1.000 | 0.012 | 1.000 | crypto + ML | `doppler_residual_hz` |
 | Replay | 1.000 | 1.000 | 1.000 | 0.012 | 1.000 | crypto + ML | `latency_residual_ms` |
 | Relay | 0.000 | 1.000 | 1.000 | 0.012 | 1.000 | ML | `latency_residual_ms` |
 | Delay | 0.000 | 1.000 | 1.000 | 0.012 | 1.000 | ML | `latency_residual_ms` |
-| Jamming | 0.000 | 1.000 | 1.000 | 0.012 | 1.000 | ML | `rssi_residual_db` |
+| Jamming | 0.000 | 1.000 | 1.000 | 0.012 | 1.000 | ML | `inter_arrival_ms` |
 
 Reproduce with `python -m groundlink.cli`.
 
 Read the table by column: **no single layer catches everything.** Tamper is invisible to
-the detector (AUC 0.507 — chance), because it changes bytes, not physics. Relay, delay and
+the detector (AUC 0.512 — chance), because it changes bytes, not physics. Relay, delay and
 jamming are invisible to cryptography. Only the combination covers the catalogue.
 
 ## Overhead

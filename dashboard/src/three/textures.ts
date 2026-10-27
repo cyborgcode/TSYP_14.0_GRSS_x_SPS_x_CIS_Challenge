@@ -67,6 +67,36 @@ export function solarCellTexture(): THREE.CanvasTexture {
   return solar;
 }
 
+let sar: THREE.CanvasTexture | null = null;
+/**
+ * Face of TerraSAR-X's phased-array radar antenna: 12 panels along its length, each a grid of
+ * radiating sub-arrays, white with fine dark seams. Drawn along the canvas width.
+ */
+export function sarAntennaTexture(): THREE.CanvasTexture {
+  if (sar) return sar;
+  const { c, ctx } = canvas(1024, 128);
+  ctx.fillStyle = '#5b6573';
+  ctx.fillRect(0, 0, 1024, 128);
+  const panels = 12;
+  const pw = 1024 / panels;
+  const rand = mulberry32(31);
+  for (let i = 0; i < panels; i++) {
+    for (let j = 0; j < 4; j++) {
+      for (let k = 0; k < 2; k++) {
+        const x = i * pw + 3 + k * ((pw - 6) / 2);
+        const y = 4 + j * 30;
+        const shade = 82 + rand() * 8;
+        ctx.fillStyle = `hsl(210 10% ${shade}%)`;
+        ctx.fillRect(x + 1, y + 1, (pw - 6) / 2 - 2, 28);
+      }
+    }
+  }
+  sar = new THREE.CanvasTexture(c);
+  sar.colorSpace = THREE.SRGBColorSpace;
+  sar.anisotropy = 8;
+  return sar;
+}
+
 let foil: THREE.CanvasTexture | null = null;
 export function foilBumpTexture(): THREE.CanvasTexture {
   if (foil) return foil;

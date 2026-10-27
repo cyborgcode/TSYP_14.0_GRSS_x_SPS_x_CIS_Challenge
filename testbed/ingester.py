@@ -26,7 +26,7 @@ HIJACK_SWEEP_MHZ = 0.35
 JAMMED_RSSI_DBM = -96.5
 SPOOF_RSSI_DROP_DB = 3.2
 
-SAT_ID = "LEO-SAT-542"
+SAT_ID = "TERRASAR-X"
 SAT_TOKEN = "0x4FE2"
 ROGUE_NODE_TOKEN = "0x99A2"
 
@@ -40,10 +40,10 @@ ATTACK_MODES = (
 
 #: Packets per horizon-to-horizon pass.
 PASS_PACKETS = 600
-#: Peak Doppler of a 542.8 km LEO pass at 8477.8 MHz (range rate ~6.8 km/s).
-MAX_DOPPLER_MHZ = 0.19
+#: Peak Doppler of a TerraSAR-X pass (514 km) at 8477.8 MHz: ±199 kHz at the elevation mask.
+MAX_DOPPLER_MHZ = 0.199
 #: RSSI at culmination and the extra path loss near the horizon.
-ZENITH_RSSI_DBM = -75.2
+ZENITH_RSSI_DBM = -74.7
 HORIZON_EXTRA_LOSS_DB = 14.0
 
 

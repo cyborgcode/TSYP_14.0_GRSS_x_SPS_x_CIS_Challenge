@@ -3,8 +3,8 @@
 // The pass replayed is a pass profile: the real geometry (elevation, range, range rate,
 // Doppler) from horizon to horizon. By default it is the next real pass of a live orbit,
 // propagated with SGP4 from CelesTrak's latest element set (orbit.ts); before that loads, and
-// whenever it cannot, it is the reference pass: an overhead pass of a circular 542.8 km
-// sun-synchronous orbit. The 3D scene uses a stylised orbit radius so both bodies stay
+// whenever it cannot, it is the reference pass: an overhead pass of TerraSAR-X's circular
+// 514 km sun-synchronous orbit. The 3D scene uses a stylised orbit radius so both bodies stay
 // readable, with its orbit plane tilted so the scene pass culminates as high as the real one;
 // the two are tied by pass fraction, so the satellite rises, culminates and sets in the scene
 // exactly when the real pass does.
@@ -12,7 +12,8 @@
 import { clamp } from './noise';
 
 export const EARTH_RADIUS_KM = 6371;
-export const ALTITUDE_KM = 542.8;
+/** TerraSAR-X's nominal altitude. */
+export const ALTITUDE_KM = 514;
 export const ORBIT_RADIUS_KM = EARTH_RADIUS_KM + ALTITUDE_KM;
 const MU_KM3_S2 = 398_600.4418;
 /** Kepler's third law for a circular orbit. */
@@ -78,8 +79,11 @@ export interface RealGeometry {
 }
 
 export interface PassProfile {
-  /** `celestrak`: live element set; `cache`: the last good download; `reference`: built in. */
-  source: 'celestrak' | 'cache' | 'reference';
+  /**
+   * `celestrak`: live element set; `cache`: the last good download; `builtin`: the element set
+   * shipped with the site; `reference`: the analytic overhead pass.
+   */
+  source: 'celestrak' | 'cache' | 'builtin' | 'reference';
   satName: string;
   noradId: number | null;
   /** Mean altitude of the orbit, km. */
@@ -114,11 +118,11 @@ function realFromCentralAngle(phi: number): RealGeometry {
   };
 }
 
-/** Overhead pass of the circular 542.8 km orbit: the testbed's reference geometry. */
+/** Overhead pass of TerraSAR-X's circular 514 km orbit: the testbed's reference geometry. */
 export const REFERENCE_PROFILE: PassProfile = {
   source: 'reference',
-  satName: 'LEO-SAT',
-  noradId: null,
+  satName: 'TERRASAR-X',
+  noradId: 31698,
   altitudeKm: ALTITUDE_KM,
   realPassS: REAL_PASS_S,
   maxElevationDeg: 90,

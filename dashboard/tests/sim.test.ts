@@ -43,7 +43,7 @@ import { CHANNEL_HZ, SPAN_HZ, renderSpectrum, spectrumState } from '../src/ui/sp
 
 const KEY = Uint8Array.from({ length: 32 }, (_, i) => i);
 const GOLDEN_FRAME: Frame = {
-  satellite_id: 'LEO-SAT-542',
+  satellite_id: 'TERRASAR-X',
   sequence: 1001,
   timestamp: 1790000000.123456,
   hw_token: '0x4FE2',
@@ -54,12 +54,12 @@ describe('trust anchor (port of trust_anchor.py)', () => {
   it('matches the Python golden vectors byte for byte', async () => {
     const key = await importMacKey(KEY);
     expect(frameText(GOLDEN_FRAME)).toBe(
-      'LEO-SAT-542|1001|1790000000.123456|0x4FE2|00112233445566778899aabbccddeeff',
+      'TERRASAR-X|1001|1790000000.123456|0x4FE2|00112233445566778899aabbccddeeff',
     );
     const mac = await seal(key, GOLDEN_FRAME);
-    expect(mac).toBe('e4821a19a7a2f113ff115e8a5664f37e333a8a24171f0fea8c8676b525cbbb7d');
+    expect(mac).toBe('7d8434838567fa40b26a6959945cb66df548cd76094ad2a5b04cf7d72eb86231');
     expect(await sha256Hex(frameText(GOLDEN_FRAME))).toBe(
-      '9eccc3bc5eaa0ea3aec07ec636a053087bb91bc07b3d2303ba728928522c7a8e',
+      'a33eaae585206cce592e6233a3b597a469727b56c59c807ceec59401ac153187',
     );
 
     const ledger = await TrustAnchorLedger.create();
@@ -69,11 +69,11 @@ describe('trust anchor (port of trust_anchor.py)', () => {
     const first = await ledger.authenticate(GOLDEN_FRAME, mac, key);
     expect(first.reason).toBe('AUTHENTIC');
     const b1 = await ledger.append(GOLDEN_FRAME, mac, first.frameDigest, first.reason);
-    expect(b1.hash).toBe('39d8d1aeec5d1d1ada1077e49298aff6936b6dada21cf0efd4d9aad67372872e');
+    expect(b1.hash).toBe('50672d025f1b97fcf710509759e25e68257ca99fa301219dfc74753b74217fa2');
     const again = await ledger.authenticate(GOLDEN_FRAME, mac, key);
     expect(again.reason).toBe('STALE_OR_REUSED_NONCE');
     const b2 = await ledger.append(GOLDEN_FRAME, mac, again.frameDigest, again.reason);
-    expect(b2.hash).toBe('ba618dbeb83416b31b54a49755733c6beef1f61860cb0fe1d9ccf8ae967ae2be');
+    expect(b2.hash).toBe('98c284840bae540bb7d1df9924602d4c72a85410231e0bb7ff369a7b309916e2');
     expect((await ledger.verifyChain()).ok).toBe(true);
   });
 
@@ -172,7 +172,7 @@ describe('detector (port of detector.py) and zero trust', () => {
 
   it('zero trust drops on any failing evidence, whatever the frame claims', () => {
     const ok = detector.evaluate(rf(0, 0));
-    const claim = { satellite_id: 'LEO-SAT-542', hw_token: '0x4FE2' };
+    const claim = { satellite_id: 'TERRASAR-X', hw_token: '0x4FE2' };
     expect(zeroTrust(claim, { ok: true, reason: 'AUTHENTIC' }, ok).allow).toBe(true);
     const forged = zeroTrust(
       { ...claim, hw_token: '0x99A2' },
@@ -198,10 +198,10 @@ describe('Ed25519 handshake', () => {
 });
 
 describe('pass geometry', () => {
-  it('flies a 542.8 km sun-synchronous LEO orbit', () => {
-    expect(ALTITUDE_KM).toBe(542.8);
-    expect(ORBIT_PERIOD_S / 60).toBeGreaterThan(95);
-    expect(ORBIT_PERIOD_S / 60).toBeLessThan(96);
+  it("flies TerraSAR-X's 514 km sun-synchronous LEO orbit", () => {
+    expect(ALTITUDE_KM).toBe(514);
+    expect(ORBIT_PERIOD_S / 60).toBeGreaterThan(94.5);
+    expect(ORBIT_PERIOD_S / 60).toBeLessThan(95);
   });
 
   it('culminates mid-pass with Doppler crossing zero', () => {
@@ -456,11 +456,11 @@ describe('engine scenarios', () => {
 describe('signal facts quoted on the site', () => {
   it('derives the carrier, Doppler, power and amplitude from the link model', () => {
     expect(SIGNAL.carrierMHz).toBe(8477.8);
-    expect(SIGNAL.dopplerMaxKHz).toBeCloseTo(197.7, 0);
-    expect(SIGNAL.rxDbm.mask).toBeCloseTo(-88.0, 0);
-    expect(SIGNAL.rxDbm.zenith).toBeCloseTo(-74.9, 0);
-    expect(SIGNAL.amplitudeUv.mask).toBeCloseTo(12.5, 0);
-    expect(SIGNAL.amplitudeUv.zenith).toBeCloseTo(57.1, 0);
+    expect(SIGNAL.dopplerMaxKHz).toBeCloseTo(199.0, 0);
+    expect(SIGNAL.rxDbm.mask).toBeCloseTo(-87.8, 0);
+    expect(SIGNAL.rxDbm.zenith).toBeCloseTo(-74.4, 0);
+    expect(SIGNAL.amplitudeUv.mask).toBeCloseTo(12.9, 0);
+    expect(SIGNAL.amplitudeUv.zenith).toBeCloseTo(60.3, 0);
     expect(SIGNAL.noiseUvRms).toBeCloseTo(2.24, 2);
     expect(peakMicrovolts(-100)).toBeCloseTo(rmsMicrovolts(-100) * Math.SQRT2, 9);
   });

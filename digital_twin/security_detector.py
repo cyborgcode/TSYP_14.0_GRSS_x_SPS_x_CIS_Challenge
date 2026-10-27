@@ -62,8 +62,8 @@ def range_jerk_bound(min_range_km: float, relative_speed_km_s: float) -> float:
     return 0.859 * relative_speed_km_s**3 / min_range_km**2
 
 
-#: LEO-SAT overhead at 542.8 km; 1.14e-3 km/s^3 was measured over 60 of its passes.
-DEFAULT_RANGE_JERK_BOUND_KM_S3 = range_jerk_bound(542.8, 7.59 + EARTH_SURFACE_SPEED_KM_S)
+#: TerraSAR-X overhead at 514 km; the validator derives the bound from the orbit it flies.
+DEFAULT_RANGE_JERK_BOUND_KM_S3 = range_jerk_bound(514.0, 7.61 + EARTH_SURFACE_SPEED_KM_S)
 
 NO_REFERENCE = {
     "available": False,

@@ -21,7 +21,7 @@ SPEED_OF_LIGHT_KM_S = 299_792.458
 
 @dataclass(frozen=True)
 class PassGeometry:
-    altitude_km: float = 550.0
+    altitude_km: float = 514.0  # TerraSAR-X
     ground_speed_km_s: float = 7.6
     duration_s: float = 600.0
     carrier_hz: float = 2.2e9  # S-band downlink

@@ -1,26 +1,26 @@
 {
   "title": "Hiding in the noise",
-  "duration": 163.732,
+  "duration": 165.892,
   "scenes": [
     {
       "id": "intro",
       "chapter": "Hiding in the noise",
       "start": 0.0,
-      "end": 15.876,
+      "end": 15.652,
       "cues": [
         {
           "start": 2.2,
-          "end": 5.848,
+          "end": 5.976,
           "text": "Every satellite signal reaches the ground buried in natural noise."
         },
         {
-          "start": 6.268,
-          "end": 10.236,
+          "start": 6.396,
+          "end": 10.332,
           "text": "A careful attacker can shape an attack to look exactly like that noise."
         },
         {
-          "start": 10.656,
-          "end": 14.976,
+          "start": 10.752,
+          "end": 14.752,
           "text": "This is how it works, and how our ground-link testbed still catches it."
         }
       ]
@@ -28,55 +28,55 @@
     {
       "id": "signal",
       "chapter": "The signal we chose",
-      "start": 15.876,
-      "end": 48.604,
+      "start": 15.652,
+      "end": 51.868,
       "cues": [
         {
-          "start": 16.776,
-          "end": 23.464,
-          "text": "Our satellite flies at 542.8 km and sends a fixed X-band carrier at 8477.8 MHz."
+          "start": 16.552,
+          "end": 27.416,
+          "text": "TerraSAR-X flies at 514 km and sends a fixed X-band carrier at 8477.8 MHz."
         },
         {
-          "start": 23.884,
-          "end": 31.724,
-          "text": "The frequency is not random: it moves only with the Doppler shift, up to ±198 kHz, which the orbit predicts."
+          "start": 27.836,
+          "end": 35.596,
+          "text": "The frequency is not random: it moves only with the Doppler shift, up to ±199 kHz, which the orbit predicts."
         },
         {
-          "start": 32.144,
-          "end": 40.48,
-          "text": "At Zaghouan the carrier arrives between −88 and −75 dBm: an amplitude of 12.5 to 57 µV."
+          "start": 36.016,
+          "end": 43.84,
+          "text": "At Zaghouan the carrier arrives between −88 and −74 dBm: an amplitude of 12.9 to 60 µV."
         },
         {
-          "start": 40.9,
-          "end": 47.604,
-          "text": "The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 12 to 25 dB over the pass."
+          "start": 44.26,
+          "end": 50.868,
+          "text": "The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 12 to 26 dB over the pass."
         }
       ]
     },
     {
       "id": "natural",
       "chapter": "What natural noise looks like",
-      "start": 48.604,
-      "end": 66.58,
+      "start": 51.868,
+      "end": 70.116,
       "cues": [
         {
-          "start": 49.504,
-          "end": 51.488,
+          "start": 52.768,
+          "end": 54.784,
           "text": "Natural noise has a signature."
         },
         {
-          "start": 51.908,
-          "end": 55.828,
+          "start": 55.204,
+          "end": 59.22,
           "text": "Thermal noise is Gaussian and white: a flat floor across the band."
         },
         {
-          "start": 56.248,
-          "end": 62.264,
+          "start": 59.64,
+          "end": 65.896,
           "text": "Against the orbit model, the carrier wanders by less than 20 Hz and the power by less than 1 dB."
         },
         {
-          "start": 62.684,
-          "end": 65.58,
+          "start": 66.316,
+          "end": 69.116,
           "text": "That narrow envelope is where an attacker has to hide."
         }
       ]
@@ -84,22 +84,22 @@
     {
       "id": "imitate",
       "chapter": "How an attacker imitates it",
-      "start": 66.58,
-      "end": 92.348,
+      "start": 70.116,
+      "end": 95.148,
       "cues": [
         {
-          "start": 67.48,
-          "end": 75.0,
+          "start": 71.016,
+          "end": 78.296,
           "text": "One: noise-shaped jamming. Gaussian noise, raised slowly like a rain fade, so the floor creeps up instead of jumping."
         },
         {
-          "start": 75.42,
-          "end": 83.436,
+          "start": 78.716,
+          "end": 86.316,
           "text": "Two: fade-mimicking spoofing. A rogue node matches the Doppler and adds fake fading, so its power sits only 3 dB low."
         },
         {
-          "start": 83.856,
-          "end": 91.248,
+          "start": 86.736,
+          "end": 94.048,
           "text": "Three: bit flips disguised as channel errors. Chosen bits are flipped and the checksum recomputed, so the frame just looks noisy."
         }
       ]
@@ -107,22 +107,22 @@
     {
       "id": "physics",
       "chapter": "Layer 1 · Physics",
-      "start": 92.348,
-      "end": 112.256,
+      "start": 95.148,
+      "end": 115.024,
       "cues": [
         {
-          "start": 93.248,
-          "end": 96.736,
+          "start": 96.048,
+          "end": 99.696,
           "text": "Our idea is to make every imitation either harmless or visible."
         },
         {
-          "start": 97.156,
-          "end": 108.356,
+          "start": 100.116,
+          "end": 111.284,
           "text": "Layer one is physics. To stay hidden, the injected noise can be at most 1.8 dB above the thermal noise: that costs at most 4 dB of signal-to-noise ratio, and every frame still verifies."
         },
         {
-          "start": 108.776,
-          "end": 111.256,
+          "start": 111.704,
+          "end": 114.024,
           "text": "Push harder, and the physics gate fires."
         }
       ]
@@ -130,17 +130,17 @@
     {
       "id": "ai",
       "chapter": "Layer 2 · AI",
-      "start": 112.256,
-      "end": 124.924,
+      "start": 115.024,
+      "end": 127.436,
       "cues": [
         {
-          "start": 113.056,
-          "end": 116.592,
+          "start": 115.824,
+          "end": 119.488,
           "text": "Layer two is an Isolation Forest trained only on clean passes."
         },
         {
-          "start": 117.012,
-          "end": 123.924,
+          "start": 119.908,
+          "end": 126.436,
           "text": "It scores each reading together with how fast it changed, so a disguise must copy the rhythm of nature, not just its level."
         }
       ]
@@ -148,22 +148,22 @@
     {
       "id": "crypto",
       "chapter": "Layer 3 · Cryptography",
-      "start": 124.924,
-      "end": 147.436,
+      "start": 127.436,
+      "end": 149.548,
       "cues": [
         {
-          "start": 125.724,
-          "end": 132.988,
+          "start": 128.236,
+          "end": 135.164,
           "text": "Layer three is cryptography, which noise cannot imitate: every frame carries an HMAC-SHA256 tag made with a secret key."
         },
         {
-          "start": 133.408,
-          "end": 139.616,
+          "start": 135.584,
+          "end": 141.52,
           "text": "Change one bit, by accident or on purpose, and the tag breaks: the frame is dropped and requested again."
         },
         {
-          "start": 140.036,
-          "end": 146.436,
+          "start": 141.94,
+          "end": 148.548,
           "text": "One failure looks like weather. A burst of failures trips two of our three detectors, and the link is quarantined."
         }
       ]
@@ -171,22 +171,22 @@
     {
       "id": "result",
       "chapter": "Result",
-      "start": 147.436,
-      "end": 163.732,
+      "start": 149.548,
+      "end": 165.892,
       "cues": [
         {
-          "start": 148.236,
-          "end": 153.996,
+          "start": 150.348,
+          "end": 156.156,
           "text": "In our tests, every attack packet was denied, and no corrupted frame reached the analyst."
         },
         {
-          "start": 154.416,
-          "end": 157.248,
+          "start": 156.576,
+          "end": 159.456,
           "text": "About one percent of genuine packets were held back."
         },
         {
-          "start": 157.668,
-          "end": 159.732,
+          "start": 159.876,
+          "end": 161.892,
           "text": "Try it live at tsyp-pi.vercel.app."
         }
       ]

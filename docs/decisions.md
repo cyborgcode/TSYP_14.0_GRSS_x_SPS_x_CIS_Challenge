@@ -75,7 +75,7 @@ detection run side by side and are evaluated separately.
 
 **Why.** Measured, not assumed: relay, delay and jamming deliver genuine frames and pass
 every cryptographic check; tampering changes bytes but not physics and is invisible to the
-detector (ROC AUC 0.507). Neither layer covers the catalogue alone.
+detector (ROC AUC 0.512). Neither layer covers the catalogue alone.
 
 **Rules out.** Presenting either layer as sufficient on its own.
 
