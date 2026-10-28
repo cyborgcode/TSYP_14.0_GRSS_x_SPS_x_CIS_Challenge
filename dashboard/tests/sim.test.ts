@@ -13,15 +13,19 @@ import {
 import { DEMO_LENGTH_S, Engine } from '../src/sim/engine';
 import {
   ALTITUDE_KM,
+  C_KM_S,
   ORBIT_PERIOD_S,
   PASS_S,
+  atmosphericLossDb,
   passAt,
   snrPredDb,
   timeAfterAos,
+  timeCompression,
 } from '../src/sim/geometry';
 import { IsolationForest } from '../src/sim/iforest';
 import { LinkDetector, zeroTrust } from '../src/sim/linkDetector';
 import {
+  CHI_SQUARE,
   NATURAL,
   SIGNAL,
   STEALTH,
@@ -30,7 +34,18 @@ import {
   snrLossDb,
 } from '../src/sim/linkFacts';
 import { mulberry32 } from '../src/sim/noise';
-import { JAMMED_RSSI_DBM, checkGates, sample, type Attack } from '../src/sim/signals';
+import {
+  PhysicsEngine,
+  chiSquareQuantile,
+  elevationSpreadFactor,
+  erfc,
+  normalTwoSidedQuantile,
+  rangeJerkBoundFor,
+  type LinkState,
+} from '../src/sim/physicsEngine';
+import { JAMMED_RSSI_DBM, sample, type Attack, type Sample } from '../src/sim/signals';
+import { decide } from '../src/sim/validator';
+import { BELOW_GATE_DB } from '../src/ui/BelowGate';
 import {
   TrustAnchorLedger,
   frameText,
@@ -146,7 +161,7 @@ describe('detector (port of detector.py) and zero trust', () => {
     for (let s = 50_000.3; n < 2000; s += FRAME_PERIOD_S) {
       const pass = passAt(s);
       if (!pass.linkActive) continue;
-      const x = sample(s, snrPredDb(pass.rangeKm), {
+      const x = sample(s, snrPredDb(pass.rangeKm, pass.elevationDeg), {
         attacks: [],
         falseAlarm: 0,
         dopplerPredHz: pass.dopplerHz,
@@ -221,39 +236,163 @@ describe('pass geometry', () => {
   });
 });
 
-describe('physics gates', () => {
-  const snrModel = 15;
+/** The link as the station measures it and as the orbit and link budget predict it. */
+function claim(s: number, x: Sample) {
+  const p = passAt(s);
+  const rx: LinkState = {
+    rangeKm: p.rangeKm + (x.timingUs ?? 0) * C_KM_S * 1e-6,
+    dopplerHz: p.dopplerHz + x.dopplerHz,
+    rssiDbm: x.rssiDbm,
+    phaseDeg: x.phaseDeg,
+  };
+  const truth: LinkState = {
+    rangeKm: p.rangeKm,
+    dopplerHz: p.dopplerHz,
+    rssiDbm: x.rssiModelDbm,
+    phaseDeg: 0,
+  };
+  return { rx, truth, el: p.elevationDeg, t: s * timeCompression() };
+}
+
+describe('physical layer (port of security_detector.py)', () => {
   const attack = (kind: Attack['kind'], power = 9): Attack => ({
     kind,
-    tTrigger: 10,
-    tResponse: 100,
+    tTrigger: 0,
+    tResponse: 1e9,
     power: () => power,
   });
-  const at = (a: Attack | null) =>
-    checkGates(sample(12, snrModel, { attacks: a ? [a] : [], falseAlarm: 0 }));
-
-  it('passes nominal traffic', () => {
-    for (let s = 0; s < 200; s += 0.05) {
-      expect(checkGates(sample(s, snrModel, { attacks: [], falseAlarm: 0 })).any).toBe(false);
+  /** One frame per frame period across `passes` passes; counts chi-square and kinematic breaches. */
+  const sweep = (passes: number, a: Attack | null, from = 0) => {
+    const engine = new PhysicsEngine();
+    let frames = 0;
+    let chi = 0;
+    let kinematic = 0;
+    let sum = 0;
+    for (let s = from + 0.5; s < from + passes * 69; s += FRAME_PERIOD_S) {
+      const p = passAt(s);
+      if (!p.linkActive) {
+        engine.reset();
+        continue;
+      }
+      const x = sample(s, snrPredDb(p.rangeKm, p.elevationDeg), {
+        attacks: a ? [a] : [],
+        falseAlarm: 0,
+        dopplerPredHz: p.dopplerHz,
+      });
+      if (x.timingUs === null) continue;
+      const c = claim(s, x);
+      const r = engine.evaluate(c.rx, c.truth, c.el, c.t);
+      frames++;
+      sum += r.chiSquare;
+      if (r.chiSquareBreach) chi++;
+      if (r.kinematic.breach) kinematic++;
     }
+    return { frames, chi, kinematic, meanChi: sum / frames };
+  };
+
+  it("uses the twin's gates: chi-square with 4 dof and a two-sided z at 1e-4", () => {
+    // chi_square_quantile(1 - 1e-4, 4) and normal_two_sided_quantile(1e-4) in the twin.
+    expect(chiSquareQuantile(1 - 1e-4, 4)).toBeCloseTo(23.5127, 3);
+    expect(normalTwoSidedQuantile(1e-4)).toBeCloseTo(3.8906, 3);
+    expect(erfc(1)).toBeCloseTo(0.157299207, 6);
+    expect(CHI_SQUARE.dof).toBe(4);
+    expect(elevationSpreadFactor(0)).toBe(3);
+    expect(elevationSpreadFactor(60)).toBeCloseTo(1, 3);
+    expect(CHI_SQUARE.maskGate / CHI_SQUARE.gate).toBeCloseTo(elevationSpreadFactor(2), 9);
+    // 0.859 v^3 / rho^2 overhead at 514 km: the twin's default bound.
+    expect(rangeJerkBoundFor(514)).toBeCloseTo((0.859 * (7.6 + 0.465) ** 3) / 514 ** 2, 3);
   });
 
-  it('flags the hijack, loses frames under strong jamming, and is fooled by stealth spoofing', () => {
-    expect(at(attack('hijack')).doppler).toBe(true);
-    expect(at(attack('jam', 9)).noFrames).toBe(true);
-    expect(at(attack('jam', 3)).any).toBe(false);
-    expect(at(attack('spoof')).any).toBe(false);
+  it('never fires on clean passes: chi-square averages its 4 degrees of freedom', () => {
+    const clean = sweep(60, null);
+    expect(clean.frames).toBeGreaterThan(10_000);
+    expect(clean.chi).toBe(0);
+    expect(clean.kinematic).toBe(0);
+    expect(clean.meanChi).toBeGreaterThan(3.2);
+    expect(clean.meanChi).toBeLessThan(4.8);
+  });
+
+  it('rejects the hijack, the strong jam and the spoof; passes tampering and the below-gate jam', () => {
+    const hijack = sweep(4, attack('hijack'));
+    expect(hijack.chi).toBe(hijack.frames);
+    // Started mid-pass, the hijacker's carrier also breaks the range-Doppler coupling against
+    // the last trusted frame.
+    const late = sweep(1, { ...attack('hijack'), tTrigger: 30 });
+    expect(late.kinematic).toBeGreaterThan(0);
+    // At +9 dB the carrier is lost outright; at +6 dB frames still arrive, 5.4 dB too weak.
+    const jam = sweep(4, attack('jam', 6));
+    expect(jam.chi).toBe(jam.frames);
+    // 3.2 dB below the link budget: inside a ±4 dB band, 14 sigma off the prediction.
+    const spoof = sweep(4, attack('spoof'));
+    expect(spoof.chi).toBe(spoof.frames);
+    expect(sweep(4, attack('tamper')).chi).toBe(0);
+    const quiet = sweep(4, attack('jam', BELOW_GATE_DB));
+    expect(quiet.chi + quiet.kinematic).toBe(0);
+  });
+
+  it('catches a delay without the matching Doppler, even when the orbit model is stale', () => {
+    const engine = new PhysicsEngine();
+    const s0 = timeAfterAos(20);
+    const stale = 40; // km: the orbit model is off, the signal is genuine
+    let consistent = 0;
+    for (let k = 0; k < 10; k++) {
+      const s = s0 + k * FRAME_PERIOD_S;
+      const x = sample(s, 15, { attacks: [], falseAlarm: 0 });
+      const c = claim(s, x);
+      const r = engine.evaluate(c.rx, { ...c.truth, rangeKm: c.truth.rangeKm + stale }, c.el, c.t);
+      expect(r.chiSquareBreach).toBe(true);
+      if (r.kinematic.verdict !== 'KINEMATIC_VIOLATION') consistent++;
+    }
+    // The stale model fires chi-square, so no frame becomes an anchor: start from a good one.
+    const ok = engine;
+    const s = s0 + 20;
+    const x = sample(s, 15, { attacks: [], falseAlarm: 0 });
+    const c = claim(s, x);
+    ok.evaluate(c.rx, c.truth, c.el, c.t);
+    const s2 = s + FRAME_PERIOD_S;
+    const c2 = claim(s2, sample(s2, 15, { attacks: [], falseAlarm: 0 }));
+    // A meaconer: 241.8 µs of extra light time, 72.5 km of range, Doppler still the satellite's.
+    const meaconed = { ...c2.rx, rangeKm: c2.rx.rangeKm + 72.5 };
+    const r = ok.evaluate(meaconed, { ...c2.truth, rangeKm: c2.truth.rangeKm + 72.5 }, c2.el, c2.t);
+    expect(r.chiSquareBreach).toBe(false);
+    expect(r.kinematic.verdict).toBe('KINEMATIC_VIOLATION');
+    expect(r.kinematic.z).toBeGreaterThan(50);
+    expect(consistent).toBe(10);
+  });
+
+  it('decides as physics_validator.py: either deterministic layer rejects, the forest holds', () => {
+    const claimOk = { satellite_id: 'TERRASAR-X', hw_token: '0x4FE2' };
+    const authOk = { ok: true, reason: 'AUTHENTIC' as const };
+    const engine = new PhysicsEngine();
+    const s = timeAfterAos(10);
+    const c = claim(s, sample(s, 15, { attacks: [], falseAlarm: 0 }));
+    const clean = engine.evaluate(c.rx, c.truth, c.el, c.t);
+    const breach = { ...clean, breach: true, chiSquareBreach: true, chiSquare: 200 };
+    const forest = { forest: true, score: 0.7, threshold: 0.6 } as Parameters<typeof decide>[3];
+    expect(decide(claimOk, authOk, clean, null).verdict).toBe('ACCEPTED');
+    expect(decide(claimOk, authOk, clean, forest).verdict).toBe('HELD');
+    expect(decide(claimOk, authOk, clean, forest).action).toBe('HOLD_FOR_REVIEW');
+    expect(decide(claimOk, authOk, breach, forest).verdict).toBe('REJECTED');
+    const forged = decide(claimOk, { ok: false, reason: 'MAC_MISMATCH' }, clean, null);
+    expect(forged.verdict).toBe('REJECTED');
+    expect(forged.reasons).toEqual(['data: trust anchor: MAC_MISMATCH']);
+    expect(decide(null, null, null, null).verdict).toBe('REJECTED');
   });
 
   it('moves the carrier to ~8492 MHz under hijack and RSSI to −96.5 dBm under jamming', () => {
-    const ctx = (a: Attack) => ({ attacks: [a], falseAlarm: 0, dopplerPredHz: 0 });
-    const hijacked = sample(12, snrModel, ctx(attack('hijack')));
+    const snrModel = 15;
+    const at = (a: Attack) =>
+      sample(12, snrModel, { attacks: [{ ...a, tTrigger: 10 }], falseAlarm: 0, dopplerPredHz: 0 });
+    const hijacked = at(attack('hijack'));
     expect(hijacked.carrierMHz).toBeGreaterThan(8491.4);
     expect(hijacked.carrierMHz).toBeLessThan(8492.6);
-    const jammed = sample(12, snrModel, ctx(attack('jam', 9)));
+    expect(Math.abs(hijacked.phaseDeg)).toBeGreaterThan(30);
+    const jammed = at(attack('jam', 9));
     expect(Math.abs(jammed.rssiDbm - JAMMED_RSSI_DBM)).toBeLessThan(1);
-    const spoofed = sample(12, snrModel, ctx(attack('spoof')));
+    expect(jammed.timingUs).toBeNull();
+    const spoofed = at(attack('spoof'));
     expect(spoofed.rssiDbm).toBeLessThan(spoofed.rssiModelDbm - 2);
+    expect(spoofed.rssiDbm).toBeGreaterThan(spoofed.rssiModelDbm - 4);
   });
 });
 
@@ -335,14 +474,21 @@ describe('engine scenarios', () => {
     expect(engine.corruptedToAnalyst).toBe(0);
   });
 
-  it('stealth spoofing: physics is evaded, forged nonces from 0x99A2 trigger quarantine', async () => {
+  it('stealth spoofing: inside a ±4 dB band, but χ² and forged nonces from 0x99A2 give it away', async () => {
     const engine = await Engine.create();
     await runFor(engine, 1);
     engine.trigger('spoof');
     await runFor(engine, 1.2);
-    expect(engine.detectors.PHYSICS.flag).toBe(false);
-    expect(engine.detectors.PHYSICS.evaded).toBe(true);
+    expect(engine.detectors.PHYSICS.flag).toBe(true);
+    expect(engine.detectors.PHYSICS.evaded).toBe(false);
+    expect(engine.physics!.chi.dominant).toBe('rssiDb');
     expect(engine.votes).toBeGreaterThanOrEqual(2);
+    const forged = engine.packets.filter((p) => p.label === 'spoof');
+    expect(forged.length).toBeGreaterThan(0);
+    for (const p of forged) {
+      expect(p.decision.verdict).toBe('REJECTED');
+      expect(p.decision.reasons.some((r) => r.startsWith('data: '))).toBe(true);
+    }
     expect(engine.state).toBe('UNDER ATTACK');
     expect(engine.banner?.headline).toMatch(/Quarantine protocols engaged/);
     expect(engine.ledger.some((r) => r.source === 'NODE 0x99A2')).toBe(true);
@@ -364,14 +510,15 @@ describe('engine scenarios', () => {
     expect(engine.terminal.some((l) => l.text.includes('fallback routing → GS-MAT'))).toBe(true);
   });
 
-  it('jam below the gate is never escalated', async () => {
+  it('jam below the gate is never escalated and every frame is still accepted', async () => {
     const engine = await Engine.create();
     await runFor(engine, 1);
-    engine.setPower(3);
+    engine.setPower(BELOW_GATE_DB);
     engine.trigger('jam');
     await runFor(engine, 4);
     expect(engine.runs.length + (engine.run ? 1 : 0)).toBe(1);
     expect(engine.run?.escalatedAt ?? null).toBeNull();
+    expect(engine.packets.every((p) => p.decision.verdict === 'ACCEPTED')).toBe(true);
   });
 
   it('data tampering: no RF signature, every altered frame fails the hash and is dropped', async () => {
@@ -386,7 +533,7 @@ describe('engine scenarios', () => {
     for (const p of tampered) {
       expect(p.auth.reason).toBe('MAC_MISMATCH');
       expect(p.decision.allow).toBe(false);
-      expect(p.detector?.physics).toBe(false);
+      expect(p.physics?.breach).toBe(false);
       expect(p.flipped).not.toBeNull();
       expect(p.frame!.payload).not.toBe(p.originalPayload);
       expect(p.mac).not.toBe(p.expectedMac);
@@ -457,28 +604,39 @@ describe('signal facts quoted on the site', () => {
   it('derives the carrier, Doppler, power and amplitude from the link model', () => {
     expect(SIGNAL.carrierMHz).toBe(8477.8);
     expect(SIGNAL.dopplerMaxKHz).toBeCloseTo(199.0, 0);
-    expect(SIGNAL.rxDbm.mask).toBeCloseTo(-87.8, 0);
-    expect(SIGNAL.rxDbm.zenith).toBeCloseTo(-74.4, 0);
-    expect(SIGNAL.amplitudeUv.mask).toBeCloseTo(12.9, 0);
-    expect(SIGNAL.amplitudeUv.zenith).toBeCloseTo(60.3, 0);
+    // ITU-R P.618 median atmosphere from the twin: 1.06 dB at the 2° mask, 0.05 dB overhead.
+    expect(SIGNAL.atmosphereDb.mask).toBeCloseTo(1.064, 3);
+    expect(SIGNAL.atmosphereDb.zenith).toBeCloseTo(0.047, 3);
+    expect(atmosphericLossDb(13)).toBeCloseTo(0.2102, 4);
+    expect(SIGNAL.rxDbm.mask).toBeCloseTo(-88.8, 1);
+    expect(SIGNAL.rxDbm.zenith).toBeCloseTo(-74.4, 1);
+    expect(SIGNAL.snrDb.mask).toBeCloseTo(11.2, 1);
+    expect(SIGNAL.snrDb.zenith).toBeCloseTo(25.6, 1);
+    expect(SIGNAL.amplitudeUv.mask).toBeCloseTo(11.4, 1);
+    expect(SIGNAL.amplitudeUv.zenith).toBeCloseTo(60.0, 1);
     expect(SIGNAL.noiseUvRms).toBeCloseTo(2.24, 2);
     expect(peakMicrovolts(-100)).toBeCloseTo(rmsMicrovolts(-100) * Math.SQRT2, 9);
   });
 
-  it('caps a noise-shaped jammer at 1.8 dB above the floor to stay inside the 4 dB band', () => {
-    expect(STEALTH.maxNoiseAboveFloorDb).toBeCloseTo(1.8, 1);
+  it('caps a noise-shaped jammer 5.3 dB below the floor to stay inside the χ² gate', () => {
+    // 0.23 dB × √23.51: the most SNR a jammer can take before the power residual alone fires.
+    expect(STEALTH.maxSnrLossDb).toBeCloseTo(1.115, 3);
+    expect(STEALTH.maxNoiseAboveFloorDb).toBeCloseTo(-5.33, 2);
     expect(snrLossDb(STEALTH.maxNoiseAboveFloorDb)).toBeCloseTo(STEALTH.maxSnrLossDb, 9);
-    expect(STEALTH.maxNoiseDbm).toBeCloseTo(-98.2, 1);
+    expect(STEALTH.maxNoiseDbm).toBeCloseTo(-105.3, 1);
+    // The old ±4 dB box band let an attacker hide 1.8 dB above the floor.
+    expect(10 * Math.log10(10 ** (STEALTH.boxBandDb / 10) - 1)).toBeCloseTo(1.8, 1);
   });
 
-  it('keeps natural jitter well inside the physics gates, as quoted', () => {
+  it('keeps natural jitter inside the χ² gate, as quoted', () => {
     const dop: number[] = [];
     const pow: number[] = [];
     const tim: number[] = [];
+    const pha: number[] = [];
     for (let s = 0; s < 69 * 120; s += 0.05) {
       const p = passAt(s);
       if (!p.linkActive) continue;
-      const x = sample(s, snrPredDb(p.rangeKm), {
+      const x = sample(s, snrPredDb(p.rangeKm, p.elevationDeg), {
         attacks: [],
         falseAlarm: 0,
         dopplerPredHz: p.dopplerHz,
@@ -486,6 +644,7 @@ describe('signal facts quoted on the site', () => {
       dop.push(x.dopplerHz);
       pow.push(x.snrDb - x.snrModelDb);
       tim.push(x.timingUs!);
+      pha.push(x.phaseDeg);
     }
     const sd = (a: number[]) => {
       const m = a.reduce((x, y) => x + y, 0) / a.length;
@@ -496,9 +655,14 @@ describe('signal facts quoted on the site', () => {
     expect(peak(dop)).toBeLessThanOrEqual(NATURAL.carrierHz.max + 0.5);
     expect(sd(pow)).toBeCloseTo(NATURAL.powerDb.sigma, 1);
     expect(peak(pow)).toBeLessThanOrEqual(NATURAL.powerDb.max + 0.02);
+    expect(sd(tim)).toBeCloseTo(NATURAL.timingUs.sigma, 0);
     expect(peak(tim)).toBeLessThanOrEqual(NATURAL.timingUs.max + 0.1);
-    expect(NATURAL.carrierHz.gate).toBeGreaterThan(3 * NATURAL.carrierHz.max);
-    expect(NATURAL.powerDb.gate).toBeGreaterThan(4 * NATURAL.powerDb.max);
+    expect(sd(pha)).toBeCloseTo(NATURAL.phaseDeg.sigma, 1);
+    expect(peak(pha)).toBeLessThanOrEqual(NATURAL.phaseDeg.max + 0.1);
+    // Each residual's largest natural excursion stays inside what the gate allows it alone.
+    for (const k of ['carrierHz', 'powerDb', 'timingUs', 'phaseDeg'] as const) {
+      expect(NATURAL[k].gate).toBeGreaterThan(1.3 * NATURAL[k].max);
+    }
   });
 });
 

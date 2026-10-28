@@ -41,14 +41,3 @@ export function Panel({
     </section>
   );
 }
-
-export function SampleBadge({ title }: { title?: string }) {
-  return (
-    <span
-      className="sample-badge"
-      title={title ?? 'Placeholder value until measured on the official reference dataset'}
-    >
-      Sample values
-    </span>
-  );
-}

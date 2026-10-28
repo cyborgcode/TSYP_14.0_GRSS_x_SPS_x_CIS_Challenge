@@ -61,7 +61,7 @@ function nominalFeatures(count: number, start: number, seedOffset: number): numb
   while (out.length < count) {
     const pass = passAt(s);
     if (pass.linkActive) {
-      const x = sample(s, snrPredDb(pass.rangeKm), {
+      const x = sample(s, snrPredDb(pass.rangeKm, pass.elevationDeg), {
         attacks: [],
         falseAlarm: 0,
         dopplerPredHz: pass.dopplerHz,
@@ -143,7 +143,9 @@ export class LinkDetector {
 
 export interface Decision {
   allow: boolean;
-  action: 'ALLOW_STREAM' | 'QUARANTINE_AND_DROP';
+  action: 'ALLOW_STREAM' | 'HOLD_FOR_REVIEW' | 'QUARANTINE_AND_DROP';
+  /** The digital twin's final decision (physics_validator.py). */
+  verdict: 'ACCEPTED' | 'HELD' | 'REJECTED';
   reasons: string[];
 }
 
@@ -161,6 +163,6 @@ export function zeroTrust(
   if (authentic && !authentic.ok) reasons.push(`trust anchor: ${authentic.reason}`);
   if (detection?.anomaly) reasons.push('detector: RF anomaly');
   return reasons.length
-    ? { allow: false, action: 'QUARANTINE_AND_DROP', reasons }
-    : { allow: true, action: 'ALLOW_STREAM', reasons: [] };
+    ? { allow: false, action: 'QUARANTINE_AND_DROP', verdict: 'REJECTED', reasons }
+    : { allow: true, action: 'ALLOW_STREAM', verdict: 'ACCEPTED', reasons: [] };
 }

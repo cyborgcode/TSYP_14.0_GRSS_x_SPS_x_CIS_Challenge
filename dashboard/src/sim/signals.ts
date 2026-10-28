@@ -1,6 +1,8 @@
-// Physical-layer telemetry: carrier frequency, RSSI, SNR vs link budget, timing skew and EVM.
-// Residual shapes follow the standard-scenario generator; the SNR model comes from the real
-// link budget at the current slant range, so it rises and falls with the pass.
+// Physical-layer telemetry: carrier frequency, RSSI, SNR vs link budget, frame timing, carrier
+// phase and EVM. Residual shapes follow the standard-scenario generator; the SNR model comes
+// from the real link budget (free space plus the ITU-R P.618 atmosphere) at the current slant
+// range and elevation, so it rises and falls with the pass. The physical layer judges these
+// residuals with the chi-square engine in physicsEngine.ts.
 
 import { CARRIER_HZ, NOISE_FLOOR_DBM } from './geometry';
 import { clamp, smooth, sn } from './noise';
@@ -16,8 +18,6 @@ export interface Attack {
   power: (s: number) => number;
 }
 
-export const GATES = { dopplerHz: 60, snrBandDb: 4, timingUs: 8 } as const;
-
 /** Offset of the rogue carrier injected by the frequency hijack. */
 export const HIJACK_OFFSET_HZ = 14.2e6;
 /** Half-width of the hijacker's frequency sweep around its offset. */
@@ -25,6 +25,11 @@ export const HIJACK_SWEEP_HZ = 0.35e6;
 /** RSSI the jammed receiver settles at, at nominal jammer power. */
 export const JAMMED_RSSI_DBM = -96.5;
 const JAM_REFERENCE_POWER_DB = 9;
+/** Jammer power at which the receiver front end starts to saturate and the RSSI to collapse. */
+const JAM_SATURATION_DB = 5;
+
+/** SNR the noise jammer costs the link at `powerDb` of attack power, on average. */
+export const jamSnrLossDb = (powerDb: number): number => Math.max(0, 1.4 * powerDb - 3);
 
 /** Attack envelope: ramps in 0.05–0.3 s after the trigger, out over 0.5 s after the response. */
 export function envelope(a: Attack, s: number): number {
@@ -45,8 +50,10 @@ export interface Sample {
   /** Received signal strength of the locked carrier. */
   rssiDbm: number;
   rssiModelDbm: number;
-  /** Microseconds, or null when no frames arrive. */
+  /** Frame timing against the light time the orbit predicts, µs, or null when no frames arrive. */
   timingUs: number | null;
+  /** Carrier phase error of the receiver's phase loop, degrees. */
+  phaseDeg: number;
   evmPct: number;
   evmModelPct: number;
 }
@@ -65,6 +72,7 @@ export function sample(s: number, snrModelDb: number, ctx: SignalContext): Sampl
   let dop = 7 * Math.sin(s * 1.9) + 11 * sn(s * 2.4, 11) + 4 * sn(s * 9, 12);
   let snr = snrModelDb + 0.7 * sn(s * 2.6, 31) + 0.3 * sn(s * 11, 33);
   let timing: number | null = 2 * Math.sin(s * 2.3) + 2.4 * sn(s * 3, 21) + 0.8 * sn(s * 11, 24);
+  let phase = 1.2 * Math.sin(s * 1.7 + 0.6) + 3.8 * sn(s * 2.9, 51) + 1.5 * sn(s * 10, 52);
   let lost = false;
   let jamRssi: { weight: number; e: number } | null = null;
 
@@ -78,18 +86,25 @@ export function sample(s: number, snrModelDb: number, ctx: SignalContext): Sampl
         dop += e * (HIJACK_OFFSET_HZ + HIJACK_SWEEP_HZ * Math.sin(s * 9) + 40e3 * sn(s * 3, 13));
         snr += e * (p + 1.1 * sn(s * 5, 34));
         timing += e * (27 + 6 * sn(s * 6, 22));
+        phase += e * (62 + 28 * sn(s * 4, 53));
         break;
       case 'spoof':
-        // Stealth: stays on the Doppler track and inside the SNR band; only the crypto breaks.
+        // Fade-mimicking: on the Doppler track, coherent with the carrier, its power a plausible
+        // fade below the link budget. Inside a ±4 dB band, but 14 sigma off the prediction.
         dop += e * 16 * sn(s * 5, 16);
         snr -= e * (3.2 + 0.4 * sn(s * 7, 36));
         timing += e * 4.2;
+        phase += e * 2 * sn(s * 6, 54);
         break;
       case 'jam':
         dop += e * clamp((p - 5) / 5) * 720 * sn(s * 22, 15);
-        snr -= e * Math.max(0, 1.4 * p - 3) + e * clamp((p - 5) / 5) * 1.5 * sn(s * 16, 35);
+        phase += e * clamp((p - 5) / 5) * 38 * sn(s * 19, 55);
+        snr -= e * jamSnrLossDb(p) + e * clamp((p - 5) / 5) * 1.5 * sn(s * 16, 35);
         if (s >= a.tTrigger && s < a.tResponse && p > 7) lost = true;
-        jamRssi = { weight: e * clamp(p / JAM_REFERENCE_POWER_DB), e };
+        jamRssi = {
+          weight: e * clamp((p - JAM_SATURATION_DB) / (JAM_REFERENCE_POWER_DB - JAM_SATURATION_DB)),
+          e,
+        };
         break;
     }
   }
@@ -116,23 +131,8 @@ export function sample(s: number, snrModelDb: number, ctx: SignalContext): Sampl
     rssiDbm,
     rssiModelDbm,
     timingUs: lost ? null : timing,
+    phaseDeg: phase,
     evmPct,
     evmModelPct,
   };
-}
-
-export interface GateResult {
-  doppler: boolean;
-  snr: boolean;
-  timing: boolean;
-  noFrames: boolean;
-  any: boolean;
-}
-
-export function checkGates(x: Sample): GateResult {
-  const doppler = Math.abs(x.dopplerHz) > GATES.dopplerHz;
-  const snr = Math.abs(x.snrDb - x.snrModelDb) > GATES.snrBandDb;
-  const noFrames = x.timingUs === null;
-  const timing = x.timingUs !== null && Math.abs(x.timingUs) > GATES.timingUs;
-  return { doppler, snr, timing, noFrames, any: doppler || snr || timing || noFrames };
 }

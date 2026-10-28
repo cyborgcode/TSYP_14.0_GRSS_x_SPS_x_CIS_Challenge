@@ -1,5 +1,5 @@
 import { SATELLITE } from '../../sim/copy';
-import { ATTACK_SIGNALS, NATURAL, SIGNAL, STEALTH } from '../../sim/linkFacts';
+import { ATTACK_SIGNALS, CHI_SQUARE, NATURAL, SIGNAL, STEALTH } from '../../sim/linkFacts';
 import { MINUS } from '../format';
 
 /** "−88.0" style numbers with a real minus sign. */
@@ -20,6 +20,11 @@ const FACTS: { k: string; v: string; note: string }[] = [
     k: 'Received power',
     v: `${n(SIGNAL.rxDbm.mask)} → ${n(SIGNAL.rxDbm.zenith)} dBm`,
     note: `${SIGNAL.maskElevationDeg}° mask → zenith: ${Math.round(SIGNAL.slantRangeKm.mask)} → ${SIGNAL.slantRangeKm.zenith} km, path loss ${SIGNAL.pathLossDb.mask.toFixed(1)} → ${SIGNAL.pathLossDb.zenith.toFixed(1)} dB`,
+  },
+  {
+    k: 'Atmosphere',
+    v: `${SIGNAL.atmosphereDb.mask.toFixed(2)} → ${SIGNAL.atmosphereDb.zenith.toFixed(2)} dB`,
+    note: 'ITU-R P.618, median year over Zaghouan: oxygen and water vapour; rain and clouds stay below the median',
   },
   {
     k: 'Carrier amplitude',
@@ -47,17 +52,22 @@ const JITTER: { k: string; natural: string; gate: string }[] = [
   {
     k: 'Carrier vs orbit model',
     natural: `±${NATURAL.carrierHz.max} Hz (σ ${NATURAL.carrierHz.sigma} Hz)`,
-    gate: `±${NATURAL.carrierHz.gate} Hz`,
+    gate: `±${NATURAL.carrierHz.gate.toFixed(0)} Hz`,
   },
   {
     k: 'Power vs link budget',
     natural: `±${NATURAL.powerDb.max.toFixed(1)} dB (σ ${NATURAL.powerDb.sigma} dB)`,
-    gate: `±${NATURAL.powerDb.gate} dB`,
+    gate: `±${NATURAL.powerDb.gate.toFixed(1)} dB`,
   },
   {
-    k: 'Frame timing',
+    k: 'Frame timing (range)',
     natural: `±${NATURAL.timingUs.max} µs (σ ${NATURAL.timingUs.sigma} µs)`,
-    gate: `±${NATURAL.timingUs.gate} µs`,
+    gate: `±${NATURAL.timingUs.gate.toFixed(1)} µs`,
+  },
+  {
+    k: 'Carrier phase',
+    natural: `±${NATURAL.phaseDeg.max}° (σ ${NATURAL.phaseDeg.sigma}°)`,
+    gate: `±${NATURAL.phaseDeg.gate.toFixed(1)}°`,
   },
 ];
 
@@ -167,9 +177,9 @@ export function PowerLevels() {
   return (
     <Ruler
       title="How strong: received power at the Zaghouan input (dBm)"
-      min={-105}
+      min={-110}
       max={-70}
-      ticks={[-105, -100, -95, -90, -85, -80, -75, -70]}
+      ticks={[-110, -105, -100, -95, -90, -85, -80, -75, -70]}
       tick={(v) => n(v, 0)}
       marker={{ at: SIGNAL.noiseFloorDbm, label: 'thermal floor' }}
       rows={[
@@ -263,13 +273,13 @@ export function SignalFacts() {
         </table>
         <table className="facts__table facts__table--jitter">
           <caption className="facts__caption">
-            Natural variation on a clean pass vs the gates
+            Natural variation vs the χ² gate · Σ z² ≤ {CHI_SQUARE.gate.toFixed(1)}
           </caption>
           <thead>
             <tr>
               <th scope="col">Measured against the orbit</th>
               <th scope="col">Natural</th>
-              <th scope="col">Gate</th>
+              <th scope="col">Alone in the gate</th>
             </tr>
           </thead>
           <tbody>

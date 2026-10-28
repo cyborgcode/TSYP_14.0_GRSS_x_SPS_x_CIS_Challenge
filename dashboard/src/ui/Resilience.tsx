@@ -57,13 +57,19 @@ function MatrixRow({
         {st && st.decoded ? rate(st.anchor, st.decoded) : '—'}
       </span>
       <span className="mono" role="cell">
-        {rate(st?.detector ?? 0, frames)}
-      </span>
-      <span className={`mono rmatrix__drop ${good ? 'is-ok' : 'is-bad'}`} role="cell">
-        {rate(dropped, frames)}
+        {rate(st?.physics ?? 0, frames)}
       </span>
       <span className="mono" role="cell">
-        {genuine ? '' : first === null ? '—' : `${Math.round(first)} ms`}
+        {rate(st?.forest ?? 0, frames)}
+      </span>
+      <span
+        className={`mono rmatrix__drop ${good ? 'is-ok' : 'is-bad'}`}
+        role="cell"
+        title={
+          genuine || first === null ? undefined : `first frame stopped ${Math.round(first)} ms in`
+        }
+      >
+        {rate(dropped, frames)}
       </span>
     </div>
   );
@@ -107,7 +113,10 @@ export function ResiliencePanel() {
           <span className="rkpi__v mono rkpi__v--bad">{engine.framesRejected}</span>
           <span className="rkpi__k">rejected</span>
         </div>
-        <div className="rkpi" title="Authentic frames dropped by zero_trust.py on an RF anomaly">
+        <div
+          className="rkpi"
+          title="Authentic frames rejected by the physical layer or held by the statistical layer"
+        >
           <span className="rkpi__v mono rkpi__v--warn">{engine.heldByZeroTrust}</span>
           <span className="rkpi__k">held on RF</span>
         </div>
@@ -162,21 +171,27 @@ export function ResiliencePanel() {
         </span>
       </div>
 
-      <div className="rmatrix" role="table" aria-label="Detection by layer and scenario">
+      <div className="rmatrix" role="table" aria-label="Detection by tier and scenario">
         <div className="rmatrix__row rmatrix__row--head" role="row">
           <span role="columnheader">Traffic</span>
           <span role="columnheader">Frames</span>
-          <span role="columnheader" title="trust_anchor.py rejections among decoded frames">
-            Anchor
+          <span role="columnheader" title="Data layer: HMAC, nonce and identity rejections">
+            Data
           </span>
-          <span role="columnheader" title="detector.py anomalies (physics gate or forest)">
-            AI/RF
+          <span
+            role="columnheader"
+            title="Physical layer: chi-square or kinematic breaches, or no carrier at all"
+          >
+            Phys
           </span>
-          <span role="columnheader" title="zero_trust.py QUARANTINE_AND_DROP">
-            Drop
+          <span role="columnheader" title="Statistical layer: Isolation Forest flags">
+            Stat
           </span>
-          <span role="columnheader" title="Median time from attack start to the first drop">
-            First
+          <span
+            role="columnheader"
+            title="Rejected by a deterministic layer or held by the statistical layer"
+          >
+            Stop
           </span>
         </div>
         {ROWS.map((r) => (

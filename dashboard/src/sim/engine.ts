@@ -1,10 +1,15 @@
 // Testbed engine: one LEO pass over the Zaghouan ground station, framed and sealed for real,
-// attacked on demand, and defended by three independent detectors fused by a 2-of-3 vote.
-// Every frame runs through browser ports of the Python testbed: trust_anchor.py (HMAC-SHA256
-// seal, anti-replay window, SHA-256 chain from the same genesis block), detector.py (physics
-// gate + Isolation Forest on orbit residuals) and zero_trust.py. Each frame leaves a packet
-// record for the inspection drawer. The trust anchor also renews an Ed25519 handshake with the
-// spacecraft; its log is streamed as the trust_anchor.py terminal.
+// attacked on demand, and defended by the digital twin's three tiers:
+// 1. data layer: trust_anchor.py (HMAC-SHA256 seal, anti-replay window, SHA-256 chain from the
+//    same genesis block) and the cleared identity of zero_trust.py;
+// 2. statistical layer: the Isolation Forest of detector.py on orbit residuals;
+// 3. physical layer: security_detector.py, the chi-square of range, Doppler, power and carrier
+//    phase against the orbit and the ITU-R link budget, and the kinematic coupling of range and
+//    Doppler.
+// Each frame is decided as physics_validator.py decides it: either deterministic layer rejects,
+// the statistical layer alone holds. Incident response escalates when two tiers flag at once.
+// Each frame leaves a packet record for the inspection drawer. The trust anchor also renews an
+// Ed25519 handshake with the spacecraft; its log is streamed as the trust_anchor.py terminal.
 //
 // Everything here is emulation. No component transmits or receives RF.
 
@@ -24,11 +29,19 @@ import {
   ROGUE_TOKEN,
   SAT_ID,
   SAT_TOKEN,
-  zeroTrust,
   type Decision,
   type DetectorResult,
   type RfMeasurement,
 } from './linkDetector';
+import {
+  PhysicsEngine,
+  rangeJerkBoundFor,
+  type ChiSquareResult,
+  type LinkState,
+  type PhysicsResult,
+  type Residual,
+} from './physicsEngine';
+import { decide } from './validator';
 import {
   TrustAnchorLedger,
   seal,
@@ -38,25 +51,20 @@ import {
   type Frame,
 } from './trustAnchor';
 import {
+  C_KM_S,
   PERIOD_S,
+  atmosphericLossDb,
   passAt,
+  passProfile,
   setPassProfile,
   snrPredDb,
   timeAfterAos,
+  timeCompression,
   type PassState,
 } from './geometry';
 import { loadPassProfile } from './orbit';
 import { clamp, easeInOutCubic, mulberry32, win } from './noise';
-import {
-  GATES,
-  checkGates,
-  envelope,
-  sample,
-  type Attack,
-  type AttackKind,
-  type GateResult,
-  type Sample,
-} from './signals';
+import { envelope, sample, type Attack, type AttackKind, type Sample } from './signals';
 
 export const TICK_S = 0.05;
 export const WINDOW_S = 7;
@@ -97,10 +105,35 @@ export interface TermLine {
   tone: TermTone;
 }
 
+/** The physical layer's live view of the current sample (chi-square only, no anchor). */
+export interface LivePhysics {
+  chi: ChiSquareResult;
+  noFrames: boolean;
+  breach: boolean;
+}
+
+/** The physical layer points at this residual: alone outside the gate, or driving a breach. */
+export function axisFlag(p: LivePhysics | null, name: Residual): boolean {
+  if (!p) return false;
+  const z = Math.abs(p.chi.normalized[name]);
+  return z > Math.sqrt(p.chi.threshold) || (p.chi.chiSquareBreach && p.chi.dominant === name);
+}
+
 export interface TelemetryPoint {
   s: number;
   x: Sample | null;
-  gates: GateResult | null;
+  physics: LivePhysics | null;
+}
+
+/** What the signal claimed and what the orbit and link budget said it must be. */
+export interface LinkClaim {
+  rx: LinkState;
+  truth: LinkState;
+  elevationDeg: number;
+  /** ITU-R P.618 median atmospheric loss in the predicted power, dB. */
+  atmosphereDb: number;
+  /** Real seconds since the start of the run (scene time times the pass compression). */
+  tReal: number;
 }
 
 export interface LedgerRow {
@@ -148,6 +181,9 @@ export interface PacketRecord {
   auth: { ok: boolean; reason: AuthReason | 'NO_FRAME' };
   block: Pick<Block, 'index' | 'previous_hash' | 'hash'> | null;
   rf: RfMeasurement | null;
+  /** Physical layer: the claim, the prediction and the chi-square engine's verdict. */
+  link: LinkClaim | null;
+  physics: PhysicsResult | null;
   detector: DetectorResult | null;
   decision: Decision;
   authMs: number;
@@ -165,6 +201,8 @@ export interface LayerStats {
   forest: number;
   detector: number;
   blocked: number;
+  /** Frames the statistical layer alone held for review. */
+  held: number;
   /** Per run: milliseconds from attack onset to the first blocked attack frame. */
   firstBlockMs: number[];
 }
@@ -250,7 +288,7 @@ export class Engine {
   s = 0;
   pass: PassState;
   current: Sample | null = null;
-  gates: GateResult | null = null;
+  physics: LivePhysics | null = null;
   history: TelemetryPoint[] = [];
 
   ledger: LedgerRow[] = [];
@@ -312,6 +350,8 @@ export class Engine {
   /** Browser ports of trust_anchor.py and detector.py. */
   readonly anchor: TrustAnchorLedger;
   readonly linkDetector: LinkDetector;
+  /** Port of security_detector.py; frames go through it in order, for the kinematic anchor. */
+  readonly physicsEngine: PhysicsEngine;
   packets: PacketRecord[] = [];
   layerStats: Partial<Record<StatKey, LayerStats>> = {};
   heldByZeroTrust = 0;
@@ -359,6 +399,9 @@ export class Engine {
     this.ai = ai;
     this.anchor = anchor;
     this.linkDetector = new LinkDetector();
+    this.physicsEngine = new PhysicsEngine({
+      rangeJerkBoundKmS3: rangeJerkBoundFor(passProfile().altitudeKm),
+    });
     this.signer = signer;
     const genesis = anchor.genesisRoot;
     this.passOffset = timeAfterAos(8);
@@ -493,6 +536,7 @@ export class Engine {
     this.autoResponse = true;
     // Start a fresh pass so the whole schedule plays with the satellite in view.
     this.passOffset = timeAfterAos(3) - this.s;
+    this.queue = this.queue.then(() => this.physicsEngine.reset());
     this.demo = { active: true, t0: this.s, next: 0 };
     this.statusLine = 'Ready · standard scenario';
     this.emit();
@@ -566,18 +610,27 @@ export class Engine {
 
     if (this.pass.linkActive) {
       const handoverLoss = this.route === 'MAT' ? 1.2 : 0;
-      this.current = sample(s, snrPredDb(this.pass.rangeKm) - handoverLoss, {
-        attacks,
-        falseAlarm,
-        dopplerPredHz: this.pass.dopplerHz,
-      });
-      this.gates = checkGates(this.current);
-      if (this.gates.any) this.lastPhysicsViolation = s;
+      this.current = sample(
+        s,
+        snrPredDb(this.pass.rangeKm, this.pass.elevationDeg) - handoverLoss,
+        {
+          attacks,
+          falseAlarm,
+          dopplerPredHz: this.pass.dopplerHz,
+        },
+      );
+      const claim = this.claim(this.current);
+      const chi = this.physicsEngine.chiSquare(claim.rx, claim.truth, claim.elevationDeg);
+      const noFrames = this.current.timingUs === null;
+      this.physics = { chi, noFrames, breach: chi.chiSquareBreach || noFrames };
+      if (this.physics.breach) this.lastPhysicsViolation = s;
     } else {
+      // A new pass starts a new kinematic reference.
+      if (this.current) this.queue = this.queue.then(() => this.physicsEngine.reset());
       this.current = null;
-      this.gates = null;
+      this.physics = null;
     }
-    this.history.push({ s, x: this.current, gates: this.gates });
+    this.history.push({ s, x: this.current, physics: this.physics });
     if (this.history.length > HISTORY) this.history.shift();
 
     if (this.pass.linkActive) {
@@ -614,6 +667,28 @@ export class Engine {
 
   // ---------------------------------------------------------------- frames
 
+  /** The link as measured against the link as predicted, for the physical layer. */
+  private claim(x: Sample): LinkClaim {
+    const pass = this.pass;
+    return {
+      rx: {
+        rangeKm: pass.rangeKm + (x.timingUs ?? 0) * C_KM_S * 1e-6,
+        dopplerHz: pass.dopplerHz + x.dopplerHz,
+        rssiDbm: x.rssiDbm,
+        phaseDeg: x.phaseDeg,
+      },
+      truth: {
+        rangeKm: pass.rangeKm,
+        dopplerHz: pass.dopplerHz,
+        rssiDbm: x.rssiModelDbm,
+        phaseDeg: 0,
+      },
+      elevationDeg: pass.elevationDeg,
+      atmosphereDb: atmosphericLossDb(pass.elevationDeg),
+      tReal: this.s * timeCompression(),
+    };
+  }
+
   private emitFrame(s: number) {
     const x = this.current;
     const rf: RfMeasurement | null = x
@@ -624,6 +699,7 @@ export class Engine {
           rssiModelDbm: x.rssiModelDbm,
         }
       : null;
+    const link = x && x.timingUs !== null ? this.claim(x) : null;
     const underAttack = this.attack !== null && envelope(this.attack, s) > 0.05;
 
     if (x && x.timingUs === null) {
@@ -639,7 +715,7 @@ export class Engine {
         t: s,
         overheadMs: 0,
       });
-      // Nothing to authenticate, but the RF still goes through the detector.
+      // Nothing to authenticate or range, but the RF still goes through the forest.
       this.queue = this.queue.then(() => {
         const t0 = performance.now();
         const detection = rf ? this.linkDetector.evaluate(rf) : null;
@@ -659,8 +735,10 @@ export class Engine {
           auth: { ok: false, reason: 'NO_FRAME' },
           block: null,
           rf,
+          link: null,
+          physics: null,
           detector: detection,
-          decision: zeroTrust(null, null, detection),
+          decision: decide(null, null, null, detection),
           authMs: 0,
           detectorMs: performance.now() - t0,
         });
@@ -687,7 +765,7 @@ export class Engine {
       const source = kind === 'spoof' ? `NODE ${copy.ROGUE_NODE}` : 'ROGUE-TX +14.2 MHz';
       this.queue = this.queue.then(async () => {
         const mac = await seal(this.attackerKey, frame);
-        await this.verify(frame, mac, source, kind, s, rf, underAttack, null);
+        await this.verify(frame, mac, source, kind, s, rf, link, underAttack, null);
       });
       return;
     }
@@ -724,12 +802,12 @@ export class Engine {
           ...frame,
           payload: bytes.map((b) => b.toString(16).padStart(2, '0')).join(''),
         };
-        await this.verify(received, mac, genuineSource, 'tamper', s, rf, underAttack, {
+        await this.verify(received, mac, genuineSource, 'tamper', s, rf, link, underAttack, {
           originalPayload: frame.payload,
           flipped: { byte, bit },
         });
       } else {
-        await this.verify(frame, mac, genuineSource, 'genuine', s, rf, underAttack, null);
+        await this.verify(frame, mac, genuineSource, 'genuine', s, rf, link, underAttack, null);
       }
     });
   }
@@ -742,8 +820,9 @@ export class Engine {
   }
 
   /**
-   * Station side, as in the Python testbed: trust_anchor.py (MAC, then nonce, then the chain),
-   * detector.py on the RF, then the zero-trust decision. Failing frames stop at the gate.
+   * Station side, tier by tier: the data layer (trust_anchor.py: MAC, then nonce, then the
+   * chain), the physical layer (security_detector.py on the range, Doppler, power and phase),
+   * the statistical layer (detector.py's forest on the RF), then the twin's decision.
    */
   private async verify(
     frame: Frame,
@@ -752,6 +831,7 @@ export class Engine {
     label: FrameLabel,
     s: number,
     rf: RfMeasurement | null,
+    link: LinkClaim | null,
     underAttack: boolean,
     tamper: { originalPayload: string; flipped: { byte: number; bit: number } } | null,
   ) {
@@ -762,9 +842,12 @@ export class Engine {
     const authMs = performance.now() - started;
 
     const t0 = performance.now();
+    const physics = link
+      ? this.physicsEngine.evaluate(link.rx, link.truth, link.elevationDeg, link.tReal)
+      : null;
     const detection = rf ? this.linkDetector.evaluate(rf) : null;
     const detectorMs = performance.now() - t0;
-    const decision = zeroTrust(frame, auth, detection);
+    const decision = decide(frame, auth, physics, detection);
     if (decision.allow && rf) this.linkDetector.accept(rf);
 
     const verdict: Verdict = auth.ok
@@ -831,6 +914,8 @@ export class Engine {
       auth: { ok: auth.ok, reason: auth.reason },
       block: { index: block.index, previous_hash: block.previous_hash, hash: block.hash },
       rf,
+      link,
+      physics,
       detector: detection,
       decision,
       authMs,
@@ -851,15 +936,18 @@ export class Engine {
       forest: 0,
       detector: 0,
       blocked: 0,
+      held: 0,
       firstBlockMs: [],
     });
     st.frames++;
     if (r.frame) st.decoded++;
     if (r.frame && !r.auth.ok) st.anchor++;
-    if (r.detector?.physics) st.physics++;
+    // No frame at all is the strongest physical evidence: the carrier is gone.
+    if (r.physics?.breach || !r.frame) st.physics++;
     if (r.detector?.forest) st.forest++;
-    if (r.detector?.anomaly) st.detector++;
+    if (r.physics?.breach || !r.frame || r.detector?.forest) st.detector++;
     if (!r.decision.allow) st.blocked++;
+    if (r.decision.verdict === 'HELD') st.held++;
 
     const run = this.run;
     if (run && r.label === run.kind && !r.decision.allow && run.firstBlockMs === null)
@@ -962,14 +1050,16 @@ export class Engine {
 
     // Spoof likelihood: fuses physical signatures, the trust result and the model score.
     let z = -3 + 2 * (this.anomaly - 0.5);
-    const x = this.current;
-    const g = this.gates;
-    if (x && g) {
-      const residual = x.snrDb - x.snrModelDb;
-      if (g.doppler) z += 2.2;
-      if (residual > GATES.snrBandDb) z += 1.8;
-      if (residual < -GATES.snrBandDb) z -= 2;
-      if (g.timing) z += 1.2;
+    const live = this.physics;
+    if (this.current && live) {
+      const n = live.chi.normalized;
+      const limit = Math.sqrt(live.chi.threshold);
+      if (Math.abs(n.dopplerHz) > limit) z += 2.2;
+      if (n.rssiDb > limit) z += 1.8;
+      // Too weak: jamming when frames go missing, a mimicked fade when they keep arriving.
+      if (n.rssiDb < -limit) z += recentLost > 0 ? -2 : 1;
+      if (Math.abs(n.rangeKm) > limit) z += 1.2;
+      if (Math.abs(n.phaseDeg) > limit) z += 0.8;
     }
     if (recentFails > 0) z += 3;
     this.spoofLikelihood += (1 / (1 + Math.exp(-z)) - this.spoofLikelihood) * 0.2;
@@ -1039,21 +1129,26 @@ export class Engine {
         this.log('!! ALERT frequency hijack · carrier +14.2 MHz', 'bad');
         break;
       case 'spoof':
-        say('Carrier and RSSI look plausible', 'the physics check is fooled', 'telemetry', 'warn');
+        say(
+          'Power inside a ±4 dB band, 14σ below the link budget',
+          'the χ² engine rejects the fade',
+          'telemetry',
+          'bad',
+        );
         say(`Forged MAC headers from node ${copy.ROGUE_NODE}`, undefined, 'ledger', 'bad');
         say(
           'Quarantine protocols engaged',
-          'caught by the trust anchor and the AI model',
+          'physical, data and statistical layers all fire',
           'fusion',
           'bad',
         );
         this.log(`!! QUARANTINE PROTOCOLS ENGAGED · node ${copy.ROGUE_NODE} isolated`, 'bad');
         break;
       case 'tamper':
-        say('RF looks clean', 'the physics check sees nothing', 'telemetry', 'warn');
+        say('RF looks clean', 'χ² inside the gate: physics sees nothing', 'telemetry', 'warn');
         say('HMAC mismatch: payload altered in transit', undefined, 'ledger', 'bad');
         say(
-          'Caught by the trust anchor',
+          'Caught by the data layer',
           'the hash no longer matches what the satellite sealed',
           'fusion',
           'bad',

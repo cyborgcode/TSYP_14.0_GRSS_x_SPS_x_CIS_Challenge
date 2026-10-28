@@ -34,16 +34,33 @@ const F = {
   carrierMHz: 8477.8,
   altitudeKm: 514,
   dopplerKHz: 199.0,
-  rxMask: -87.8,
+  rxMask: -88.8,
   rxZenith: -74.4,
-  ampMask: 12.9,
-  ampZenith: 60.3,
+  ampMask: 11.4,
+  ampZenith: 60.0,
   floor: -100,
   noiseUv: 2.24,
-  snrMask: 12.2,
+  snrMask: 11.2,
   snrZenith: 25.6,
-  stealthDb: 1.8,
+  /** Noise above the thermal floor at which the power residual alone fires the χ² gate. */
+  stealthDb: -5.3,
+  /** SNR that noise costs at that point: 0.23 dB × √23.5. */
+  stealthLossDb: 1.1,
+  chiGate: 23.5,
+  kinematicZ: 3.89,
+  boxBandDb: 4,
 };
+
+/** ITU-R P.618 median atmosphere from the digital twin (src/data/p618.json), loaded in init(). */
+let P618 = { elevationDeg: [0, 90], totalDb: [0, 0] };
+function atmosDb(el) {
+  const els = P618.elevationDeg;
+  const db = P618.totalDb;
+  const e = clamp(el, els[0], els[els.length - 1]);
+  let i = 1;
+  while (i < els.length - 1 && els[i] < e) i++;
+  return db[i - 1] + ((e - els[i - 1]) / (els[i] - els[i - 1])) * (db[i] - db[i - 1]);
+}
 
 // ---------------------------------------------------------------- maths
 
@@ -100,9 +117,10 @@ function geo(phi) {
   const rr = (RE * RO * Math.sin(phi) * OMEGA) / range;
   return { range, el, dopKHz: (-F.carrierMHz * 1e3 * rr) / CKMS };
 }
-const snrAt = (range) =>
+const snrAt = (range, el) =>
   18 -
   (20 * Math.log10(range) + 20 * Math.log10(F.carrierMHz) + 32.44) -
+  atmosDb(el) -
   2 +
   31 +
   228.6 -
@@ -120,7 +138,7 @@ const PHI_MASK = (() => {
 /** Pass state from mask rise (u = 0) to mask set (u = 1). */
 function passAt(u) {
   const g = geo((2 * clamp(u) - 1) * PHI_MASK);
-  return { ...g, snr: snrAt(g.range) };
+  return { ...g, snr: snrAt(g.range, g.el) };
 }
 const peakUv = (dbm) => Math.sqrt(2 * 10 ** (dbm / 10) * 1e-3 * 50) * 1e6;
 const snrLoss = (above) => 10 * Math.log10(1 + 10 ** (above / 10));
@@ -789,9 +807,9 @@ function natural(ctx, lt, sc, t) {
   });
 
   const strips = [
-    ['Carrier vs orbit model', 'Hz', 80, 60, 19, 6.1, natCarrier, (v) => `${v}`],
-    ['Power vs link budget', 'dB', 5, 4, 0.82, 0.23, natPower, (v) => `${v}`],
-    ['Frame timing', 'µs', 10, 8, 4.5, 1.6, natTiming, (v) => `${v}`],
+    ['Carrier vs orbit model', 'Hz', 40, 30, 19, 6.1, natCarrier, (v) => `${v}`],
+    ['Power vs link budget', 'dB', 1.5, 1.1, 0.82, 0.23, natPower, (v) => `${v}`],
+    ['Frame timing', 'µs', 10, 7.8, 4.5, 1.6, natTiming, (v) => `${v}`],
   ];
   const envA = smooth(sc.cues[2].s, sc.cues[2].s + 1, lt);
   const hide = smooth(sc.cues[3].s, sc.cues[3].s + 0.8, lt);
@@ -799,8 +817,7 @@ function natural(ctx, lt, sc, t) {
     rise(ctx, lt, 0.5 + i * 0.25, () => {
       const y = 240 + i * 240;
       box(ctx, 800, y, 1000, 222);
-      text(ctx, title, 828, y + 40, UI(600, 24), C.text0);
-      text(ctx, unit, 828, y + 70, MONO(500, 20), C.text2);
+      text(ctx, `${title} (${unit})`, 828, y + 40, UI(600, 24), C.text0);
       const a = {
         x: 900,
         y: y + 56,
@@ -830,7 +847,7 @@ function natural(ctx, lt, sc, t) {
         pts.push([X(k / 320), Y(fn(s))]);
       }
       polyline(ctx, pts, C.accent, 2.2);
-      text(ctx, `gate ±${gate}`, 1560, Y(gate) + 7, MONO(700, 20), C.bad);
+      text(ctx, `χ² alone ±${gate}`, 1560, Y(gate) + 7, MONO(700, 20), C.bad);
       ctx.save();
       ctx.globalAlpha *= envA;
       text(ctx, `σ ${sigma} ${unit}`, 1560, y + 128, MONO(500, 20), C.text1);
@@ -859,7 +876,7 @@ function imitate(ctx, lt, sc, t) {
       'Fade-mimicking spoofing',
       'imitates fading and Doppler',
       C.warn,
-      'Node 0x99A2 stays inside the natural band.',
+      'Node 0x99A2 stays inside a ±4 dB band.',
     ],
     [
       'Bit flips like bit errors',
@@ -1013,14 +1030,17 @@ function physics(ctx, lt, sc) {
     ctx,
     lt,
     '04',
-    'Our idea · Layer 1 · Physics',
+    'Our idea · Physical layer · χ²',
     'Make every imitation harmless or visible',
   );
-  const c1 = sc.cues[1];
-  const c2 = sc.cues[2];
-  let x = -10;
-  if (lt >= c1.s) x = lerp(-10, F.stealthDb, easeInOut((lt - c1.s) / ((c1.e - c1.s) * 0.75)));
-  if (lt >= c2.s) x = lerp(F.stealthDb, 6, easeInOut((lt - c2.s) / 1.4));
+  const c1 = sc.cues[2];
+  const c2 = sc.cues[3];
+  const XMIN = -14;
+  const XMAX = 6;
+  const YMAX = 6;
+  let x = XMIN;
+  if (lt >= c1.s) x = lerp(XMIN, F.stealthDb, easeInOut((lt - c1.s) / ((c1.e - c1.s) * 0.75)));
+  if (lt >= c2.s) x = lerp(F.stealthDb, 2, easeInOut((lt - c2.s) / 1.4));
   const loss = snrLoss(x);
   const detected = x > F.stealthDb + 0.01;
 
@@ -1031,12 +1051,12 @@ function physics(ctx, lt, sc) {
       y: 300,
       w: 950,
       h: 520,
-      xmin: -10,
-      xmax: 8,
+      xmin: XMIN,
+      xmax: XMAX,
       ymin: 0,
-      ymax: 9,
-      xticks: [-10, -6, -2, 2, 6],
-      yticks: [0, 2, 4, 6, 8],
+      ymax: YMAX,
+      xticks: [-14, -10, -6, -2, 2, 6],
+      yticks: [0, 1, 2, 3, 4, 5, 6],
       xfmt: (v) => `${v > 0 ? '+' : ''}${v}`,
       xlabel: 'noise injected above the thermal floor (dB)',
       ylabel: 'signal-to-noise ratio lost (dB)',
@@ -1046,47 +1066,82 @@ function physics(ctx, lt, sc) {
     const vis = smooth(c2.s, c2.s + 0.8, lt);
     if (hid > 0) {
       ctx.fillStyle = hexA(C.ok, 0.1 * hid);
-      ctx.fillRect(X(-10), Y(4), X(F.stealthDb) - X(-10), Y(0) - Y(4));
+      ctx.fillRect(
+        X(XMIN),
+        Y(F.stealthLossDb),
+        X(F.stealthDb) - X(XMIN),
+        Y(0) - Y(F.stealthLossDb),
+      );
       ctx.save();
       ctx.globalAlpha *= hid;
-      text(ctx, 'HIDDEN · HARMLESS', X(-9.4), Y(3.2), MONO(700, 26), C.ok, 'left', 2);
-      text(ctx, 'at most 4 dB lost · frames verify', X(-9.4), Y(3.2) + 36, UI(400, 24), C.text1);
+      text(ctx, 'HIDDEN · HARMLESS', X(-13.4), Y(2.6), MONO(700, 26), C.ok, 'left', 2);
+      text(
+        ctx,
+        `at most ${F.stealthLossDb} dB lost · frames verify`,
+        X(-13.4),
+        Y(2.6) + 36,
+        UI(400, 24),
+        C.text1,
+      );
       ctx.restore();
     }
     if (vis > 0) {
       ctx.fillStyle = hexA(C.bad, 0.1 * vis);
-      ctx.fillRect(X(F.stealthDb), Y(9), X(8) - X(F.stealthDb), Y(0) - Y(9));
+      ctx.fillRect(X(F.stealthDb), Y(YMAX), X(XMAX) - X(F.stealthDb), Y(0) - Y(YMAX));
       ctx.save();
       ctx.globalAlpha *= vis;
-      text(ctx, 'VISIBLE', X(2.4), Y(8.3), MONO(700, 26), C.bad, 'left', 2);
-      text(ctx, 'physics gate fires', X(2.4), Y(8.3) + 36, UI(400, 24), C.text1);
+      text(ctx, 'VISIBLE', X(-4.4), Y(5.5), MONO(700, 26), C.bad, 'left', 2);
+      text(ctx, 'the χ² gate fires', X(-4.4), Y(5.5) + 36, UI(400, 24), C.text1);
       ctx.restore();
     }
-    dashed(ctx, X(-10), Y(4), X(8), Y(4), C.bad, 2.5);
-    text(ctx, 'gate: ±4 dB', X(-9.6), Y(4) - 14, MONO(700, 22), C.bad);
+    dashed(ctx, X(XMIN), Y(F.boxBandDb), X(XMAX), Y(F.boxBandDb), hexA(C.text2, 0.8), 1.5, [5, 7]);
+    text(
+      ctx,
+      `old box gate: ±${F.boxBandDb} dB`,
+      X(-13.6),
+      Y(F.boxBandDb) - 14,
+      MONO(500, 20),
+      C.text2,
+    );
+    dashed(ctx, X(XMIN), Y(F.stealthLossDb), X(XMAX), Y(F.stealthLossDb), C.bad, 2.5);
+    text(
+      ctx,
+      `χ² gate: ${F.stealthLossDb} dB of power alone`,
+      X(-1.6),
+      Y(F.stealthLossDb) - 14,
+      MONO(700, 22),
+      C.bad,
+    );
     const draw = clamp(lt / 1.4);
     const pts = [];
     for (let k = 0; k <= 180 * draw; k++) {
-      const v = -10 + (k / 180) * 18;
-      pts.push([X(v), Y(Math.min(9, snrLoss(v)))]);
+      const v = XMIN + (k / 180) * (XMAX - XMIN);
+      pts.push([X(v), Y(Math.min(YMAX, snrLoss(v)))]);
     }
     if (pts.length > 1) polyline(ctx, pts, C.accent, 3.5);
     if (hid > 0) {
-      dashed(ctx, X(F.stealthDb), Y(0), X(F.stealthDb), Y(9), hexA(C.ok, hid), 2, [4, 6]);
+      dashed(ctx, X(F.stealthDb), Y(0), X(F.stealthDb), Y(YMAX), hexA(C.ok, hid), 2, [4, 6]);
       ctx.save();
       ctx.globalAlpha *= hid;
-      text(ctx, `+${F.stealthDb} dB`, X(F.stealthDb) + 10, Y(0) - 14, MONO(700, 22), C.ok);
+      text(
+        ctx,
+        `−${Math.abs(F.stealthDb)} dB`,
+        X(F.stealthDb) + 10,
+        Y(0) - 14,
+        MONO(700, 22),
+        C.ok,
+      );
       ctx.restore();
     }
     if (lt >= c1.s) {
       const col = detected ? C.bad : C.ok;
       ctx.fillStyle = hexA(col, 0.25);
       ctx.beginPath();
-      ctx.arc(X(x), Y(Math.min(9, loss)), 22, 0, Math.PI * 2);
+      ctx.arc(X(x), Y(Math.min(YMAX, loss)), 22, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = col;
       ctx.beginPath();
-      ctx.arc(X(x), Y(Math.min(9, loss)), 10, 0, Math.PI * 2);
+      ctx.arc(X(x), Y(Math.min(YMAX, loss)), 10, 0, Math.PI * 2);
       ctx.fill();
     }
   });
@@ -1126,14 +1181,14 @@ function physics(ctx, lt, sc) {
     );
     chip(
       ctx,
-      detected ? 'PHYSICS GATE FIRES' : 'HIDDEN · FRAMES VERIFY',
+      detected ? 'χ² GATE FIRES' : 'HIDDEN · FRAMES VERIFY',
       1260,
       836,
       detected ? C.bad : C.ok,
     );
     text(
       ctx,
-      'gates: carrier ±60 Hz · power ±4 dB · timing ±8 µs',
+      `χ²: Σ z² ≤ ${F.chiGate} · kinematic ±${F.kinematicZ}σ`,
       1260,
       930,
       UI(400, 22),
@@ -1143,7 +1198,13 @@ function physics(ctx, lt, sc) {
 }
 
 function ai(ctx, lt, sc) {
-  heading(ctx, lt, '05', 'Layer 2 · AI', 'Learn the rhythm of nature, not just its level');
+  heading(
+    ctx,
+    lt,
+    '05',
+    'Statistical layer · AI',
+    'Learn the rhythm of nature, not just its level',
+  );
   const c1 = sc.cues[1];
   rise(ctx, lt, 0.3, () => {
     box(ctx, M, 240, 990, 720);
@@ -1215,7 +1276,7 @@ function ai(ctx, lt, sc) {
     const creep = clamp((lt - c1.s - 2.4) / 3.2);
     if (creep > 0) {
       for (let k = 0; k <= 24 * creep; k++) {
-        const r = lerp(-0.4, -3.4, k / 24);
+        const r = lerp(-0.2, -1.1, k / 24);
         ctx.fillStyle = hexA(C.warn, 0.35 + 0.65 * (k / 24));
         ctx.beginPath();
         ctx.arc(X(r), Y(-0.12 + 0.05 * Math.sin(k)), 5, 0, Math.PI * 2);
@@ -1224,7 +1285,7 @@ function ai(ctx, lt, sc) {
       ctx.save();
       ctx.globalAlpha *= smooth(0.3, 0.7, creep);
       text(ctx, 'slow creep with natural steps:', X(-4.8), Y(-0.75), MONO(700, 22), C.warn);
-      text(ctx, 'capped by layer 1’s 4 dB budget', X(-4.8), Y(-0.75) + 30, UI(400, 22), C.text1);
+      text(ctx, 'capped by the χ² budget: 1.1 dB', X(-4.8), Y(-0.75) + 30, UI(400, 22), C.text1);
       ctx.restore();
     }
   });
@@ -1251,7 +1312,7 @@ function ai(ctx, lt, sc) {
 }
 
 function crypto(ctx, lt, sc, t) {
-  heading(ctx, lt, '06', 'Layer 3 · Cryptography', 'Noise cannot forge a secret-key tag');
+  heading(ctx, lt, '06', 'Data layer · Cryptography', 'Noise cannot forge a secret-key tag');
   const c1 = sc.cues[1];
   const c2 = sc.cues[2];
   const hex = (seed, n) =>
@@ -1453,8 +1514,12 @@ function render(t) {
 }
 
 async function init() {
-  const res = await fetch('../src/noise/explainer.json');
+  const [res, atm] = await Promise.all([
+    fetch('../src/noise/explainer.json'),
+    fetch('../src/data/p618.json'),
+  ]);
   TL = await res.json();
+  P618 = await atm.json();
   for (const s of TL.scenes) {
     s.local = {
       dur: s.end - s.start,

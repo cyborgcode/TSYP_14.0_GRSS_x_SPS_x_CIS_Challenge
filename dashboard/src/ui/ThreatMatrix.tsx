@@ -1,8 +1,8 @@
 import { useRef } from 'react';
 
 import { useEngine, useEngineCtx } from '../engineContext';
-import type { DetectorId } from '../sim/engine';
-import { FEATURES } from '../sim/aiModel';
+import type { DetectorId, Engine } from '../sim/engine';
+import { FEATURES, FLAG_AT } from '../sim/aiModel';
 import { AlertIcon, CheckIcon } from './icons';
 import { Panel } from './Panel';
 import { COLORS, FONT_DATA, useCanvasLoop } from './useCanvas';
@@ -73,30 +73,66 @@ function Gauge({ label, value, id }: { label: string; value: number; id: string 
   );
 }
 
-const CHIP_LABEL: Record<DetectorId, string> = {
-  PHYSICS: 'PHYSICS',
-  TRUST: 'TRUST ANCHOR',
-  AI: 'AI MODEL',
-};
+/** The digital twin's three tiers, in its order: data, statistical, physical. */
+const TIERS: { id: DetectorId; n: number; name: string; engine: string }[] = [
+  { id: 'TRUST', n: 1, name: 'Data layer', engine: 'HMAC · SHA-256' },
+  { id: 'AI', n: 2, name: 'Statistical layer', engine: 'Isolation Forest' },
+  { id: 'PHYSICS', n: 3, name: 'Physical layer', engine: 'χ² · kinematic' },
+];
 
-function DetectorChip({ id }: { id: DetectorId }) {
+/** What each tier is looking at right now. */
+function tierMetric(engine: Engine, id: DetectorId): string {
+  switch (id) {
+    case 'TRUST': {
+      const last = engine.packets.find((p) => p.frame);
+      if (!last) return 'no frame yet';
+      return last.auth.ok ? 'tag ok · nonce fresh' : last.auth.reason.toLowerCase();
+    }
+    case 'AI':
+      return `score ${engine.anomaly.toFixed(2)} / ${FLAG_AT.toFixed(2)}`;
+    case 'PHYSICS': {
+      const live = engine.physics;
+      if (!live) return 'no link';
+      if (live.noFrames) return 'carrier lost';
+      const kin = engine.packets.find((p) => p.physics?.kinematic.available)?.physics?.kinematic;
+      const chi = `χ² ${fmtChi(live.chi.chiSquare)} / ${live.chi.threshold.toFixed(1)}`;
+      return kin ? `${chi} · ${kin.z < 0 ? '−' : '+'}${Math.abs(kin.z).toFixed(1)}σ` : chi;
+    }
+  }
+}
+
+const fmtChi = (v: number) => (v >= 1000 ? v.toExponential(1).replace('e+', 'e') : v.toFixed(1));
+
+function TierRow({ tier }: { tier: (typeof TIERS)[number] }) {
   const engine = useEngine(10);
-  const d = engine.detectors[id];
+  const d = engine.detectors[tier.id];
   let status = 'PASS';
   let tone: 'ok' | 'bad' | 'warn' = 'ok';
   if (d.evaded && !d.flag) {
     status = 'PASS · EVADED';
     tone = 'warn';
   } else if (d.flag) {
-    tone = 'bad';
-    if (id === 'AI') status = `FLAG · ${engine.anomaly.toFixed(2)}`;
-    else if (d.latencyMs !== null) status = `FLAG · ${Math.round(d.latencyMs)} ms`;
-    else status = 'FLAG';
+    tone = tier.id === 'AI' ? 'warn' : 'bad';
+    status =
+      tier.id === 'AI'
+        ? 'HOLD'
+        : d.latencyMs !== null
+          ? `REJECT · ${Math.round(d.latencyMs)} ms`
+          : 'REJECT';
   }
   return (
-    <div className={`chip chip--${tone}`}>
-      <span className="chip__name">{CHIP_LABEL[id]}</span>
-      <span className="chip__status">
+    <div className={`tier tier--${tone}`} role="row">
+      <span className="tier__n mono" aria-hidden="true">
+        {tier.n}
+      </span>
+      <span className="tier__body" role="cell">
+        <span className="tier__name">{tier.name}</span>
+        <span className="tier__engine">{tier.engine}</span>
+      </span>
+      <span className="tier__metric mono" role="cell">
+        {tierMetric(engine, tier.id)}
+      </span>
+      <span className="tier__status" role="cell">
         {tone === 'ok' ? <CheckIcon size={12} /> : <AlertIcon size={12} />}
         {status}
       </span>
@@ -162,7 +198,7 @@ export function ThreatMatrixPanel() {
     votes >= 2
       ? { tone: 'bad', text: `${votes}/3 · ESCALATE` }
       : votes === 1
-        ? { tone: 'warn', text: '1/3 · HOLD' }
+        ? { tone: 'warn', text: '1/3 · CHECKING' }
         : { tone: 'ok', text: '0/3 · NOMINAL' };
   const rate = engine.vectorsPerSecond;
   const pulse =
@@ -172,7 +208,7 @@ export function ThreatMatrixPanel() {
   return (
     <Panel
       badge="3"
-      title="AI threat matrix"
+      title="Three-tier threat matrix"
       tag="D4 · CIS"
       alert={engine.state === 'UNDER ATTACK'}
       className="panel--threat"
@@ -184,18 +220,18 @@ export function ThreatMatrixPanel() {
 
       <div className="fusion">
         <div className="fusion__head">
-          <span className="overline">Detector fusion · 2-of-3 vote</span>
+          <span className="overline">Three-tier verification · digital twin</span>
           <span className={`vote vote--${vote.tone}`}>{vote.text}</span>
         </div>
-        <div className="fusion__chips">
-          <DetectorChip id="PHYSICS" />
-          <DetectorChip id="TRUST" />
-          <DetectorChip id="AI" />
+        <div className="tiers" role="table" aria-label="The three verification tiers">
+          {TIERS.map((t) => (
+            <TierRow key={t.id} tier={t} />
+          ))}
         </div>
         <div className="fusion__note">
           {driver
-            ? `AI model flag driven by ${driver}`
-            : 'One flag alone holds; two or more escalate.'}
+            ? `Statistical flag driven by ${driver}`
+            : 'Data or physics rejects a frame; the forest alone holds it. Two tiers escalate.'}
         </div>
       </div>
 

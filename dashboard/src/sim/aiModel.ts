@@ -53,7 +53,9 @@ export function nominalSamples(count: number, start: number, step: number): Samp
   while (out.length < count) {
     const pass = passAt(s);
     if (pass.linkActive)
-      out.push(sample(s, snrPredDb(pass.rangeKm), { attacks: [], falseAlarm: 0 }));
+      out.push(
+        sample(s, snrPredDb(pass.rangeKm, pass.elevationDeg), { attacks: [], falseAlarm: 0 }),
+      );
     s += step;
   }
   return out;

@@ -3,12 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useEngine, useEngineCtx } from '../engineContext';
 import { ATTACK_BUTTONS } from '../sim/copy';
 import type { PacketRecord } from '../sim/engine';
+import { FEATURE_NAMES } from '../sim/linkDetector';
 import {
-  FEATURE_NAMES,
-  MAX_CARRIER_RESIDUAL_MHZ,
-  MAX_CARRIER_STEP_MHZ,
-  MAX_RSSI_RESIDUAL_DB,
-} from '../sim/linkDetector';
+  RESIDUAL_LABEL,
+  RESIDUALS,
+  elevationSpreadFactor,
+  type LinkState,
+  type Residual,
+} from '../sim/physicsEngine';
 import { CheckIcon, CloseIcon, CrossIcon } from './icons';
 
 type Filter = 'all' | 'redteam' | 'dropped';
@@ -26,12 +28,24 @@ const AUTH_TEXT: Record<PacketRecord['auth']['reason'], string> = {
 };
 
 const FEATURE_UNIT = ['MHz', 'dB', 'MHz', 'dB'] as const;
-const FEATURE_LIMIT: (number | null)[] = [
-  MAX_CARRIER_RESIDUAL_MHZ,
-  MAX_RSSI_RESIDUAL_DB,
-  MAX_CARRIER_STEP_MHZ,
-  null,
-];
+
+/** How each residual of the physical layer is read off a link state, and printed. */
+const CLAIM: Record<
+  Residual,
+  { unit: string; fmt: (v: number) => string; of: (l: LinkState) => number }
+> = {
+  rangeKm: { unit: 'km', fmt: (v) => v.toFixed(2), of: (l) => l.rangeKm },
+  dopplerHz: {
+    unit: 'Hz',
+    fmt: (v) => Math.round(v).toLocaleString('en-US').replace('-', '−'),
+    of: (l) => l.dopplerHz,
+  },
+  rssiDb: { unit: 'dBm', fmt: (v) => v.toFixed(2).replace('-', '−'), of: (l) => l.rssiDbm },
+  phaseDeg: { unit: '°', fmt: (v) => v.toFixed(1).replace('-', '−'), of: (l) => l.phaseDeg },
+};
+
+const fmtBig = (v: number, digits = 1) =>
+  Math.abs(v) >= 1e4 ? v.toExponential(2).replace('e+', 'e') : v.toFixed(digits);
 
 const pct = (v: number) => `${(v * 100).toFixed(1)} %`;
 const signed = (v: number, digits: number) => `${v < 0 ? '−' : '+'}${Math.abs(v).toFixed(digits)}`;
@@ -133,6 +147,78 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
   );
 }
 
+/** Physical layer: what the signal claimed against what the orbit says, the chi-square gap. */
+function PhysicsSection({ p }: { p: PacketRecord }) {
+  const ph = p.physics;
+  const link = p.link;
+  if (!ph || !link) return null;
+  const limit = Math.sqrt(ph.threshold);
+  const kin = ph.kinematic;
+  return (
+    <Section
+      file="security_detector.py"
+      title="Physical layer · χ² engine"
+      verdict={<Status ok={!ph.breach}>{ph.verdict}</Status>}
+    >
+      <div
+        className="pfeat pfeat--4"
+        role="table"
+        aria-label="Signal claim against orbital physics"
+      >
+        <div className="pfeat__row pfeat__row--head" role="row">
+          <span>Parameter</span>
+          <span>Signal claims</span>
+          <span>Orbit predicts</span>
+          <span>Gap</span>
+        </div>
+        {RESIDUALS.map((name) => {
+          const c = CLAIM[name];
+          const z = ph.normalized[name];
+          const out = Math.abs(z) > limit || (ph.chiSquareBreach && ph.dominant === name);
+          return (
+            <div key={name} className={`pfeat__row ${out ? 'pfeat__row--bad' : ''}`} role="row">
+              <span>{RESIDUAL_LABEL[name]}</span>
+              <span className="mono">
+                {c.fmt(c.of(link.rx))} {c.unit}
+              </span>
+              <span className="mono">
+                {c.fmt(c.of(link.truth))} {c.unit}
+              </span>
+              <span className="mono">
+                {z < 0 ? '−' : '+'}
+                {fmtBig(Math.abs(z))}σ
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <Row k={`χ² · ${ph.dof} dof`}>
+        <Status ok={!ph.chiSquareBreach}>
+          {fmtBig(ph.chiSquare)} {ph.chiSquareBreach ? '>' : '≤'} gate {ph.threshold.toFixed(1)} at{' '}
+          {link.elevationDeg.toFixed(1)}° (×{elevationSpreadFactor(link.elevationDeg).toFixed(2)})
+        </Status>
+      </Row>
+      <Row k="Kinematic coupling">
+        {kin.available ? (
+          <Status ok={!kin.breach}>
+            range {signed(kin.rangeChangeKm, 2)} km vs Doppler {signed(kin.dopplerRangeChangeKm, 2)}{' '}
+            km over {kin.intervalS.toFixed(1)} s · {signed(kin.z, 1)}σ (gate ±{kin.gateZ.toFixed(2)}
+            )
+          </Status>
+        ) : (
+          <span className="pmuted">no trusted frame in the last 30 s to integrate from</span>
+        )}
+      </Row>
+      <Row k="Atmosphere">
+        <span>
+          ITU-R P.618 median: <span className="mono">{link.atmosphereDb.toFixed(2)} dB</span> at{' '}
+          {link.elevationDeg.toFixed(1)}°, in the predicted power
+        </span>
+      </Row>
+    </Section>
+  );
+}
+
 function Detail({ p }: { p: PacketRecord }) {
   const engine = useEngine(4);
   const chain = engine.chainStatus;
@@ -183,8 +269,8 @@ function Detail({ p }: { p: PacketRecord }) {
           </>
         ) : (
           <p className="pnote pnote--warn">
-            No frame decoded: the receiver lost the carrier. Nothing reaches the trust anchor; the
-            RF still goes through detector.py.
+            No frame decoded: the receiver lost the carrier. Nothing reaches the data layer and
+            there is nothing to range; the RF still goes through the forest.
           </p>
         )}
       </Section>
@@ -192,7 +278,7 @@ function Detail({ p }: { p: PacketRecord }) {
       {p.frame && (
         <Section
           file="trust_anchor.py"
-          title="Hash verification"
+          title="Data layer · hash verification"
           verdict={<Status ok={p.auth.ok}>{AUTH_TEXT[p.auth.reason]}</Status>}
         >
           <Row k="MAC received">
@@ -244,11 +330,15 @@ function Detail({ p }: { p: PacketRecord }) {
         </Section>
       )}
 
+      <PhysicsSection p={p} />
+
       {d && (
         <Section
           file="detector.py"
-          title="AI anomaly detection"
-          verdict={<Status ok={!d.anomaly}>{d.anomaly ? 'ANOMALY' : 'NOMINAL'}</Status>}
+          title="Statistical layer · Isolation Forest"
+          verdict={
+            <Status ok={!d.forest}>{d.forest ? 'OUTSIDE ENVELOPE' : 'INSIDE ENVELOPE'}</Status>
+          }
         >
           <div className="pconf">
             <div className="pconf__num mono">{(d.confidence * 100).toFixed(1)}%</div>
@@ -267,35 +357,20 @@ function Detail({ p }: { p: PacketRecord }) {
               </div>
             </div>
           </div>
-          <div className="pfeat" role="table" aria-label="Detector features">
+          <div className="pfeat pfeat--2" role="table" aria-label="Forest features">
             <div className="pfeat__row pfeat__row--head" role="row">
               <span>Feature</span>
               <span>Value</span>
-              <span>Physics limit</span>
             </div>
-            {d.features.map((v, i) => {
-              const limit = FEATURE_LIMIT[i];
-              const out = limit !== null && Math.abs(v) > limit;
-              return (
-                <div key={i} className={`pfeat__row ${out ? 'pfeat__row--bad' : ''}`} role="row">
-                  <span>{FEATURE_NAMES[i]}</span>
-                  <span className="mono">
-                    {signed(v, FEATURE_UNIT[i] === 'MHz' ? 4 : 2)} {FEATURE_UNIT[i]}
-                  </span>
-                  <span className="mono">
-                    {limit === null ? 'forest only' : `±${limit} ${FEATURE_UNIT[i]}`}
-                  </span>
-                </div>
-              );
-            })}
+            {d.features.map((v, i) => (
+              <div key={i} className="pfeat__row" role="row">
+                <span>{FEATURE_NAMES[i]}</span>
+                <span className="mono">
+                  {signed(v, FEATURE_UNIT[i] === 'MHz' ? 4 : 2)} {FEATURE_UNIT[i]}
+                </span>
+              </div>
+            ))}
           </div>
-          <Row k="Physics gate">
-            {d.physics ? (
-              <span className="pbad">{d.physicsReasons.join(' · ')}</span>
-            ) : (
-              <span>within orbit physics</span>
-            )}
-          </Row>
           <Row k="Isolation Forest">
             <span className={d.forest ? 'pbad' : ''}>
               {d.forest ? 'outside the nominal envelope' : 'inside the nominal envelope'} ·{' '}
@@ -309,21 +384,29 @@ function Detail({ p }: { p: PacketRecord }) {
       )}
 
       <Section
-        file="zero_trust.py"
-        title="Access decision"
-        verdict={<Status ok={p.decision.allow}>{p.decision.action}</Status>}
+        file="physics_validator.py"
+        title="Three-tier decision"
+        verdict={<Status ok={p.decision.allow}>{p.decision.verdict}</Status>}
       >
+        <Row k="Action">
+          <span className="mono">{p.decision.action}</span>
+        </Row>
         {p.decision.reasons.length ? (
-          <ul className="preasons">
+          <ul className={`preasons ${p.decision.verdict === 'HELD' ? 'preasons--warn' : ''}`}>
             {p.decision.reasons.map((r) => (
               <li key={r}>{r}</li>
             ))}
           </ul>
         ) : (
           <p className="pnote pnote--ok">
-            Every check passed: authentic, fresh, cleared hardware token, nominal RF.
+            Every tier passed: authentic and fresh, consistent with orbital physics, inside the
+            nominal envelope.
           </p>
         )}
+        <p className="pnote">
+          Either deterministic layer, data or physical, rejects a frame; the statistical layer alone
+          only holds it for review.
+        </p>
       </Section>
     </div>
   );
@@ -384,7 +467,7 @@ export function PacketDrawer() {
             Packet inspection
           </h2>
           <span className="drawer__sub">
-            Every frame through trust_anchor.py, detector.py and zero_trust.py
+            Every frame through the three tiers: data, physical, statistical
           </span>
         </div>
         <button

@@ -1,3 +1,4 @@
+import { jamSnrLossDb } from '../sim/signals';
 import { BELOW_GATE_DB, BELOW_GATE_HREF } from '../ui/BelowGate';
 import { Protection } from '../ui/explain/NoiseMimicry';
 import { JamIcon } from '../ui/icons';
@@ -8,7 +9,7 @@ export function ProtectionPage() {
     <DocPage
       path="/protection"
       eyebrow="Defence"
-      lead="We do not try to tell every noise from every attack by its look. Each layer makes the imitation either too weak to matter or impossible to hide."
+      lead="We do not try to tell every noise from every attack by its look. Each of the three tiers makes the imitation either too weak to matter or impossible to hide."
       aside={
         <div className="npage__try">
           <a className="explain__cta" href={BELOW_GATE_HREF}>
@@ -16,8 +17,9 @@ export function ProtectionPage() {
             Run a below-the-gate jam on the live testbed
           </a>
           <p className="explain__hint">
-            Starts Noise Jamming at +{BELOW_GATE_DB} dB: the SNR dips about 1.2 dB, stays inside the
-            band, nothing escalates and every frame keeps verifying.
+            Starts Noise Jamming at +{BELOW_GATE_DB} dB: the SNR dips about{' '}
+            {jamSnrLossDb(BELOW_GATE_DB).toFixed(1)} dB, stays inside the χ² gate, nothing escalates
+            and every frame is accepted.
           </p>
         </div>
       }

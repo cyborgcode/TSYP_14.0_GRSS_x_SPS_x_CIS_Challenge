@@ -2,8 +2,11 @@ import { useEffect, useRef } from 'react';
 
 import { useEngine } from '../engineContext';
 
-/** Jammer power that stays inside the 4 dB band in the engine: about 1.2 dB of SNR lost. */
-export const BELOW_GATE_DB = 3;
+/**
+ * Jammer power that stays inside the chi-square gate in the engine: about 0.2 dB of SNR lost,
+ * one sigma of the power residual, well inside the 1.1 dB the gate tolerates on its own.
+ */
+export const BELOW_GATE_DB = 2.3;
 
 /** Link from the Protection page that opens the testbed and starts a below-the-gate jam. */
 export const BELOW_GATE_HREF = '/?run=below-gate';

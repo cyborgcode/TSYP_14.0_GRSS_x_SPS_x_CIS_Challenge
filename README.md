@@ -190,29 +190,40 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
 - **One continuous signal beam**: its colour and distortion, the Carrier Frequency (MHz) and RSSI
   (dBm) charts (Chart.js), the received spectrum, the security banner and the ledger all change
   together with the scenario.
-- **Simulate attack**: Stealth Spoofing (forged MAC headers and nonces from node 0x99A2,
-  quarantine protocols), Data Tampering (one payload bit flipped in transit: no RF signature,
+- **Simulate attack**: Stealth Spoofing (forged MAC headers and nonces from node 0x99A2, power
+  inside a ±4 dB band but 14σ below the link budget, quarantine protocols), Data Tampering (one payload bit flipped in transit: no RF signature,
   only hash verification sees it), Frequency Hijacking (rogue carrier +14.2 MHz, carrier to
   ~8492 MHz, proof failures) and Noise Jamming (RSSI to −96.5 dBm, fallback routing to GS-MAT).
   **Play demo** runs all four back to back.
-- **Packet inspection drawer**: every frame as it went through browser ports of
-  `trust_anchor.py`, `detector.py` and `zero_trust.py`: raw frame and payload hexdump (flipped
-  bits highlighted), MAC received against MAC recomputed, nonce check, ledger block and
-  `verify_chain()`, detector features against the physics limits, Isolation Forest score and
-  confidence, and the access decision with its reasons.
+- **Packet inspection drawer**: every frame as it went through the three tiers: raw frame and
+  payload hexdump (flipped bits highlighted); the data layer (`trust_anchor.py`: MAC received
+  against MAC recomputed, nonce check, ledger block and `verify_chain()`); the physical layer
+  (`security_detector.py`: range, Doppler, power and phase claimed against what SGP4 and the
+  ITU-R P.618 link budget predict, each gap in sigma, the chi-square against its
+  elevation-adaptive gate, the kinematic coupling of range and Doppler); the statistical layer
+  (Isolation Forest score and confidence); and the decision of `physics_validator.py`
+  (`ACCEPTED`, `HELD` or `REJECTED`) with its reasons.
 - **Resilience & trust metrics**: authenticated, rejected, held and corrupted-to-analyst
   counts; live `verify_chain()` with a red-team "edit a past block" test; and per-scenario
-  detection by layer (trust anchor, detector, dropped, time to first drop).
+  detection by tier (data, physical, statistical, stopped).
 - **Hiding in the noise**, on its own pages linked from the top bar: `/signal` (the chosen
-  signal (carrier 8477.8 MHz, ±199.0 kHz Doppler, received at −87.8 to −74.4 dBm, i.e. a
-  12.9–60.3 µV peak across 50 Ω, over a −100 dBm noise floor), `/attacks` (three ways an attacker
-  imitates natural noise), `/protection` (an interactive stealth budget and the four layers) and
+  signal (carrier 8477.8 MHz, ±199.0 kHz Doppler, received at −88.8 to −74.4 dBm after the
+  ITU-R P.618 atmosphere, i.e. an 11.4–60.0 µV peak across 50 Ω, over a −100 dBm noise floor),
+  `/attacks` (three ways an attacker imitates natural noise), `/protection` (an interactive
+  stealth budget and the three tiers) and
   `/noise` (a narrated explainer video; source and re-render steps in `dashboard/explainer/`).
 - **trust_anchor.py terminal**: live log of SHA-256 block validations from a genesis root hash,
   HMAC-SHA256 frame seals and Ed25519 handshakes, all computed with Web Crypto in the browser.
-- **Detection**: orbital-physics gates, the trust anchor and an Isolation Forest trained on
-  nominal passes at load, fused by a 2-of-3 vote. Tiles marked *sample* are placeholders until
-  measured on the official reference dataset.
+- **Detection**: the digital twin's three tiers, ported to the browser. Data layer: the trust
+  anchor (HMAC-SHA256, anti-replay nonces, SHA-256 chain, cleared identity). Statistical layer:
+  an Isolation Forest trained on nominal passes at load. Physical layer: the chi-square engine
+  of `digital_twin/security_detector.py` on range, Doppler, power and carrier phase (4 degrees
+  of freedom, 1e-4 false alarms, gate widened by 1 + 2 exp(−el/6°) near the horizon) plus the
+  kinematic coupling of range and Doppler, against the live SGP4 pass and the twin's ITU-R
+  P.618 atmosphere (`dashboard/src/data/p618.json`, written by `dashboard/scripts/gen-p618.py`
+  and checked by `tests/test_digital_twin.py`). Either deterministic layer rejects a frame, the
+  statistical layer alone holds it, and two tiers firing at once escalate the incident
+  response. Every KPI tile is measured live in the browser.
 
 The step-by-step evaluation walkthrough is in [docs/evaluation-guide.md](docs/evaluation-guide.md).
 

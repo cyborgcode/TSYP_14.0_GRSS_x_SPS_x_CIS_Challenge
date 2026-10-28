@@ -1,26 +1,26 @@
 {
   "title": "Hiding in the noise",
-  "duration": 165.892,
+  "duration": 179.944,
   "scenes": [
     {
       "id": "intro",
       "chapter": "Hiding in the noise",
       "start": 0.0,
-      "end": 15.652,
+      "end": 15.78,
       "cues": [
         {
           "start": 2.2,
-          "end": 5.976,
+          "end": 6.008,
           "text": "Every satellite signal reaches the ground buried in natural noise."
         },
         {
-          "start": 6.396,
-          "end": 10.332,
+          "start": 6.428,
+          "end": 10.3,
           "text": "A careful attacker can shape an attack to look exactly like that noise."
         },
         {
-          "start": 10.752,
-          "end": 14.752,
+          "start": 10.72,
+          "end": 14.88,
           "text": "This is how it works, and how our ground-link testbed still catches it."
         }
       ]
@@ -28,55 +28,55 @@
     {
       "id": "signal",
       "chapter": "The signal we chose",
-      "start": 15.652,
-      "end": 51.868,
+      "start": 15.78,
+      "end": 51.324,
       "cues": [
         {
-          "start": 16.552,
-          "end": 27.416,
+          "start": 16.68,
+          "end": 27.736,
           "text": "TerraSAR-X flies at 514 km and sends a fixed X-band carrier at 8477.8 MHz."
         },
         {
-          "start": 27.836,
-          "end": 35.596,
+          "start": 28.156,
+          "end": 35.772,
           "text": "The frequency is not random: it moves only with the Doppler shift, up to ±199 kHz, which the orbit predicts."
         },
         {
-          "start": 36.016,
-          "end": 43.84,
-          "text": "At Zaghouan the carrier arrives between −88 and −74 dBm: an amplitude of 12.9 to 60 µV."
+          "start": 36.192,
+          "end": 43.552,
+          "text": "At Zaghouan the carrier arrives between −89 and −74 dBm: an amplitude of 11.4 to 60 µV."
         },
         {
-          "start": 44.26,
-          "end": 50.868,
-          "text": "The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 12 to 26 dB over the pass."
+          "start": 43.972,
+          "end": 50.324,
+          "text": "The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 11 to 26 dB over the pass."
         }
       ]
     },
     {
       "id": "natural",
       "chapter": "What natural noise looks like",
-      "start": 51.868,
-      "end": 70.116,
+      "start": 51.324,
+      "end": 69.604,
       "cues": [
         {
-          "start": 52.768,
-          "end": 54.784,
+          "start": 52.224,
+          "end": 54.288,
           "text": "Natural noise has a signature."
         },
         {
-          "start": 55.204,
-          "end": 59.22,
+          "start": 54.708,
+          "end": 58.532,
           "text": "Thermal noise is Gaussian and white: a flat floor across the band."
         },
         {
-          "start": 59.64,
-          "end": 65.896,
+          "start": 58.952,
+          "end": 65.256,
           "text": "Against the orbit model, the carrier wanders by less than 20 Hz and the power by less than 1 dB."
         },
         {
-          "start": 66.316,
-          "end": 69.116,
+          "start": 65.676,
+          "end": 68.604,
           "text": "That narrow envelope is where an attacker has to hide."
         }
       ]
@@ -84,109 +84,114 @@
     {
       "id": "imitate",
       "chapter": "How an attacker imitates it",
-      "start": 70.116,
-      "end": 95.148,
+      "start": 69.604,
+      "end": 94.748,
       "cues": [
         {
-          "start": 71.016,
-          "end": 78.296,
+          "start": 70.504,
+          "end": 77.304,
           "text": "One: noise-shaped jamming. Gaussian noise, raised slowly like a rain fade, so the floor creeps up instead of jumping."
         },
         {
-          "start": 78.716,
-          "end": 86.316,
+          "start": 77.724,
+          "end": 85.644,
           "text": "Two: fade-mimicking spoofing. A rogue node matches the Doppler and adds fake fading, so its power sits only 3 dB low."
         },
         {
-          "start": 86.736,
-          "end": 94.048,
+          "start": 86.064,
+          "end": 93.648,
           "text": "Three: bit flips disguised as channel errors. Chosen bits are flipped and the checksum recomputed, so the frame just looks noisy."
         }
       ]
     },
     {
       "id": "physics",
-      "chapter": "Layer 1 · Physics",
-      "start": 95.148,
-      "end": 115.024,
+      "chapter": "Physical layer · χ²",
+      "start": 94.748,
+      "end": 126.996,
       "cues": [
         {
-          "start": 96.048,
-          "end": 99.696,
+          "start": 95.648,
+          "end": 99.216,
           "text": "Our idea is to make every imitation either harmless or visible."
         },
         {
-          "start": 100.116,
-          "end": 111.284,
-          "text": "Layer one is physics. To stay hidden, the injected noise can be at most 1.8 dB above the thermal noise: that costs at most 4 dB of signal-to-noise ratio, and every frame still verifies."
+          "start": 99.636,
+          "end": 107.476,
+          "text": "The physical layer is a chi-square engine: range, Doppler, power and phase are each compared with the orbit, in units of their natural spread."
         },
         {
-          "start": 111.704,
-          "end": 114.024,
-          "text": "Push harder, and the physics gate fires."
+          "start": 107.896,
+          "end": 119.384,
+          "text": "To stay hidden, injected noise must stay 5.3 dB below the thermal noise: that costs at most 1.1 dB of signal-to-noise ratio, and every frame still verifies."
+        },
+        {
+          "start": 119.804,
+          "end": 125.996,
+          "text": "Push harder, and the chi-square gate fires: a spoofer's 3 dB fade is 14 sigma off the link budget."
         }
       ]
     },
     {
       "id": "ai",
-      "chapter": "Layer 2 · AI",
-      "start": 115.024,
-      "end": 127.436,
+      "chapter": "Statistical layer · AI",
+      "start": 126.996,
+      "end": 140.032,
       "cues": [
         {
-          "start": 115.824,
-          "end": 119.488,
-          "text": "Layer two is an Isolation Forest trained only on clean passes."
+          "start": 127.796,
+          "end": 131.796,
+          "text": "The statistical layer is an Isolation Forest trained only on clean passes."
         },
         {
-          "start": 119.908,
-          "end": 126.436,
+          "start": 132.216,
+          "end": 139.032,
           "text": "It scores each reading together with how fast it changed, so a disguise must copy the rhythm of nature, not just its level."
         }
       ]
     },
     {
       "id": "crypto",
-      "chapter": "Layer 3 · Cryptography",
-      "start": 127.436,
-      "end": 149.548,
+      "chapter": "Data layer · Cryptography",
+      "start": 140.032,
+      "end": 163.456,
       "cues": [
         {
-          "start": 128.236,
-          "end": 135.164,
-          "text": "Layer three is cryptography, which noise cannot imitate: every frame carries an HMAC-SHA256 tag made with a secret key."
+          "start": 140.832,
+          "end": 147.936,
+          "text": "The data layer is cryptography, which noise cannot imitate: every frame carries an HMAC-SHA256 tag made with a secret key."
         },
         {
-          "start": 135.584,
-          "end": 141.52,
+          "start": 148.356,
+          "end": 154.708,
           "text": "Change one bit, by accident or on purpose, and the tag breaks: the frame is dropped and requested again."
         },
         {
-          "start": 141.94,
-          "end": 148.548,
-          "text": "One failure looks like weather. A burst of failures trips two of our three detectors, and the link is quarantined."
+          "start": 155.128,
+          "end": 162.456,
+          "text": "Either deterministic layer, data or physical, rejects a frame. When two layers fire at once, the link is quarantined."
         }
       ]
     },
     {
       "id": "result",
       "chapter": "Result",
-      "start": 149.548,
-      "end": 165.892,
+      "start": 163.456,
+      "end": 179.944,
       "cues": [
         {
-          "start": 150.348,
-          "end": 156.156,
+          "start": 164.256,
+          "end": 170.064,
           "text": "In our tests, every attack packet was denied, and no corrupted frame reached the analyst."
         },
         {
-          "start": 156.576,
-          "end": 159.456,
+          "start": 170.484,
+          "end": 173.54,
           "text": "About one percent of genuine packets were held back."
         },
         {
-          "start": 159.876,
-          "end": 161.892,
+          "start": 173.96,
+          "end": 175.944,
           "text": "Try it live at tsyp-pi.vercel.app."
         }
       ]

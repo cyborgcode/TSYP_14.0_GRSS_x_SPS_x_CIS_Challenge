@@ -32,13 +32,19 @@ drawer on the live frames (section 5).
 | Scenario | What happens | System response |
 |---|---|---|
 | **Frequency Hijacking** | A rogue carrier sweeping around +14.2 MHz is injected into the link. | The carrier chart jumps to ~8492 MHz, the beam turns red with a rapid oscillation, and the ledger logs `PROOF FAIL` for every rogue frame. Keys are rotated after quarantine. |
-| **Stealth Spoofing** | Node `0x99A2` injects frames with forged MAC headers and cryptographic nonces. The carrier stays on track, so the physics check is evaded. | The beam turns amber, RSSI degrades, the banner reads *Quarantine protocols engaged*, and the trust anchor and AI model escalate 2 of 3. |
-| **Data Tampering** | A relay between TerraSAR-X and Zaghouan flips one payload bit after the satellite sealed the frame. The RF is untouched. | The beam turns pink, the physics check and the AI model see nothing, and the trust anchor logs `HASH MISMATCH` for every altered frame. The frames are quarantined and a retransmission is requested; keys are not rotated, since the relay never had them. |
+| **Stealth Spoofing** | Node `0x99A2` injects frames with forged MAC headers and cryptographic nonces. The carrier stays on the Doppler track and the power inside a ±4 dB band, only 3.2 dB low. | The beam turns amber, RSSI degrades, the banner reads *Quarantine protocols engaged*. All three tiers fire: the data layer (forged MAC, reused nonces, wrong hardware token), the physical layer (3.2 dB is 14σ below the link budget for the chi-square engine) and the statistical layer. |
+| **Data Tampering** | A relay between TerraSAR-X and Zaghouan flips one payload bit after the satellite sealed the frame. The RF is untouched. | The beam turns pink, the physical and statistical layers see nothing, and the data layer logs `HASH MISMATCH` for every altered frame. The frames are quarantined and a retransmission is requested; keys are not rotated, since the relay never had them. |
 | **Noise Jamming** | Broadband Gaussian white noise saturates the receiver. | The beam turns purple with high-frequency static, RSSI drops to −96.5 dBm, frames go missing, and fallback routing to GS-MAT (Matera, Italy) is forced. |
 
 The attack-power slider changes the jammer power and the hijacker's excess power live.
-**Play demo** runs all four scenarios back to back, including a false alarm that the 2-of-3
-fusion suppresses.
+**Play demo** runs all four scenarios back to back, including a false alarm that only the
+statistical layer raises: the frame is held, not rejected, and nothing escalates.
+
+The **Three-tier threat matrix** panel shows the three tiers live, in the digital twin's order:
+1. data layer (HMAC-SHA256 tag and nonce of the last frame), 2. statistical layer (Isolation
+Forest score against its 0.60 operating point), 3. physical layer (chi-square against its gate
+at the current elevation, and the kinematic coupling in sigma). Either deterministic layer
+rejects a frame; the forest alone holds it; two tiers at once escalate.
 
 ## 4. Cryptographic ledger and telemetry verification
 
@@ -47,7 +53,8 @@ fusion suppresses.
   Ed25519 handshakes (at session open, periodically and after every re-key), proof failures,
   forged nonces, quarantine and fallback routing.
 - **Live charts**: Carrier Frequency (MHz) and RSSI Signal Strength (dBm) stream through Chart.js
-  against the orbit-predicted carrier and the link budget; points outside the gate turn red. The
+  against the orbit-predicted carrier and the link budget; points the chi-square engine rejects
+  turn red. The
   received spectrum (amplitude against frequency, ±20 MHz) shows the 6 MHz downlink channel, the
   hijacker at +14.2 MHz and the jammed noise floor.
 
@@ -58,28 +65,35 @@ fusion suppresses.
   one shows the raw frame and payload hexdump (bits flipped in transit are highlighted against
   what the satellite sealed), the MAC received against the HMAC-SHA256 recomputed by the
   station, the anti-replay check, the SHA-256 digest and ledger block, the `verify_chain()`
-  status, the `detector.py` features against their physics limits, the Isolation Forest score,
-  threshold and confidence, and the `zero_trust.py` decision with its reasons. *Live* / *Paused*
+  status; the physical layer, `security_detector.py`: range, Doppler, power and phase claimed
+  against the SGP4 and ITU-R P.618 prediction, each gap in sigma, the chi-square against its
+  gate and the kinematic coupling; the Isolation Forest features, score, threshold and
+  confidence; and the `physics_validator.py` decision (`ACCEPTED`, `HELD` or `REJECTED`) with
+  its reasons. *Live* / *Paused*
   freezes the list. The red-team label is shown for the jury only; the pipeline never reads it.
 - **Resilience & trust metrics**: frames authenticated, rejected (MAC or nonce), held on RF
   evidence and corrupted frames that reached the analyst (0). `verify_chain()` re-checks the
   ledger every 5 s; *Verify* re-checks it from the genesis block, and *Edit block* lets the red
   team change a verdict recorded in a past block, which the next check reports by index before
-  the block is restored. The matrix gives, per scenario, the share of frames flagged by the
-  trust anchor and by the detector, the share dropped, and the median time to the first drop.
+  the block is restored. The matrix gives, per scenario, the share of frames flagged by each
+  tier (data, physical, statistical) and the share stopped; hovering a stopped share gives the
+  median time to the first stop. The **Detection rate** and **False-alarm rate** tiles are
+  measured on the frames of the session.
 
 ## 6. Hiding in the noise
 
 The top bar links the dashboard to four short pages, read in order with **Next** at the bottom of
 each. **Signal** (`/signal`) gives the chosen signal precisely: a fixed carrier at 8477.8 MHz moved only by Doppler (±199.0 kHz at the 2°
-elevation mask), received at −87.8 dBm at the mask and −74.4 dBm overhead, a carrier amplitude of
-12.9 to 60.3 µV peak across the 50 Ω input, over a −100 dBm noise floor (SNR 12.2 to 25.6 dB).
+elevation mask), received at −88.8 dBm at the mask and −74.4 dBm overhead after the ITU-R P.618
+median atmosphere (1.06 dB at the mask, 0.05 dB overhead), a carrier amplitude of 11.4 to 60.0 µV
+peak across the 50 Ω input, over a −100 dBm noise floor (SNR 11.2 to 25.6 dB).
 **Noise attacks** (`/attacks`) shows three ways an attacker imitates natural noise (noise-shaped
 jamming, fade-mimicking spoofing, bit flips disguised as bit errors). **Protection**
-(`/protection`) shows why each is either harmless or visible: a jammer can add at most 1.8 dB over
-the thermal noise before the physics gate fires, which costs at most 4 dB of SNR. Its **Run a
-below-the-gate jam** button opens the dashboard and starts that case live. **Explainer video**
-(`/noise`) is a 2:43 narrated video with chapters, captions and a transcript.
+(`/protection`) shows why each is either harmless or visible: a jammer must stay 5.3 dB below
+the thermal noise before the chi-square engine fires, which costs at most 1.1 dB of SNR (the old
+±4 dB box gate let 4 dB go unseen). Its **Run a below-the-gate jam** button opens the dashboard
+and starts that case live. **Explainer video** (`/noise`) is a 3:00 narrated video with
+chapters, captions and a transcript.
 
 The browser ports produce the same frame text, HMAC seal and block hashes as the Python modules
 in `testbed/`; both test suites check the same golden vectors.

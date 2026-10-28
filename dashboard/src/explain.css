@@ -344,6 +344,15 @@
   fill: #ff8a98;
   font: 600 13px var(--font-data);
 }
+.budget__old {
+  stroke: var(--text-3);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 6;
+}
+.budget__old-label {
+  fill: var(--text-2);
+  font: 600 12px var(--font-data);
+}
 .budget__limit {
   stroke: var(--ok);
   stroke-width: 1.5;

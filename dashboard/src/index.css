@@ -306,17 +306,6 @@ button {
   color: var(--text-2);
   font-size: 12px;
 }
-.sample-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--r-pill);
-  border: 1px dashed var(--warn);
-  color: var(--warn);
-  font: 700 11.5px var(--font-ui);
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-}
 .kpis {
   position: relative;
   display: grid;
@@ -345,13 +334,6 @@ button {
   letter-spacing: 1.2px;
   text-transform: uppercase;
   color: var(--text-2);
-}
-.tile__sample {
-  font-size: 11px;
-  letter-spacing: 0.4px;
-  color: var(--warn);
-  text-transform: lowercase;
-  font-weight: 600;
 }
 .tile__row {
   display: flex;
@@ -1540,6 +1522,97 @@ button {
   color: var(--text-2);
   font-size: 12px;
 }
+.tiers {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.tier {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'n body status'
+    'n metric metric';
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 5px 9px;
+  border-radius: var(--r-chip);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+.tier__n {
+  grid-area: n;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.tier__body {
+  grid-area: body;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.tier__name {
+  font: 700 11.5px var(--font-ui);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-1);
+  white-space: nowrap;
+}
+.tier__engine {
+  color: var(--text-2);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tier__metric {
+  grid-area: metric;
+  color: var(--text-2);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tier__status {
+  grid-area: status;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 700 12px var(--font-data);
+  white-space: nowrap;
+}
+.tier--ok .tier__status {
+  color: var(--ok);
+}
+.tier--bad {
+  border-color: rgba(248, 72, 94, 0.7);
+  background: rgba(248, 72, 94, 0.08);
+  animation: flip 0.25s var(--ease-back);
+}
+.tier--bad .tier__status,
+.tier--bad .tier__n {
+  color: var(--bad);
+}
+.tier--warn {
+  border-color: rgba(251, 191, 36, 0.7);
+  background: rgba(251, 191, 36, 0.07);
+}
+.tier--warn .tier__status,
+.tier--warn .tier__n {
+  color: var(--warn);
+}
 
 .iforest {
   margin-top: 12px;
@@ -2310,7 +2383,7 @@ button {
 }
 .rmatrix__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 46px 50px 46px 56px 54px;
+  grid-template-columns: minmax(0, 1fr) 44px 46px 46px 46px 48px;
   align-items: center;
   gap: 6px;
   padding: 3px 4px;
@@ -2749,6 +2822,15 @@ button {
 .pfeat__row--bad {
   color: #ff9aa8;
 }
+.pfeat--2 .pfeat__row {
+  grid-template-columns: minmax(0, 1fr) 118px;
+}
+.pfeat--4 .pfeat__row {
+  grid-template-columns: minmax(0, 1fr) 104px 104px 62px;
+}
+.preasons--warn {
+  color: var(--warn);
+}
 .preasons {
   margin: 0;
   padding-left: 18px;
@@ -2934,10 +3016,8 @@ button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .rmatrix__row {
-    grid-template-columns: minmax(0, 1fr) 40px 46px 42px 50px;
-  }
-  .rmatrix__row > span:last-child {
-    display: none;
+    grid-template-columns: minmax(0, 1fr) 34px 38px 38px 38px 42px;
+    gap: 4px;
   }
 }
 
@@ -2985,7 +3065,6 @@ button {
     flex: none;
     margin-bottom: 10px;
   }
-  /* Tiles still carry their own "sample" labels. */
   .kpis-head {
     display: none;
   }
@@ -3247,14 +3326,11 @@ button {
     padding: 4px 6px;
   }
   .rmatrix__row {
-    grid-template-columns: minmax(0, 1fr) 44px 50px 40px 36px;
+    grid-template-columns: minmax(0, 1fr) 40px 40px 38px 36px 40px;
     gap: 5px;
   }
   .rmatrix__row--head {
     letter-spacing: 0;
-  }
-  .rmatrix__row > span:last-child {
-    display: none;
   }
   .term__time {
     display: none;

@@ -31,10 +31,10 @@ export const ATTACK_BUTTONS: Record<AttackKind, { label: string; sub: string; ru
 
 /** What each scenario proves, shown on the Simulate Attack panel. */
 export const ATTACK_PROOF: Record<AttackKind, string> = {
-  spoof: 'RF looks plausible: only the HMAC and nonce checks catch it',
-  tamper: 'No RF signature at all: only hash verification catches it',
-  hijack: 'Both layers fire: orbit physics and proof failures',
-  jam: 'Frames are genuine: only the detector catches it, then fallback',
+  spoof: 'Inside a ±4 dB band but 14σ below the link budget: χ², HMAC and nonce checks all fire',
+  tamper: 'No RF signature at all: only the data layer’s hash verification catches it',
+  hijack: 'Physical and data layers both fire: χ² of the carrier and proof failures',
+  jam: 'Frames are genuine: only the χ² physical layer catches it, then fallback',
 };
 
 export interface BannerCopy {
@@ -109,14 +109,17 @@ export const TOUR_CALLOUTS = {
     sub: 'pass predicted from orbital elements',
   },
   gate: {
-    text: 'Carrier and RSSI vs orbit model',
-    sub: 'anything outside the gate breaks orbital physics',
+    text: 'Range, Doppler, power and phase vs the orbit',
+    sub: 'one χ² gate, wider near the horizon',
   },
   chain: {
     text: 'Each frame is a SHA-256 block chained to the last',
     sub: 'one altered frame breaks the chain',
   },
-  hold: { text: 'Only 1 of 3 detectors flagged it', sub: 'fusion holds instead of alarming' },
-  suppressed: { text: 'False alarm suppressed', sub: 'physics and trust anchor both pass' },
+  hold: {
+    text: 'Only the statistical layer flagged it',
+    sub: 'the forest alone holds a frame, it never rejects one',
+  },
+  suppressed: { text: 'False alarm suppressed', sub: 'physical and data layers both pass' },
   controls: { text: 'Every control drives the telemetry', sub: 'and the 3D link in real time' },
 } as const;

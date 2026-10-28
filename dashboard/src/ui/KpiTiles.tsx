@@ -1,27 +1,30 @@
-import { useEffect, useRef, useState } from 'react';
-
 import { useEngine } from '../engineContext';
-import { easeOutCubic } from '../sim/noise';
+import type { Engine } from '../sim/engine';
+import type { AttackKind } from '../sim/signals';
 import { fmtMs } from './format';
 import { AlertIcon, ATTACK_ICONS, CheckIcon } from './icons';
-import { SampleBadge } from './Panel';
 
-function useCountUp(target: number, duration = 900): number {
-  const [value, setValue] = useState(0);
-  const start = useRef<number | null>(null);
-  useEffect(() => {
-    let raf = 0;
-    const loop = (now: number) => {
-      if (start.current === null) start.current = now;
-      const p = Math.min(1, (now - start.current) / duration);
-      setValue(target * easeOutCubic(p));
-      if (p < 1) raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-  return value;
+const ATTACKS: AttackKind[] = ['spoof', 'tamper', 'hijack', 'jam'];
+
+/** Attack frames stopped and genuine frames held or rejected, so far in this browser. */
+function measured(engine: Engine) {
+  let attackFrames = 0;
+  let stopped = 0;
+  for (const kind of ATTACKS) {
+    const st = engine.layerStats[kind];
+    attackFrames += st?.frames ?? 0;
+    stopped += st?.blocked ?? 0;
+  }
+  const genuine = engine.layerStats.genuine;
+  return {
+    attackFrames,
+    stopped,
+    genuineFrames: genuine?.frames ?? 0,
+    falseAlarms: genuine?.blocked ?? 0,
+  };
 }
+
+const pct = (n: number, d: number, digits = 1) => `${((n / d) * 100).toFixed(digits)}%`;
 
 type Tone = 'ok' | 'warn' | 'bad' | 'muted';
 
@@ -31,21 +34,16 @@ function Tile({
   note,
   tone = 'muted',
   alert = false,
-  sample = false,
 }: {
   label: string;
   value: string;
   note: string;
   tone?: Tone;
   alert?: boolean;
-  sample?: boolean;
 }) {
   return (
     <div className={`tile ${alert ? 'tile--alert' : ''}`}>
-      <div className="tile__label">
-        {label}
-        {sample && <span className="tile__sample">sample</span>}
-      </div>
+      <div className="tile__label">{label}</div>
       <div className="tile__row">
         <span className="tile__value mono">{value}</span>
         <span className={`tile__note tile__note--${tone}`}>{note}</span>
@@ -83,8 +81,7 @@ function Banner() {
 
 export function KpiTiles() {
   const engine = useEngine(6);
-  const detection = useCountUp(97.8);
-  const far = useCountUp(0.6);
+  const m = measured(engine);
   const attack = engine.state === 'UNDER ATTACK';
   const jamming = engine.state === 'JAMMING';
   const overhead = engine.medianOverheadMs;
@@ -97,10 +94,9 @@ export function KpiTiles() {
   return (
     <div className="kpis-wrap">
       <div className="kpis-head">
-        <span className="overline">Evaluation · standard scenario</span>
-        <SampleBadge />
+        <span className="overline">Evaluation · live</span>
         <span className="kpis-head__note">
-          Tiles marked sample are placeholders; the rest are measured live in this browser.
+          Every tile is measured in this browser, on the frames of this session.
         </span>
       </div>
       <div className="kpis">
@@ -112,11 +108,16 @@ export function KpiTiles() {
         />
         <Tile
           label="Detection rate"
-          value={`${detection.toFixed(1)}%`}
-          note="standard scenario"
-          sample
+          value={m.attackFrames ? pct(m.stopped, m.attackFrames) : '—'}
+          note={m.attackFrames ? `of ${m.attackFrames} attack frames` : 'run an attack'}
+          tone={m.attackFrames ? (m.stopped === m.attackFrames ? 'ok' : 'warn') : 'muted'}
         />
-        <Tile label="False-alarm rate" value={`${far.toFixed(1)}%`} note="2-of-3 fusion" sample />
+        <Tile
+          label="False-alarm rate"
+          value={m.genuineFrames ? pct(m.falseAlarms, m.genuineFrames) : '—'}
+          note={m.genuineFrames ? `of ${m.genuineFrames} genuine frames` : 'three tiers'}
+          tone={m.falseAlarms ? 'warn' : 'muted'}
+        />
         <Tile
           label="Security overhead"
           value={overhead === null ? '—' : `+${fmtMs(overhead)}`}

@@ -3,7 +3,8 @@ import { useRef } from 'react';
 import { useEngine, useEngineCtx } from '../engineContext';
 import { HANDOVER_STATION, ROGUE_NODE, SATELLITE, STATION, STATION_PLACE } from '../sim/copy';
 import { CARRIER_HZ, passProfile, timeCompression } from '../sim/geometry';
-import { GATES, evmFromSnr } from '../sim/signals';
+import { axisFlag } from '../sim/engine';
+import { evmFromSnr } from '../sim/signals';
 import { fmtDb, fmtEpoch, fmtHz, MINUS } from './format';
 import { BackIcon, DishIcon, SatelliteIcon } from './icons';
 import { WaxSeal } from './Ledger';
@@ -297,17 +298,21 @@ function StationPanel() {
         <Metric
           label="RSSI"
           value={x ? `${x.rssiDbm.toFixed(1)} dBm` : '—'}
-          tone={x && x.rssiDbm < x.rssiModelDbm - GATES.snrBandDb ? 'warn' : undefined}
+          tone={
+            x && x.rssiDbm < x.rssiModelDbm && axisFlag(engine.physics, 'rssiDb')
+              ? 'warn'
+              : undefined
+          }
         />
         <Metric
           label="Carrier MHz"
           value={x ? x.carrierMHz.toFixed(2) : '—'}
-          tone={engine.gates?.doppler ? 'bad' : undefined}
+          tone={axisFlag(engine.physics, 'dopplerHz') ? 'bad' : undefined}
         />
         <Metric
           label="SNR"
           value={x ? fmtDb(x.snrDb) : '—'}
-          tone={engine.gates?.snr ? 'bad' : undefined}
+          tone={axisFlag(engine.physics, 'rssiDb') ? 'bad' : undefined}
         />
         <Metric label="EVM" value={x ? `${x.evmPct.toFixed(1)}%` : '—'} />
       </div>

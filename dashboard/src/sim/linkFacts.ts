@@ -1,12 +1,14 @@
 // Signal facts quoted on the site, derived from the link model so the text never drifts from it.
 //
 // The carrier is fixed; only the orbit's Doppler shift moves it. The received power follows the
-// link budget at the current slant range, from the elevation mask to the zenith. Amplitudes are
-// the peak voltage of that carrier across the receiver's 50 Ω input.
+// link budget (free space plus the ITU-R P.618 atmosphere) at the current slant range, from the
+// elevation mask to the zenith. Amplitudes are the peak voltage of that carrier across the
+// receiver's 50 Ω input. The physics gates are the chi-square engine's (physicsEngine.ts).
 
 import {
   ALTITUDE_KM,
   CARRIER_HZ,
+  atmosphericLossDb,
   MASK_ELEVATION_DEG,
   NOISE_FLOOR_DBM,
   REAL_PASS_S,
@@ -16,7 +18,8 @@ import {
   timeAfterAos,
 } from './geometry';
 import { FRAME_PERIOD_S } from './constants';
-import { GATES, HIJACK_OFFSET_HZ, JAMMED_RSSI_DBM } from './signals';
+import { NATURAL_SIGMA, PhysicsEngine } from './physicsEngine';
+import { HIJACK_OFFSET_HZ, JAMMED_RSSI_DBM } from './signals';
 
 /** Receiver input impedance used to turn power into voltage. */
 export const RX_OHMS = 50;
@@ -34,8 +37,8 @@ export const snrLossDb = (aboveFloorDb: number): number =>
   10 * Math.log10(1 + 10 ** (aboveFloorDb / 10));
 
 const atMask = passAt(timeAfterAos(0));
-const snrMin = snrPredDb(atMask.rangeKm);
-const snrMax = snrPredDb(ALTITUDE_KM);
+const snrMin = snrPredDb(atMask.rangeKm, atMask.elevationDeg);
+const snrMax = snrPredDb(ALTITUDE_KM, 90);
 
 export const SIGNAL = {
   carrierMHz: CARRIER_HZ / 1e6,
@@ -49,6 +52,8 @@ export const SIGNAL = {
     mask: fsplDb(atMask.rangeKm, CARRIER_HZ / 1e6),
     zenith: fsplDb(ALTITUDE_KM, CARRIER_HZ / 1e6),
   },
+  /** ITU-R P.618 median atmosphere: mostly oxygen and water-vapour absorption. */
+  atmosphereDb: { mask: atmosphericLossDb(atMask.elevationDeg), zenith: atmosphericLossDb(90) },
   /** Received carrier power: RSSI = noise floor + SNR. */
   rxDbm: { mask: NOISE_FLOOR_DBM + snrMin, zenith: NOISE_FLOOR_DBM + snrMax },
   snrDb: { mask: snrMin, zenith: snrMax },
@@ -63,21 +68,41 @@ export const SIGNAL = {
   framePeriodS: FRAME_PERIOD_S,
 } as const;
 
-/**
- * Natural variation against the orbit model on a clean pass (signals.ts with no attack), and
- * the physics gates that sit well outside it. tests/sim.test.ts re-measures these figures.
- */
-export const NATURAL = {
-  carrierHz: { sigma: 6.1, max: 19, gate: GATES.dopplerHz },
-  powerDb: { sigma: 0.23, max: 0.82, gate: GATES.snrBandDb },
-  timingUs: { sigma: 1.6, max: 4.5, gate: GATES.timingUs },
+const physics = new PhysicsEngine();
+
+/** The chi-square engine: 4 degrees of freedom, 1e-4 false alarms, gate widening at the horizon. */
+export const CHI_SQUARE = {
+  dof: physics.dof,
+  falseAlarmRate: 1e-4,
+  gate: physics.baseThreshold,
+  /** The gate at the elevation mask, where scintillation and multipath widen the residuals. */
+  maskGate: physics.adaptiveThreshold(MASK_ELEVATION_DEG),
+  kinematicGateZ: physics.kinematicGateZ,
 } as const;
 
-/** The most noise an attacker can add before the SNR leaves the ±4 dB band. */
+/** Largest residual on one axis that, alone, stays inside the gate above ~30° elevation. */
+const alone = (name: keyof typeof NATURAL_SIGMA) => physics.axisLimit(name, 90);
+
+/**
+ * Natural variation against the orbit model on a clean pass (signals.ts with no attack): the
+ * one-sigma spread the chi-square engine divides by, the largest excursion seen, and how far one
+ * residual alone may go before the gate fires. tests/sim.test.ts re-measures these figures.
+ */
+export const NATURAL = {
+  carrierHz: { sigma: NATURAL_SIGMA.dopplerHz, max: 19, gate: alone('dopplerHz') },
+  powerDb: { sigma: NATURAL_SIGMA.rssiDb, max: 0.82, gate: alone('rssiDb') },
+  timingUs: { sigma: 1.6, max: 4.5, gate: alone('rangeKm') / (NATURAL_SIGMA.rangeKm / 1.6) },
+  phaseDeg: { sigma: NATURAL_SIGMA.phaseDeg, max: 5.4, gate: alone('phaseDeg') },
+} as const;
+
+/** The most noise an attacker can add before the power residual alone fires the gate. */
+const maxSnrLossDb = NATURAL.powerDb.gate;
 export const STEALTH = {
-  maxSnrLossDb: GATES.snrBandDb,
-  maxNoiseAboveFloorDb: 10 * Math.log10(10 ** (GATES.snrBandDb / 10) - 1),
-  maxNoiseDbm: NOISE_FLOOR_DBM + 10 * Math.log10(10 ** (GATES.snrBandDb / 10) - 1),
+  maxSnrLossDb,
+  maxNoiseAboveFloorDb: 10 * Math.log10(10 ** (maxSnrLossDb / 10) - 1),
+  maxNoiseDbm: NOISE_FLOOR_DBM + 10 * Math.log10(10 ** (maxSnrLossDb / 10) - 1),
+  /** The old ±4 dB band of box gates, for comparison: 4 dB of SNR could go unseen. */
+  boxBandDb: 4,
 } as const;
 
 export const ATTACK_SIGNALS = {

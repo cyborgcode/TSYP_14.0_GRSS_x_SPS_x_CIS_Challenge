@@ -10,8 +10,8 @@ import {
 import { useEffect, useRef } from 'react';
 
 import { useEngine, useEngineCtx } from '../engineContext';
-import { HISTORY, type TelemetryPoint } from '../sim/engine';
-import { GATES, type Sample } from '../sim/signals';
+import { HISTORY, axisFlag, type TelemetryPoint } from '../sim/engine';
+import type { Sample } from '../sim/signals';
 import { fmtDb } from './format';
 import { Panel } from './Panel';
 import { Spectrum } from './Spectrum';
@@ -33,15 +33,13 @@ interface Spec {
   range: [number, number] | null;
 }
 
-const rssiOut = (x: Sample) => Math.abs(x.rssiDbm - x.rssiModelDbm) > GATES.snrBandDb;
-
 const SPECS: Record<Kind, Spec> = {
   carrier: {
     title: 'Carrier frequency',
     subtitle: 'measured vs orbit-predicted · MHz',
     value: (x) => x.carrierMHz,
     model: (x) => x.carrierModelMHz,
-    out: (p) => Boolean(p.gates?.doppler),
+    out: (p) => axisFlag(p.physics, 'dopplerHz'),
     format: (x) => `${x.carrierMHz.toFixed(3)} MHz`,
     tick: (v, span) => v.toFixed(span < 1 ? 2 : 1),
     range: null,
@@ -51,7 +49,7 @@ const SPECS: Record<Kind, Spec> = {
     subtitle: 'measured vs link budget · dBm',
     value: (x) => x.rssiDbm,
     model: (x) => x.rssiModelDbm,
-    out: (p) => Boolean(p.x && (rssiOut(p.x) || p.gates?.noFrames)),
+    out: (p) => Boolean(p.x && (axisFlag(p.physics, 'rssiDb') || p.physics?.noFrames)),
     format: (x) => `${x.rssiDbm.toFixed(1)} dBm`,
     tick: (v) => `${Math.round(v)}`,
     range: [-105, -60],
@@ -189,7 +187,7 @@ function ChartBlock({ kind }: { kind: Kind }) {
   const engine = useEngine(10);
   const spec = SPECS[kind];
   const x = engine.current;
-  const out = Boolean(x && spec.out({ s: engine.s, x, gates: engine.gates }));
+  const out = Boolean(x && spec.out({ s: engine.s, x, physics: engine.physics }));
   return (
     <div className={`chart ${out ? 'chart--out' : ''}`}>
       <div className="chart__head">

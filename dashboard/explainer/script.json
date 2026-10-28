@@ -34,12 +34,12 @@
           "say": "The frequency is not random. It moves only with the Doppler shift, up to about two hundred kilohertz either way, and the orbit predicts it."
         },
         {
-          "text": "At Zaghouan the carrier arrives between −88 and −74 dBm: an amplitude of 12.9 to 60 µV.",
-          "say": "At Zagwan, it arrives between minus eighty-eight and minus seventy-four D B M: an amplitude of thirteen to sixty microvolts."
+          "text": "At Zaghouan the carrier arrives between −89 and −74 dBm: an amplitude of 11.4 to 60 µV.",
+          "say": "At Zagwan, it arrives between minus eighty-nine and minus seventy-four D B M: an amplitude of eleven to sixty microvolts."
         },
         {
-          "text": "The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 12 to 26 dB over the pass.",
-          "say": "The noise floor is minus one hundred D B M, so the signal-to-noise ratio runs from twelve to twenty-six decibels."
+          "text": "The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 11 to 26 dB over the pass.",
+          "say": "The noise floor is minus one hundred D B M, so the signal-to-noise ratio runs from eleven to twenty-six decibels."
         }
       ]
     },
@@ -84,7 +84,7 @@
     },
     {
       "id": "physics",
-      "chapter": "Layer 1 · Physics",
+      "chapter": "Physical layer · χ²",
       "leadS": 0.9,
       "tailS": 1.0,
       "lines": [
@@ -92,22 +92,27 @@
           "text": "Our idea is to make every imitation either harmless or visible."
         },
         {
-          "text": "Layer one is physics. To stay hidden, the injected noise can be at most 1.8 dB above the thermal noise: that costs at most 4 dB of signal-to-noise ratio, and every frame still verifies.",
-          "say": "Layer one is physics. To stay hidden, the injected noise can be at most one point eight decibels above the thermal noise. That costs at most four decibels, and every frame still verifies."
+          "text": "The physical layer is a chi-square engine: range, Doppler, power and phase are each compared with the orbit, in units of their natural spread.",
+          "say": "The physical layer is a chi-square engine. Range, Doppler, power and phase are each compared with the orbit, in units of their natural spread."
         },
         {
-          "text": "Push harder, and the physics gate fires."
+          "text": "To stay hidden, injected noise must stay 5.3 dB below the thermal noise: that costs at most 1.1 dB of signal-to-noise ratio, and every frame still verifies.",
+          "say": "To stay hidden, the injected noise must stay five point three decibels below the thermal noise. That costs at most one point one decibels of signal-to-noise ratio, and every frame still verifies."
+        },
+        {
+          "text": "Push harder, and the chi-square gate fires: a spoofer's 3 dB fade is 14 sigma off the link budget.",
+          "say": "Push harder, and the chi-square gate fires. A spoofer's three decibel fade is fourteen sigma off the link budget."
         }
       ]
     },
     {
       "id": "ai",
-      "chapter": "Layer 2 · AI",
+      "chapter": "Statistical layer · AI",
       "leadS": 0.8,
       "tailS": 1.0,
       "lines": [
         {
-          "text": "Layer two is an Isolation Forest trained only on clean passes."
+          "text": "The statistical layer is an Isolation Forest trained only on clean passes."
         },
         {
           "text": "It scores each reading together with how fast it changed, so a disguise must copy the rhythm of nature, not just its level."
@@ -116,19 +121,19 @@
     },
     {
       "id": "crypto",
-      "chapter": "Layer 3 · Cryptography",
+      "chapter": "Data layer · Cryptography",
       "leadS": 0.8,
       "tailS": 1.0,
       "lines": [
         {
-          "text": "Layer three is cryptography, which noise cannot imitate: every frame carries an HMAC-SHA256 tag made with a secret key.",
-          "say": "Layer three is cryptography, which noise cannot imitate. Every frame carries an H MAC tag, made with a secret key."
+          "text": "The data layer is cryptography, which noise cannot imitate: every frame carries an HMAC-SHA256 tag made with a secret key.",
+          "say": "The data layer is cryptography, which noise cannot imitate. Every frame carries an H MAC tag, made with a secret key."
         },
         {
           "text": "Change one bit, by accident or on purpose, and the tag breaks: the frame is dropped and requested again."
         },
         {
-          "text": "One failure looks like weather. A burst of failures trips two of our three detectors, and the link is quarantined."
+          "text": "Either deterministic layer, data or physical, rejects a frame. When two layers fire at once, the link is quarantined."
         }
       ]
     },

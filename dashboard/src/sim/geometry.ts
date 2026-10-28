@@ -9,6 +9,7 @@
 // the two are tied by pass fraction, so the satellite rises, culminates and sets in the scene
 // exactly when the real pass does.
 
+import p618 from '../data/p618.json';
 import { clamp } from './noise';
 
 export const EARTH_RADIUS_KM = 6371;
@@ -65,9 +66,30 @@ export function fsplDb(dKm: number, fMhz: number): number {
   return 20 * Math.log10(dKm) + 20 * Math.log10(fMhz) + 32.44;
 }
 
-/** Predicted SNR from the link budget at slant range d. */
-export function snrPredDb(dKm: number): number {
-  const cn0 = LINK.eirpDbw - fsplDb(dKm, CARRIER_HZ / 1e6) - LINK.lossesDb + LINK.gOverTDbK + 228.6;
+/**
+ * Atmospheric loss exceeded for half of an average year (ITU-R P.618-13: gases, rain, clouds,
+ * scintillation) at this elevation over Zaghouan, interpolated from the digital twin's model
+ * (digital_twin/link_budget.py, exported by scripts/gen-p618.py).
+ */
+export function atmosphericLossDb(elevationDeg: number): number {
+  const els = p618.elevationDeg;
+  const db = p618.totalDb;
+  const el = clamp(elevationDeg, els[0], els[els.length - 1]);
+  let i = 1;
+  while (i < els.length - 1 && els[i] < el) i++;
+  const f = (el - els[i - 1]) / (els[i] - els[i - 1]);
+  return db[i - 1] + f * (db[i] - db[i - 1]);
+}
+
+/** Predicted SNR from the link budget at slant range d, seen at this elevation. */
+export function snrPredDb(dKm: number, elevationDeg = 90): number {
+  const cn0 =
+    LINK.eirpDbw -
+    fsplDb(dKm, CARRIER_HZ / 1e6) -
+    atmosphericLossDb(elevationDeg) -
+    LINK.lossesDb +
+    LINK.gOverTDbK +
+    228.6;
   return cn0 - 10 * Math.log10(LINK.bandwidthHz);
 }
 

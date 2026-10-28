@@ -84,10 +84,12 @@ export function VideoPage() {
         <div className="npage__card">
           <h2>Our idea</h2>
           <p>
-            Make every imitation either harmless or visible. Physics caps how much noise can hide
-            (+1.8 dB over the thermal noise, at most 4 dB of SNR). An Isolation Forest scores the
-            rhythm of each reading, not just its level. And noise cannot forge the HMAC-SHA256 tag
-            on every frame: one failure is resent, a burst quarantines the link.
+            Make every imitation either harmless or visible. The physical layer, a χ² engine on
+            range, Doppler, power and phase, caps how much noise can hide (5.3 dB below the thermal
+            noise, at most 1.1 dB of SNR). The statistical layer, an Isolation Forest, scores the
+            rhythm of each reading, not just its level. And noise cannot forge the data layer’s
+            HMAC-SHA256 tag on every frame: one failure is resent, two tiers firing quarantine the
+            link.
           </p>
         </div>
       </section>
