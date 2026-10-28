@@ -1,52 +1,86 @@
-import { SATELLITE } from '../../sim/copy';
 import { ATTACK_SIGNALS, CHI_SQUARE, NATURAL, SIGNAL, STEALTH } from '../../sim/linkFacts';
+import type { PassSignal } from '../../sim/signalDb';
 import { MINUS } from '../format';
 
 /** "−88.0" style numbers with a real minus sign. */
 const n = (v: number, digits = 1) => `${v < 0 ? MINUS : ''}${Math.abs(v).toFixed(digits)}`;
 
-const FACTS: { k: string; v: string; note: string }[] = [
-  {
-    k: 'Carrier frequency',
-    v: `${SIGNAL.carrierMHz} MHz`,
-    note: 'X-band, fixed. Not random: only the Doppler shift moves it.',
-  },
-  {
-    k: 'Doppler shift',
-    v: `±${SIGNAL.dopplerMaxKHz.toFixed(1)} kHz`,
-    note: `largest at the ${SIGNAL.maskElevationDeg}° elevation mask, zero overhead, predicted from the orbit`,
-  },
-  {
-    k: 'Received power',
-    v: `${n(SIGNAL.rxDbm.mask)} → ${n(SIGNAL.rxDbm.zenith)} dBm`,
-    note: `${SIGNAL.maskElevationDeg}° mask → zenith: ${Math.round(SIGNAL.slantRangeKm.mask)} → ${SIGNAL.slantRangeKm.zenith} km, path loss ${SIGNAL.pathLossDb.mask.toFixed(1)} → ${SIGNAL.pathLossDb.zenith.toFixed(1)} dB`,
-  },
-  {
-    k: 'Atmosphere',
-    v: `${SIGNAL.atmosphereDb.mask.toFixed(2)} → ${SIGNAL.atmosphereDb.zenith.toFixed(2)} dB`,
-    note: 'ITU-R P.618, median year over Zaghouan: oxygen and water vapour; rain and clouds stay below the median',
-  },
-  {
-    k: 'Carrier amplitude',
-    v: `${SIGNAL.amplitudeUv.mask.toFixed(1)} → ${SIGNAL.amplitudeUv.zenith.toFixed(1)} µV`,
-    note: 'peak voltage across the 50 Ω receiver input, A = √(2·P·R)',
-  },
-  {
-    k: 'Noise floor',
-    v: `${n(SIGNAL.noiseFloorDbm, 0)} dBm`,
-    note: `${SIGNAL.noiseUvRms.toFixed(2)} µV rms of thermal noise in the channel`,
-  },
-  {
-    k: 'Signal-to-noise ratio',
-    v: `${SIGNAL.snrDb.mask.toFixed(1)} → ${SIGNAL.snrDb.zenith.toFixed(1)} dB`,
-    note: 'over the pass, from the link budget',
-  },
-  {
-    k: 'Modulation',
-    v: `${SIGNAL.modulation} · ${SIGNAL.occupiedMHz} MHz`,
-    note: `one HMAC-sealed frame every ${SIGNAL.framePeriodS} s`,
-  },
-];
+const CHANNEL = {
+  carrierMHz: SIGNAL.carrierMHz,
+  noiseFloorDbm: SIGNAL.noiseFloorDbm,
+  noiseUvRms: SIGNAL.noiseUvRms,
+  modulation: SIGNAL.modulation,
+  occupiedMHz: SIGNAL.occupiedMHz,
+  framePeriodS: SIGNAL.framePeriodS,
+  maskElevationDeg: SIGNAL.maskElevationDeg,
+};
+
+const utc = (ms: number) => new Date(ms).toISOString().slice(11, 16);
+const day = (ms: number) =>
+  new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const kHz = (hz: number) => `${hz < 0 ? MINUS : '+'}${Math.abs(hz / 1e3).toFixed(1)}`;
+
+/** What one pass from the database delivers to the station, row by row. */
+function factsFor(sig: PassSignal): { k: string; v: string; note: string }[] {
+  const minutes = (sig.losMs - sig.aosMs) / 60_000;
+  return [
+    {
+      k: 'Satellite',
+      v: `${sig.name} · NORAD ${sig.noradId}`,
+      note: `${Math.round(sig.altitudeKm)} km orbit · CelesTrak element set of ${day(sig.tleEpochMs)}, ${utc(sig.tleEpochMs)} UTC`,
+    },
+    {
+      k: 'Pass over Zaghouan',
+      v: `${utc(sig.aosMs)} → ${utc(sig.losMs)} UTC`,
+      note: `${day(sig.aosMs)} · ${minutes.toFixed(1)} min above the ${CHANNEL.maskElevationDeg}° mask · culminates at ${sig.maxElevationDeg.toFixed(1)}°, azimuth ${Math.round(sig.culminationAzDeg)}°`,
+    },
+    {
+      k: 'Carrier frequency',
+      v: `${CHANNEL.carrierMHz} MHz`,
+      note: 'the station’s X-band channel. Not random: only the Doppler shift moves it.',
+    },
+    {
+      k: 'Doppler shift',
+      v: `${kHz(sig.dopplerHz.max)} → ${kHz(sig.dopplerHz.min)} kHz`,
+      note: 'from the range rate SGP4 gives: up while the satellite approaches, zero at culmination',
+    },
+    {
+      k: 'Slant range',
+      v: `${Math.round(sig.rangeKm.max)} → ${Math.round(sig.rangeKm.min)} km`,
+      note: `${CHANNEL.maskElevationDeg}° mask → culmination`,
+    },
+    {
+      k: 'Received power',
+      v: `${n(sig.rxDbm.min)} → ${n(sig.rxDbm.max)} dBm`,
+      note: 'the testbed’s X-band link budget: free-space loss plus the ITU-R P.618 atmosphere',
+    },
+    {
+      k: 'Atmosphere',
+      v: `${sig.atmosphereDb.max.toFixed(2)} → ${sig.atmosphereDb.min.toFixed(2)} dB`,
+      note: 'ITU-R P.618, median year over Zaghouan: oxygen and water vapour; rain and clouds stay below the median',
+    },
+    {
+      k: 'Carrier amplitude',
+      v: `${sig.amplitudeUv.min.toFixed(1)} → ${sig.amplitudeUv.max.toFixed(1)} µV`,
+      note: 'peak voltage across the 50 Ω receiver input, A = √(2·P·R)',
+    },
+    {
+      k: 'Noise floor',
+      v: `${n(CHANNEL.noiseFloorDbm, 0)} dBm`,
+      note: `${CHANNEL.noiseUvRms.toFixed(2)} µV rms of thermal noise in the channel`,
+    },
+    {
+      k: 'Signal-to-noise ratio',
+      v: `${sig.snrDb.min.toFixed(1)} → ${sig.snrDb.max.toFixed(1)} dB`,
+      note: 'over the pass, from the link budget',
+    },
+    {
+      k: 'Modulation',
+      v: `${CHANNEL.modulation} · ${CHANNEL.occupiedMHz} MHz`,
+      note: `one HMAC-sealed frame every ${CHANNEL.framePeriodS} s`,
+    },
+  ];
+}
 
 const JITTER: { k: string; natural: string; gate: string }[] = [
   {
@@ -172,7 +206,7 @@ function Ruler({
   );
 }
 
-export function PowerLevels() {
+export function PowerLevels({ sig }: { sig: PassSignal }) {
   const spoof = ATTACK_SIGNALS.spoofPowerDropDb;
   return (
     <Ruler
@@ -184,14 +218,14 @@ export function PowerLevels() {
       marker={{ at: SIGNAL.noiseFloorDbm, label: 'thermal floor' }}
       rows={[
         {
-          label: `${SATELLITE} carrier`,
-          span: [SIGNAL.rxDbm.mask, SIGNAL.rxDbm.zenith],
+          label: `${sig.name} carrier`,
+          span: [sig.rxDbm.min, sig.rxDbm.max],
           tone: 'accent',
-          value: `${SIGNAL.amplitudeUv.mask.toFixed(1)}–${SIGNAL.amplitudeUv.zenith.toFixed(1)} µV`,
+          value: `${sig.amplitudeUv.min.toFixed(1)}–${sig.amplitudeUv.max.toFixed(1)} µV`,
         },
         {
           label: 'Spoofer 0x99A2',
-          span: [SIGNAL.rxDbm.mask - spoof, SIGNAL.rxDbm.zenith - spoof],
+          span: [sig.rxDbm.min - spoof, sig.rxDbm.max - spoof],
           tone: 'warn',
           value: `${spoof} dB low`,
         },
@@ -218,9 +252,10 @@ export function PowerLevels() {
   );
 }
 
-export function FrequencyPlan() {
-  const c = SIGNAL.carrierMHz;
-  const half = SIGNAL.occupiedMHz / 2;
+export function FrequencyPlan({ sig }: { sig: PassSignal }) {
+  const c = CHANNEL.carrierMHz;
+  const half = CHANNEL.occupiedMHz / 2;
+  const doppler = Math.max(Math.abs(sig.dopplerHz.min), Math.abs(sig.dopplerHz.max));
   return (
     <Ruler
       title="Where: frequency around the 8477.8 MHz carrier (MHz)"
@@ -230,10 +265,10 @@ export function FrequencyPlan() {
       tick={(v) => v.toFixed(1)}
       rows={[
         {
-          label: `${SATELLITE} downlink`,
+          label: `${sig.name} downlink`,
           span: [c - half, c + half],
           tone: 'accent',
-          value: `±${SIGNAL.dopplerMaxKHz.toFixed(0)} kHz Doppler`,
+          value: `±${(doppler / 1e3).toFixed(0)} kHz Doppler`,
         },
         {
           label: 'Spoofer 0x99A2',
@@ -253,14 +288,15 @@ export function FrequencyPlan() {
   );
 }
 
-export function SignalFacts() {
+/** The selected signal from the database: its parameters, the χ² envelope and the rulers. */
+export function SignalFacts({ sig }: { sig: PassSignal }) {
   return (
     <div className="facts">
       <div className="facts__tables">
         <table className="facts__table">
-          <caption className="sr-only">Downlink signal parameters</caption>
+          <caption className="sr-only">Signal parameters of the selected pass</caption>
           <tbody>
-            {FACTS.map((f) => (
+            {factsFor(sig).map((f) => (
               <tr key={f.k}>
                 <th scope="row">{f.k}</th>
                 <td>
@@ -294,8 +330,8 @@ export function SignalFacts() {
         </table>
       </div>
       <div className="facts__figures">
-        <PowerLevels />
-        <FrequencyPlan />
+        <PowerLevels sig={sig} />
+        <FrequencyPlan sig={sig} />
       </div>
     </div>
   );

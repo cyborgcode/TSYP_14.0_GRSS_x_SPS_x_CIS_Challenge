@@ -83,10 +83,14 @@ rejects a frame; the forest alone holds it; two tiers at once escalate.
 ## 6. Hiding in the noise
 
 The top bar links the dashboard to four short pages, read in order with **Next** at the bottom of
-each. **Signal** (`/signal`) gives the chosen signal precisely: a fixed carrier at 8477.8 MHz moved only by Doppler (±199.0 kHz at the 2°
-elevation mask), received at −88.8 dBm at the mask and −74.4 dBm overhead after the ITU-R P.618
-median atmosphere (1.06 dB at the mask, 0.05 dB overhead), a carrier amplitude of 11.4 to 60.0 µV
-peak across the 50 Ω input, over a −100 dBm noise floor (SNR 11.2 to 25.6 dB).
+each. **Signals** (`/signal`) is the signal database: CelesTrak's Earth-resources group, live
+(167 satellites), every pass over Zaghouan in the next 12 hours, and the signal each pass
+delivers (rise and set, culmination, Doppler, received power, SNR, slant range, atmospheric
+loss). The status line says whether the element sets are live, the last download or the built-in
+snapshot. Filter by name or culmination and pick a pass: its elevation, Doppler and received
+power are drawn second by second, with its full parameters and where it sits against the
+spoofer, the jammer and the noise floor. Every satellite is received on the station's channel
+(8477.8 MHz) through the same link budget, so the signals differ by their geometry.
 **Noise attacks** (`/attacks`) shows three ways an attacker imitates natural noise (noise-shaped
 jamming, fade-mimicking spoofing, bit flips disguised as bit errors). **Protection**
 (`/protection`) shows why each is either harmless or visible: a jammer must stay 5.3 dB below

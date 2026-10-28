@@ -1,4 +1,4 @@
-import { SignalFacts } from '../ui/explain/SignalFacts';
+import { SignalDatabase } from '../ui/explain/SignalDatabase';
 import { DocPage } from './DocPage';
 
 export function SignalPage() {
@@ -6,9 +6,9 @@ export function SignalPage() {
     <DocPage
       path="/signal"
       eyebrow="Downlink"
-      lead="One fixed carrier, a power set by the link budget and the ITU-R atmosphere, and a noise floor the station knows. Natural variation sits inside the χ² gate of the physical layer."
+      lead="No fixed signal: every Earth-observation satellite in CelesTrak’s database, propagated with SGP4 to its passes over Zaghouan, each pass turned into the signal the station receives through the X-band link budget and the ITU-R atmosphere. Pick one to see it second by second."
     >
-      <SignalFacts />
+      <SignalDatabase />
     </DocPage>
   );
 }

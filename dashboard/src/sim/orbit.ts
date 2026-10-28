@@ -93,13 +93,14 @@ export function tleEpochMs(line1: string): number {
   return Date.UTC(year, 0, 1) + (day - 1) * 86_400_000;
 }
 
-interface Look {
+export interface Look {
   azDeg: number;
   elDeg: number;
   rangeKm: number;
 }
 
-function lookAt(satrec: SatRec, ms: number): Look | null {
+/** Azimuth, elevation and slant range of the satellite from Zaghouan at `ms`. */
+export function lookAt(satrec: SatRec, ms: number): Look | null {
   const date = new Date(ms);
   const state = propagate(satrec, date);
   if (!state) return null;
@@ -129,6 +130,38 @@ export interface PassWindow {
 }
 
 /**
+ * Every pass, horizon to horizon, that has not set by `fromMs` and rises before `toMs`, with
+ * the highest elevation seen on the coarse search grid. A pass in progress counts.
+ */
+export function* passWindows(
+  satrec: SatRec,
+  fromMs: number,
+  toMs: number,
+): Generator<PassWindow & { peakDeg: number }> {
+  const step = COARSE_STEP_S * 1000;
+  let t = fromMs - 30 * 60_000;
+  let above = elevation(satrec, t) >= 0;
+  let rise: number | null = null;
+  let peak = -90;
+  for (; t < toMs || rise !== null; t += step) {
+    if (t > toMs + 3 * 3_600_000) return;
+    const el = elevation(satrec, t + step);
+    if (!above && el >= 0) {
+      if (t > toMs) return;
+      rise = crossing(satrec, t, t + step, true);
+      peak = el;
+    } else if (above && el >= 0) {
+      peak = Math.max(peak, el);
+    } else if (above && el < 0 && rise !== null) {
+      const set = crossing(satrec, t, t + step, false);
+      if (set > fromMs) yield { aosMs: rise, losMs: set, peakDeg: peak };
+      rise = null;
+    }
+    above = el >= 0;
+  }
+}
+
+/**
  * The first pass, horizon to horizon, that has not set by `fromMs` and culminates at least
  * `minPeakDeg` high. A pass in progress counts.
  */
@@ -137,25 +170,8 @@ export function findPass(
   fromMs: number,
   minPeakDeg = MIN_PEAK_ELEVATION_DEG,
 ): PassWindow | null {
-  const step = COARSE_STEP_S * 1000;
-  const end = fromMs + SEARCH_HOURS * 3_600_000;
-  let t = fromMs - 30 * 60_000;
-  let above = elevation(satrec, t) >= 0;
-  let rise: number | null = null;
-  let peak = -90;
-  for (; t < end; t += step) {
-    const el = elevation(satrec, t + step);
-    if (!above && el >= 0) {
-      rise = crossing(satrec, t, t + step, true);
-      peak = el;
-    } else if (above && el >= 0) {
-      peak = Math.max(peak, el);
-    } else if (above && el < 0 && rise !== null) {
-      const set = crossing(satrec, t, t + step, false);
-      if (set > fromMs && peak >= minPeakDeg) return { aosMs: rise, losMs: set };
-      rise = null;
-    }
-    above = el >= 0;
+  for (const w of passWindows(satrec, fromMs, fromMs + SEARCH_HOURS * 3_600_000)) {
+    if (w.peakDeg >= minPeakDeg) return { aosMs: w.aosMs, losMs: w.losMs };
   }
   return null;
 }

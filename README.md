@@ -206,11 +206,17 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
 - **Resilience & trust metrics**: authenticated, rejected, held and corrupted-to-analyst
   counts; live `verify_chain()` with a red-team "edit a past block" test; and per-scenario
   detection by tier (data, physical, statistical, stopped).
-- **Hiding in the noise**, on its own pages linked from the top bar: `/signal` (the chosen
-  signal (carrier 8477.8 MHz, ±199.0 kHz Doppler, received at −88.8 to −74.4 dBm after the
-  ITU-R P.618 atmosphere, i.e. an 11.4–60.0 µV peak across 50 Ω, over a −100 dBm noise floor),
-  `/attacks` (three ways an attacker imitates natural noise), `/protection` (an interactive
-  stealth budget and the three tiers) and
+- **The signal database** (`/signal`): no fixed signal. `/api/catalog` relays the latest
+  element sets of CelesTrak's Earth-resources group (167 Earth-observation satellites, cached
+  two hours at the edge; the last download, then a built-in snapshot, when CelesTrak is
+  unreachable). The browser propagates each with SGP4 to its passes over Zaghouan in the next
+  12 hours and turns every pass into the signal the station receives: rise and set above the
+  2° mask, culmination, slant range, Doppler, received power and SNR through the X-band link
+  budget and the ITU-R P.618 atmosphere (`dashboard/src/sim/signalDb.ts`). Pick any of the
+  ~380 signals to see it second by second; the TerraSAR-X pass the testbed replays is marked.
+- **Hiding in the noise**, on its own pages linked from the top bar: `/attacks` (three ways an
+  attacker imitates natural noise), `/protection` (an interactive stealth budget and the three
+  tiers) and
   `/noise` (a narrated explainer video; source and re-render steps in `dashboard/explainer/`).
 - **trust_anchor.py terminal**: live log of SHA-256 block validations from a genesis root hash,
   HMAC-SHA256 frame seals and Ed25519 handshakes, all computed with Web Crypto in the browser.
