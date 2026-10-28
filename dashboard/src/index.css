@@ -442,8 +442,11 @@ button {
   min-width: 0;
   animation: reveal 0.6s var(--ease-out) both;
 }
+/* The entrance stays first in the list, so leaving the alert state never replays it. */
 .panel--alert {
-  animation: alert-border 0.45s ease-in-out infinite alternate;
+  animation:
+    reveal 0.6s var(--ease-out) both,
+    alert-border 0.45s ease-in-out infinite alternate;
 }
 .panel__header {
   display: flex;
