@@ -29,6 +29,7 @@ import {
   ROGUE_TOKEN,
   SAT_ID,
   SAT_TOKEN,
+  setSatelliteIdentity,
   type Decision,
   type DetectorResult,
   type RfMeasurement,
@@ -43,6 +44,16 @@ import {
 } from './physicsEngine';
 import { decide } from './validator';
 import {
+  OnboardVerifier,
+  ROGUE_COMMAND,
+  ROGUE_UPLINK,
+  ROUTINE,
+  sealCommand,
+  type Telecommand,
+  type UplinkThreat,
+  type UplinkVerdict,
+} from './uplink';
+import {
   TrustAnchorLedger,
   seal,
   type AuthReason,
@@ -53,6 +64,7 @@ import {
 import {
   C_KM_S,
   PERIOD_S,
+  UPLINK,
   atmosphericLossDb,
   passAt,
   passProfile,
@@ -60,9 +72,10 @@ import {
   snrPredDb,
   timeAfterAos,
   timeCompression,
+  uplinkRxDbm,
   type PassState,
 } from './geometry';
-import { loadPassProfile } from './orbit';
+import { DEFAULT_PLAN, loadFlight, type FlightPlan } from './fleet';
 import { clamp, easeInOutCubic, mulberry32, win } from './noise';
 import { envelope, sample, type Attack, type AttackKind, type Sample } from './signals';
 
@@ -88,6 +101,11 @@ const ATTACKER_SHARE: Record<AttackKind, number> = {
   tamper: 0.75,
 };
 const TERMINAL_LINES = 160;
+/** One routine telecommand per this many scene seconds while the link is up. */
+const UPLINK_PERIOD_S = 1.1;
+/** Hostile commands come this often during an uplink attack, which lasts UPLINK_RUN_S. */
+const HOSTILE_PERIOD_S = 0.7;
+export const UPLINK_RUN_S = 5;
 const HANDSHAKE_EVERY_S = 8;
 
 export type SystemState = 'NOMINAL' | 'CHECKING' | 'UNDER ATTACK' | 'JAMMING' | 'RECOVERING';
@@ -239,12 +257,44 @@ export interface Run {
 export type Tone = 'bad' | 'warn' | 'ok';
 
 export interface BannerState {
-  kind: AttackKind;
+  kind: AttackKind | UplinkThreat;
   tone: Tone;
   headline: string;
   detail: string;
   shownAt: number;
   hideAt: number | null;
+}
+
+/** One telecommand as the spacecraft received and judged it. */
+export interface UplinkRecord {
+  id: number;
+  /** Scene time of reception on board. */
+  t: number;
+  seq: number;
+  opcode: string;
+  args: string;
+  /** Who transmitted it: the station, the rogue uplink, or the station's command replayed. */
+  source: string;
+  /** Red-team ground truth, for the jury; the decoder never reads it. */
+  threat: UplinkThreat | null;
+  tag: string;
+  expected: string;
+  macOk: boolean;
+  fresh: boolean;
+  verdict: UplinkVerdict;
+  reason: string;
+  /** Doppler and power the on-board receiver sees on the S-band uplink. */
+  dopplerHz: number;
+  rxDbm: number;
+}
+
+export interface UplinkRun {
+  threat: UplinkThreat;
+  tTrigger: number;
+  until: number;
+  /** Hostile commands rejected on board, and executed (must stay zero). */
+  blocked: number;
+  executed: number;
 }
 
 export type CalloutTarget = 'sat' | 'station' | 'telemetry' | 'ledger' | 'fusion' | 'deck';
@@ -329,6 +379,12 @@ export class Engine {
   compromised: { from: number; to: number } | null = null;
   recoveringUntil = -10;
 
+  /** Telecommand uplink, ground to satellite: what the spacecraft received, newest first. */
+  uplink: UplinkRecord[] = [];
+  uplinkStats = { sent: 0, executed: 0, rejected: 0, hostileExecuted: 0 };
+  uplinkRun: UplinkRun | null = null;
+  uplinkRuns: UplinkRun[] = [];
+
   framesSent = 0;
   framesVerified = 0;
   framesReceived = 0;
@@ -386,6 +442,13 @@ export class Engine {
 
   private readonly hsm: EmulatedHsm;
   private readonly attackerKey: CryptoKey;
+  private readonly onboard = new OnboardVerifier();
+  private tcSeq = 4096;
+  private uplinkId = 0;
+  private nextCommandAt = 0.6;
+  private nextHostileAt = 0;
+  /** Genuine commands a replay attacker has recorded off the air. */
+  private recorded: { c: Telecommand; tag: string }[] = [];
 
   private constructor(
     hsm: EmulatedHsm,
@@ -417,16 +480,18 @@ export class Engine {
     this.handshake('session open');
   }
 
-  static async create(): Promise<Engine> {
+  static async create(plan: FlightPlan = DEFAULT_PLAN): Promise<Engine> {
     const [hsm, attackerKey, anchor, signer, profile] = await Promise.all([
       EmulatedHsm.create(),
       importMacKey(crypto.getRandomValues(new Uint8Array(32))),
       TrustAnchorLedger.create(),
       createEd25519(),
-      loadPassProfile(),
+      loadFlight(plan),
     ]);
-    // The live pass is in place before the models train on nominal passes.
+    // The live pass and the satellite's identity are in place before the models train.
     setPassProfile(profile);
+    setSatelliteIdentity(profile.satName, profile.noradId ?? 31698);
+    copy.setSatelliteName(profile.satName, profile.noradId ?? 31698);
     return new Engine(hsm, attackerKey, new AiModel(), anchor, signer);
   }
 
@@ -479,11 +544,11 @@ export class Engine {
   // ---------------------------------------------------------------- controls
 
   get busy(): boolean {
-    return this.attack !== null;
+    return this.attack !== null || this.uplinkRun !== null;
   }
 
   trigger(kind: AttackKind, opts: { demo?: boolean } = {}): boolean {
-    if (this.attack) return false;
+    if (this.attack || this.uplinkRun) return false;
     const s = this.s;
     const power =
       kind === 'jam' && opts.demo
@@ -530,6 +595,7 @@ export class Engine {
     if (this.demo.active) return;
     this.attack = null;
     this.run = null;
+    this.uplinkRun = null;
     this.banner = null;
     this.compromised = null;
     this.route = 'ZAG';
@@ -642,6 +708,7 @@ export class Engine {
       this.nextFrameAt = s;
     }
 
+    this.updateUplink(s);
     this.updateDetectors(s);
     this.updateState(s);
 
@@ -1273,6 +1340,7 @@ export class Engine {
     let next: SystemState;
     if (run && run.escalatedAt !== null && !run.ended)
       next = run.kind === 'jam' ? 'JAMMING' : 'UNDER ATTACK';
+    else if (this.uplinkRun && this.uplinkRun.blocked > 0) next = 'UNDER ATTACK';
     else if (s < this.recoveringUntil) next = 'RECOVERING';
     else if (this.votes >= 2) next = 'UNDER ATTACK';
     else if (this.votes === 1) next = 'CHECKING';
@@ -1281,6 +1349,144 @@ export class Engine {
       this.state = next;
       this.emit();
     }
+  }
+
+  // ---------------------------------------------------------------- uplink
+
+  /** The uplink key of the current epoch: derived apart from the downlink's in the same HSM. */
+  private uplinkKey(): Promise<CryptoKey> {
+    return this.hsm.epochKey(0x10000 + this.keyEpoch);
+  }
+
+  /** Red team on the uplink: tamper with, inject or replay telecommands for a few seconds. */
+  triggerUplink(threat: UplinkThreat): boolean {
+    if (this.attack || this.uplinkRun || this.demo.active) return false;
+    const s = this.s;
+    this.uplinkRun = { threat, tTrigger: s, until: s + UPLINK_RUN_S, blocked: 0, executed: 0 };
+    this.nextHostileAt = s + 0.15;
+    this.nextCommandAt = Math.min(this.nextCommandAt, s + 0.2);
+    this.statusLine = `Running: ${copy.UPLINK_BUTTONS[threat].running}`;
+    const shown = copy.activeUplinkBanner(threat);
+    this.banner = { kind: threat, tone: 'bad', ...shown, shownAt: s, hideAt: null };
+    this.emit();
+    return true;
+  }
+
+  private updateUplink(s: number) {
+    const run = this.uplinkRun;
+    if (this.pass.linkActive) {
+      if (s >= this.nextCommandAt) {
+        this.nextCommandAt = s + UPLINK_PERIOD_S;
+        this.sendCommand(s, run && s < run.until && run.threat === 'cmdtamper' ? run : null);
+      }
+      if (run && s < run.until && run.threat !== 'cmdtamper' && s >= this.nextHostileAt) {
+        this.nextHostileAt = s + HOSTILE_PERIOD_S;
+        if (run.threat === 'cmdinject') this.injectCommand(s);
+        else this.replayCommand(s);
+      }
+    }
+    if (run && s >= run.until) {
+      this.uplinkRun = null;
+      this.uplinkRuns.push(run);
+      const resolved = copy.resolvedUplinkBanner(run.threat, run.blocked, run.executed);
+      this.banner = { kind: run.threat, tone: 'ok', ...resolved, shownAt: s, hideAt: s + 2.2 };
+      this.statusLine = 'Ready · standard scenario';
+      this.recoveringUntil = s + 1.1;
+      this.emit();
+    }
+  }
+
+  /** What the on-board receiver sees on the S-band uplink right now. */
+  private uplinkRf() {
+    const pass = this.pass;
+    return {
+      dopplerHz: (-UPLINK.carrierHz * pass.rangeRateKmS) / C_KM_S,
+      rxDbm: uplinkRxDbm(pass.rangeKm, pass.elevationDeg),
+    };
+  }
+
+  /** Mission control's next routine command; a tamperer may rewrite it in flight. */
+  private sendCommand(s: number, tamper: UplinkRun | null) {
+    const routine = ROUTINE[this.tcSeq % ROUTINE.length];
+    const c: Telecommand = { satelliteId: SAT_ID, seq: ++this.tcSeq, t: s, ...routine };
+    const rf = this.uplinkRf();
+    this.uplinkStats.sent++;
+    this.queue = this.queue.then(async () => {
+      const key = await this.uplinkKey();
+      const tag = await sealCommand(key, c);
+      this.recorded.push({ c, tag });
+      if (this.recorded.length > 12) this.recorded.shift();
+      // Rewritten in flight: the transmitter goes off, the original tag rides along.
+      const received = tamper ? { ...c, ...ROGUE_COMMAND } : c;
+      await this.receiveCommand(received, tag, copy.STATION, tamper?.threat ?? null, s, rf, key);
+    });
+  }
+
+  /** A command forged at the rogue uplink station, its tag under a guessed key. */
+  private injectCommand(s: number) {
+    const c: Telecommand = {
+      satelliteId: SAT_ID,
+      seq: this.tcSeq + 1 + Math.floor(this.rand() * 8),
+      t: s,
+      ...ROGUE_COMMAND,
+    };
+    const rf = this.uplinkRf();
+    this.queue = this.queue.then(async () => {
+      const tag = await sealCommand(this.attackerKey, c);
+      await this.receiveCommand(c, tag, ROGUE_UPLINK, 'cmdinject', s, rf, await this.uplinkKey());
+    });
+  }
+
+  /** A genuine command recorded off the air, sent again: the tag is right, the count is old. */
+  private replayCommand(s: number) {
+    const old = this.recorded[Math.floor(this.rand() * Math.max(1, this.recorded.length - 2))];
+    if (!old) return;
+    const rf = this.uplinkRf();
+    this.queue = this.queue.then(async () => {
+      await this.receiveCommand(
+        old.c,
+        old.tag,
+        `${ROGUE_UPLINK} · replay`,
+        'cmdreplay',
+        s,
+        rf,
+        await this.uplinkKey(),
+      );
+    });
+  }
+
+  private async receiveCommand(
+    c: Telecommand,
+    tag: string,
+    source: string,
+    threat: UplinkThreat | null,
+    s: number,
+    rf: { dopplerHz: number; rxDbm: number },
+    key: CryptoKey,
+  ) {
+    const check = await this.onboard.verify(key, c, tag);
+    if (check.verdict === 'EXECUTED') this.uplinkStats.executed++;
+    else this.uplinkStats.rejected++;
+    const run = this.uplinkRun;
+    if (threat && run && run.threat === threat) {
+      if (check.verdict === 'EXECUTED') {
+        run.executed++;
+        this.uplinkStats.hostileExecuted++;
+      } else run.blocked++;
+    }
+    this.uplink.unshift({
+      id: ++this.uplinkId,
+      t: s,
+      seq: c.seq,
+      opcode: c.opcode,
+      args: c.args,
+      source,
+      threat,
+      tag,
+      ...check,
+      ...rf,
+    });
+    if (this.uplink.length > 60) this.uplink.pop();
   }
 
   // ---------------------------------------------------------------- read models

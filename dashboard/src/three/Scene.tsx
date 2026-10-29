@@ -21,7 +21,7 @@ import { passProfile } from '../sim/geometry';
 import { Beam, type BeamState } from './Beam';
 import { Jammer, RelayArcs, RogueTransmitter, StationMarker, stationPosition } from './Actors';
 import { Earth, SUN_DIR } from './Earth';
-import { ATTACKERS, STATIONS, orbitArcPoints, orbitPoint } from './geo';
+import { ATTACKERS, STATIONS, orbitArcPoints, orbitPoint, surfacePoint } from './geo';
 import { GroundStation, type StationHandle, type StationTone } from './GroundStation';
 import { Satellite, type SatelliteHandle } from './Satellite';
 import { Sky } from './Sky';
@@ -34,9 +34,12 @@ const COLORS = {
   idle: new THREE.Color('#7D8EA3'),
   jam: new THREE.Color('#A78BFA'),
   tamper: new THREE.Color('#F472B6'),
+  uplink: new THREE.Color('#FF9F5A'),
 };
 
 const STATION_ORIGIN = new THREE.Vector3(0, 0, 0);
+/** The uplink leaves the station beside the downlink, so the two beams read apart. */
+const UPLINK_OFFSET = new THREE.Vector3(0.32, 0.06, 0.12);
 /** Lens fringing at the frame edges, high tier only. */
 const CA_OFFSET = new THREE.Vector2(0.0007, 0.0005);
 const FALLBACK = stationPosition(HANDOVER_STATION);
@@ -275,6 +278,46 @@ function SceneContent({
     return 'ok';
   };
 
+  // The telecommand uplink climbs from the serving station to the satellite, beside the
+  // downlink. Tampered commands ride it in red; forged and replayed ones come from the rogue
+  // uplink station instead.
+  const uplinkColor = useMemo(() => new THREE.Color(), []);
+  const uplinkStart = useMemo(() => new THREE.Vector3(), []);
+  const rogueUplink = useMemo(
+    () => surfacePoint(ATTACKERS.uplink.lat, ATTACKERS.uplink.lon, 0.62),
+    [],
+  );
+  const uplinkThreat = () => engine.uplinkRun?.threat ?? null;
+  const uplink = (): BeamState => {
+    const pass = engine.visualPass();
+    const tampered = uplinkThreat() === 'cmdtamper';
+    uplinkColor.copy(COLORS.uplink);
+    if (tampered) uplinkColor.lerp(COLORS.bad, 0.75);
+    uplinkStart.copy(serving()).add(UPLINK_OFFSET);
+    return {
+      a: uplinkStart,
+      b: feedA,
+      visible: pass.linkActive && !engine.quarantined,
+      color: uplinkColor,
+      opacity: 0.6,
+      speed: tampered ? 2.6 : 1.3,
+      wave: tampered ? 0.12 : 0,
+      waveFreq: 7,
+    };
+  };
+  const hostileUplink = (): BeamState => {
+    const threat = uplinkThreat();
+    return {
+      a: rogueUplink,
+      b: feedA,
+      visible: engine.visualPass().linkActive && (threat === 'cmdinject' || threat === 'cmdreplay'),
+      color: COLORS.bad,
+      opacity: 0.85,
+      flicker: 0.35,
+      speed: 2.4,
+    };
+  };
+
   // The one downlink beam carries every scenario: colour and distortion follow the attack.
   const downlink = (): BeamState => {
     const pass = engine.visualPass();
@@ -399,6 +442,7 @@ function SceneContent({
 
       <Satellite
         ref={sat}
+        variant={[31698, 36605].includes(passProfile().noradId ?? 0) ? 'tsx' : 'generic'}
         onSelect={() => setFocus('sat')}
         getState={() => {
           const pass = engine.visualPass();
@@ -420,6 +464,21 @@ function SceneContent({
       </group>
 
       <Beam getState={downlink} radiusA={0.04} radiusB={0.3} packetCount={5} />
+      <Beam getState={uplink} radiusA={0.09} radiusB={0.025} packetCount={2} packetSize={0.075} />
+      <Beam getState={hostileUplink} radiusA={0.1} radiusB={0.03} packetCount={3} />
+      <RogueTransmitter
+        lat={ATTACKERS.uplink.lat}
+        lon={ATTACKERS.uplink.lon}
+        aim={feedA}
+        label={ATTACKERS.uplink.label}
+        getState={() => {
+          const threat = uplinkThreat();
+          return {
+            strength: threat === 'cmdinject' || threat === 'cmdreplay' ? 1 : 0,
+            color: COLORS.bad,
+          };
+        }}
+      />
 
       <RogueTransmitter
         lat={ATTACKERS.hijack.lat}

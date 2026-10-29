@@ -66,19 +66,47 @@ export function fsplDb(dKm: number, fMhz: number): number {
   return 20 * Math.log10(dKm) + 20 * Math.log10(fMhz) + 32.44;
 }
 
-/**
- * Atmospheric loss exceeded for half of an average year (ITU-R P.618-13: gases, rain, clouds,
- * scintillation) at this elevation over Zaghouan, interpolated from the digital twin's model
- * (digital_twin/link_budget.py, exported by scripts/gen-p618.py).
- */
-export function atmosphericLossDb(elevationDeg: number): number {
+function interpolateP618(db: number[], elevationDeg: number): number {
   const els = p618.elevationDeg;
-  const db = p618.totalDb;
   const el = clamp(elevationDeg, els[0], els[els.length - 1]);
   let i = 1;
   while (i < els.length - 1 && els[i] < el) i++;
   const f = (el - els[i - 1]) / (els[i] - els[i - 1]);
   return db[i - 1] + f * (db[i] - db[i - 1]);
+}
+
+/**
+ * Atmospheric loss exceeded for half of an average year (ITU-R P.618-13: gases, rain, clouds,
+ * scintillation) at this elevation over Zaghouan, interpolated from the digital twin's model
+ * (digital_twin/link_budget.py, exported by scripts/gen-p618.py).
+ */
+export const atmosphericLossDb = (elevationDeg: number): number =>
+  interpolateP618(p618.totalDb, elevationDeg);
+
+/** The same atmosphere for the S-band telecommand uplink. */
+export const uplinkAtmosphericLossDb = (elevationDeg: number): number =>
+  interpolateP618(p618.uplinkTotalDb, elevationDeg);
+
+/**
+ * Telecommand uplink, ground to satellite (illustrative S-band TT&C: 50 dBW from the station,
+ * an omnidirectional antenna on board), in the 2025-2110 MHz space-operation band.
+ */
+export const UPLINK = {
+  carrierHz: p618.uplinkCarrierMHz * 1e6,
+  eirpDbw: 50,
+  lossesDb: 2,
+  rxGainDbi: 0,
+} as const;
+
+/** Power the satellite receives from the station's uplink at slant range d, dBm. */
+export function uplinkRxDbm(dKm: number, elevationDeg = 90): number {
+  const dbw =
+    UPLINK.eirpDbw -
+    fsplDb(dKm, UPLINK.carrierHz / 1e6) -
+    uplinkAtmosphericLossDb(elevationDeg) -
+    UPLINK.lossesDb +
+    UPLINK.rxGainDbi;
+  return dbw + 30;
 }
 
 /** Predicted SNR from the link budget at slant range d, seen at this elevation. */
@@ -110,6 +138,8 @@ export interface PassProfile {
   noradId: number | null;
   /** Mean altitude of the orbit, km. */
   altitudeKm: number;
+  /** Inclination of the orbit, degrees. */
+  inclinationDeg: number;
   /** Real duration of the pass from horizon to horizon, s. */
   realPassS: number;
   maxElevationDeg: number;
@@ -146,6 +176,7 @@ export const REFERENCE_PROFILE: PassProfile = {
   satName: 'TERRASAR-X',
   noradId: 31698,
   altitudeKm: ALTITUDE_KM,
+  inclinationDeg: 97.45,
   realPassS: REAL_PASS_S,
   maxElevationDeg: 90,
   culminationAzDeg: 90,

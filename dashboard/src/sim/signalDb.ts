@@ -9,7 +9,8 @@
 // sees. CelesTrak publishes orbits, not radios, so every satellite is received on the station's
 // channel (8477.8 MHz) with the same link budget: the signals differ by their geometry. When
 // /api/catalog fails, the last good download kept in the browser is used, then the snapshot
-// built into the site.
+// built into the site. The signal goes both ways: the X-band downlink the station receives,
+// and the S-band telecommand uplink the satellite receives from the station.
 
 import { twoline2satrec, type SatRec } from 'satellite.js';
 
@@ -19,8 +20,10 @@ import {
   C_KM_S,
   MASK_ELEVATION_DEG,
   NOISE_FLOOR_DBM,
+  UPLINK,
   atmosphericLossDb,
   snrPredDb,
+  uplinkRxDbm,
 } from './geometry';
 import { LIVE_NORAD_ID, isValidTle, lookAt, passWindows, tleEpochMs } from './orbit';
 
@@ -56,12 +59,19 @@ export interface Span {
 
 export interface SignalSample {
   tMs: number;
+  azimuthDeg: number;
   elevationDeg: number;
   rangeKm: number;
+  /** Range rate, km/s, positive while the satellite recedes. */
+  rangeRateKmS: number;
+  /** Downlink, satellite to station. */
   dopplerHz: number;
   atmosphereDb: number;
   rxDbm: number;
   snrDb: number;
+  /** Uplink, station to satellite: Doppler and power seen on board. */
+  uplinkDopplerHz: number;
+  uplinkRxDbm: number;
 }
 
 /** One pass, one signal: what the station receives while the satellite is above the mask. */
@@ -84,6 +94,8 @@ export interface PassSignal {
   rxDbm: Span;
   snrDb: Span;
   amplitudeUv: Span;
+  uplinkDopplerHz: Span;
+  uplinkRxDbm: Span;
 }
 
 /** Peak voltage (µV) of a sine carrier of `dbm` across the 50 Ω receiver input. */
@@ -152,7 +164,7 @@ export async function loadCatalog(
   return readCache() ?? SNAPSHOT;
 }
 
-/** The link the station sees at one instant, the Doppler from the range rate over ±0.5 s. */
+/** Both links at one instant, the Doppler from the range rate over ±0.5 s. */
 function sampleAt(satrec: SatRec, tMs: number): SignalSample | null {
   const look = lookAt(satrec, tMs);
   const before = lookAt(satrec, tMs - 500);
@@ -162,13 +174,33 @@ function sampleAt(satrec: SatRec, tMs: number): SignalSample | null {
   const snrDb = snrPredDb(look.rangeKm, look.elDeg);
   return {
     tMs,
+    azimuthDeg: look.azDeg,
     elevationDeg: look.elDeg,
     rangeKm: look.rangeKm,
+    rangeRateKmS,
     dopplerHz: (-CARRIER_HZ * rangeRateKmS) / C_KM_S,
     atmosphereDb: atmosphericLossDb(look.elDeg),
     rxDbm: NOISE_FLOOR_DBM + snrDb,
     snrDb,
+    uplinkDopplerHz: (-UPLINK.carrierHz * rangeRateKmS) / C_KM_S,
+    uplinkRxDbm: uplinkRxDbm(look.rangeKm, look.elDeg),
   };
+}
+
+/** Where one satellite is and what both links look like right now, or null below the horizon. */
+export function liveSample(
+  sat: CatalogSatellite,
+  tMs: number,
+  satrecs = new Map<number, SatRec>(),
+): SignalSample | null {
+  let satrec = satrecs.get(sat.noradId);
+  if (!satrec) {
+    satrec = twoline2satrec(sat.line1, sat.line2);
+    satrecs.set(sat.noradId, satrec);
+  }
+  const look = lookAt(satrec, tMs);
+  if (!look || look.elDeg < 0) return null;
+  return sampleAt(satrec, tMs);
 }
 
 /** The signal of one pass, sampled every `stepS` seconds from horizon to horizon. */
@@ -222,6 +254,8 @@ export function passSignals(sat: CatalogSatellite, fromMs: number, toMs: number)
       rxDbm: rx,
       snrDb: span(samples.map((s) => s.snrDb)),
       amplitudeUv: { min: peakUv(rx.min), max: peakUv(rx.max) },
+      uplinkDopplerHz: span(samples.map((s) => s.uplinkDopplerHz)),
+      uplinkRxDbm: span(samples.map((s) => s.uplinkRxDbm)),
     });
   }
   return out;
@@ -251,4 +285,18 @@ export async function buildSignalDb(
   }
   onProgress?.(total, total);
   return out.sort((a, b) => a.aosMs - b.aosMs);
+}
+
+/** Link to the live testbed flying this very pass. */
+export const testbedHref = (sig: Pick<PassSignal, 'noradId' | 'aosMs'>) =>
+  `/?sat=${sig.noradId}&from=${Math.round(sig.aosMs - 60_000)}`;
+
+/** A satellite's pass under way at `nowMs`, else its next one. */
+export function currentOrNextPass(
+  signals: PassSignal[],
+  noradId: number,
+  nowMs: number,
+): PassSignal | null {
+  const own = signals.filter((s) => s.noradId === noradId && s.losMs > nowMs);
+  return own.find((s) => s.aosMs <= nowMs) ?? own[0] ?? null;
 }

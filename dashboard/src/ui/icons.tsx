@@ -193,4 +193,7 @@ export const ATTACK_ICONS = {
   spoof: SpoofIcon,
   jam: JamIcon,
   tamper: TamperIcon,
+  cmdtamper: TamperIcon,
+  cmdinject: BoltIcon,
+  cmdreplay: ArrowIcon,
 } as const;

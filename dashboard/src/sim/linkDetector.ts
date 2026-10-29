@@ -16,9 +16,28 @@ export const MAX_CARRIER_STEP_MHZ = 0.5;
 export const MAX_RSSI_RESIDUAL_DB = 4.0;
 export const CONTAMINATION = 0.01;
 
-export const SAT_ID = 'TERRASAR-X';
-export const SAT_TOKEN = '0x4FE2';
+/** The satellite the station has cleared: its identity in every frame and its hardware token. */
+export let SAT_ID = 'TERRASAR-X';
+export let SAT_TOKEN = '0x4FE2';
 export const ROGUE_TOKEN = '0x99A2';
+
+/** Frame identity of a CelesTrak name: "ARIRANG-5 (KOMPSAT-5)" flies as ARIRANG-5. */
+export const satelliteIdFor = (name: string): string =>
+  name.split(' (')[0].trim().toUpperCase().replace(/\s+/g, '-');
+
+/** The hardware token registered for a satellite: TerraSAR-X's, else one derived from its NORAD. */
+export function tokenFor(noradId: number): string {
+  if (noradId === 31698) return '0x4FE2';
+  let token = (Math.imul(noradId, 0x9e3779b1) >>> 16) & 0xffff;
+  if (token === 0x99a2) token ^= 0x0101; // never the rogue node's
+  return `0x${token.toString(16).toUpperCase().padStart(4, '0')}`;
+}
+
+/** Clears the satellite the testbed flies, before the engine starts. */
+export function setSatelliteIdentity(name: string, noradId: number): void {
+  SAT_ID = satelliteIdFor(name);
+  SAT_TOKEN = tokenFor(noradId);
+}
 
 export interface RfMeasurement {
   carrierMHz: number;

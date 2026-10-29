@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { NOISE_FLOOR_DBM } from '../src/sim/geometry';
+import { CARRIER_HZ, NOISE_FLOOR_DBM, UPLINK } from '../src/sim/geometry';
 import { BUILTIN_TLE, LIVE_NORAD_ID } from '../src/sim/orbit';
 import {
   SNAPSHOT,
   buildSignalDb,
   isValidSatellite,
+  liveSample,
   loadCatalog,
   passSignals,
   signalCurve,
@@ -90,6 +91,31 @@ describe('signals from passes', () => {
     expect(Math.max(...curve.map((s) => s.rxDbm))).toBeCloseTo(sig.rxDbm.max, 1);
     expect(curve[0].dopplerHz).toBeGreaterThan(0);
     expect(curve[curve.length - 1].dopplerHz).toBeLessThan(0);
+  });
+
+  it('carries the S-band uplink on the same pass, ground to satellite', () => {
+    const [sig] = passSignals(TSX, EPOCH_MS, EPOCH_MS + 12 * 3_600_000);
+    const curve = signalCurve(TSX, sig.aosMs, sig.losMs, 5);
+    for (const s of curve) {
+      expect(s.uplinkDopplerHz).toBeCloseTo((s.dopplerHz * UPLINK.carrierHz) / CARRIER_HZ, 3);
+    }
+    expect(UPLINK.carrierHz).toBe(2050e6);
+    expect(sig.uplinkDopplerHz.max).toBeLessThan(sig.dopplerHz.max);
+    expect(sig.uplinkRxDbm.min).toBeGreaterThan(-100);
+    expect(sig.uplinkRxDbm.max).toBeLessThan(-60);
+    const top = curve.reduce((a, b) => (b.elevationDeg > a.elevationDeg ? b : a));
+    expect(Math.max(...curve.map((s) => s.uplinkRxDbm))).toBeCloseTo(top.uplinkRxDbm, 0);
+  });
+
+  it('reads the sky live: a sample while the satellite is up, nothing once it has set', () => {
+    const [sig] = passSignals(TSX, EPOCH_MS, EPOCH_MS + 12 * 3_600_000);
+    const mid = (sig.aosMs + sig.losMs) / 2;
+    const now = liveSample(TSX, mid)!;
+    expect(now.elevationDeg).toBeGreaterThan(sig.maxElevationDeg - 2);
+    expect(now.azimuthDeg).toBeGreaterThanOrEqual(0);
+    expect(now.azimuthDeg).toBeLessThan(360);
+    expect(Math.abs(now.rangeRateKmS)).toBeLessThan(2);
+    expect(liveSample(TSX, sig.losMs + 120_000)).toBeNull();
   });
 
   it('builds the whole database: every satellite, every pass, sorted by rise', async () => {

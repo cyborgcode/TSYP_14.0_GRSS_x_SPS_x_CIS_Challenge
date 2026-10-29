@@ -1,8 +1,10 @@
-import { useState, type MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 
 import { useEngine, useEngineCtx } from '../engineContext';
-import { ATTACK_BUTTONS, ATTACK_PROOF } from '../sim/copy';
+import { ATTACK_BUTTONS, ATTACK_PROOF, UPLINK_BUTTONS, UPLINK_PROOF } from '../sim/copy';
+import { C_KM_S, UPLINK } from '../sim/geometry';
 import type { AttackKind } from '../sim/signals';
+import { UPLINK_THREATS, type UplinkThreat } from '../sim/uplink';
 import { ATTACK_ICONS, LockIcon, PlayIcon, SearchIcon, StopIcon } from './icons';
 import { MINUS } from './format';
 import { Panel } from './Panel';
@@ -72,6 +74,94 @@ function AttackButton({
   );
 }
 
+function UplinkButton({
+  threat,
+  onHover,
+}: {
+  threat: UplinkThreat;
+  onHover: (t: UplinkThreat | null) => void;
+}) {
+  const engine = useEngine(15);
+  const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([]);
+  const copy = UPLINK_BUTTONS[threat];
+  const Icon = ATTACK_ICONS[threat];
+  const run = engine.uplinkRun;
+  const running = run?.threat === threat;
+  const disabled = engine.busy || engine.demo.active;
+  const progress =
+    running && run ? Math.min(1, (engine.s - run.tTrigger) / (run.until - run.tTrigger)) : 0;
+
+  const click = (e: MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const id = performance.now();
+    setRipples((r) => [...r, { id, x: e.clientX - rect.left, y: e.clientY - rect.top }]);
+    window.setTimeout(() => setRipples((r) => r.filter((p) => p.id !== id)), 650);
+    engine.triggerUplink(threat);
+  };
+
+  return (
+    <button
+      type="button"
+      className={`attack attack--up ${running ? 'attack--running' : ''}`}
+      onClick={click}
+      onMouseEnter={() => onHover(threat)}
+      onMouseLeave={() => onHover(null)}
+      onFocus={() => onHover(threat)}
+      onBlur={() => onHover(null)}
+      disabled={disabled && !running}
+      aria-pressed={running}
+      aria-describedby="attack-proof"
+    >
+      <span className="attack__icon">
+        <Icon size={18} />
+      </span>
+      <span className="attack__text">
+        <span className="attack__label">{copy.label}</span>
+        <span className="attack__sub">
+          {running && run ? `running… ${run.blocked} rejected on board` : copy.sub}
+        </span>
+      </span>
+      {running && (
+        <span className="attack__progress" style={{ transform: `scaleX(${progress})` }} />
+      )}
+      {ripples.map((r) => (
+        <span key={r.id} className="attack__ripple" style={{ left: r.x, top: r.y }} />
+      ))}
+    </button>
+  );
+}
+
+/** The uplink as the spacecraft sees it, live: carrier, Doppler, power, the last command. */
+function UplinkLive() {
+  const engine = useEngine(10);
+  const pass = engine.pass;
+  const last = engine.uplink[0];
+  const doppler = pass.linkActive ? (-UPLINK.carrierHz * pass.rangeRateKmS) / C_KM_S / 1e3 : null;
+  const st = engine.uplinkStats;
+  return (
+    <div className="uplive" aria-live="off">
+      <div className="uplive__row">
+        <span className="overline">↑ S-band {UPLINK.carrierHz / 1e6} MHz</span>
+        <span className="mono uplive__doppler">
+          {doppler === null
+            ? 'no link'
+            : `${doppler < 0 ? MINUS : '+'}${Math.abs(doppler).toFixed(2)} kHz Doppler`}
+        </span>
+      </div>
+      <div className="uplive__row">
+        <span className="mono uplive__last">
+          {last
+            ? `#${last.seq} ${last.opcode} · ${last.verdict}`
+            : 'waiting for the first telecommand'}
+        </span>
+        <span className="mono uplive__count">
+          {st.executed} executed · {st.rejected} rejected
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function Toggle({
   label,
   on,
@@ -104,7 +194,15 @@ export function ControlDeckPanel() {
   const engine = useEngine(15);
   const { inspectorOpen, setInspectorOpen } = useEngineCtx();
   const [hovered, setHovered] = useState<AttackKind | null>(null);
+  const [hoveredUp, setHoveredUp] = useState<UplinkThreat | null>(null);
+  const [link, setLink] = useState<'down' | 'up'>('down');
+  const uplinkThreat = engine.uplinkRun?.threat ?? null;
+  // A running uplink attack shows the uplink side.
+  useEffect(() => {
+    if (uplinkThreat) setLink('up');
+  }, [uplinkThreat]);
   const proofKind = hovered ?? engine.attack?.kind ?? null;
+  const proofUp = hoveredUp ?? uplinkThreat;
   const power = engine.appliedPower;
   const powerText = `${power < 0 ? MINUS : '+'}${Math.abs(power).toFixed(1)} dB`;
   const statusTone =
@@ -131,46 +229,81 @@ export function ControlDeckPanel() {
       className="panel--deck"
     >
       <div className="deck__head">
-        <span className="overline">Red-team scenarios</span>
+        <div className="seg deck__links" role="group" aria-label="Which link to attack">
+          <button
+            type="button"
+            className={`seg__btn ${link === 'down' ? 'seg__btn--on' : ''}`}
+            aria-pressed={link === 'down'}
+            onClick={() => setLink('down')}
+          >
+            ↓ Downlink
+          </button>
+          <button
+            type="button"
+            className={`seg__btn seg__btn--up ${link === 'up' ? 'seg__btn--on' : ''}`}
+            aria-pressed={link === 'up'}
+            onClick={() => setLink('up')}
+          >
+            ↑ Uplink
+          </button>
+        </div>
         <span className="deck__heldout">held-out set: {engine.heldOut ? 'on' : 'off'}</span>
       </div>
-      <div className="attacks">
-        {ORDER.map((k) => (
-          <AttackButton key={k} kind={k} onHover={setHovered} />
-        ))}
-      </div>
+      {link === 'down' ? (
+        <div className="attacks" key="down">
+          {ORDER.map((k) => (
+            <AttackButton key={k} kind={k} onHover={setHovered} />
+          ))}
+        </div>
+      ) : (
+        <div className="attacks attacks--up" key="up">
+          {UPLINK_THREATS.map((t) => (
+            <UplinkButton key={t} threat={t} onHover={setHoveredUp} />
+          ))}
+        </div>
+      )}
       <p
         id="attack-proof"
-        className={`deck__proof ${proofKind ? `deck__proof--${proofKind}` : ''}`}
+        className={`deck__proof ${link === 'down' && proofKind ? `deck__proof--${proofKind}` : ''} ${link === 'up' && proofUp ? 'deck__proof--up' : ''}`}
         aria-live="polite"
       >
-        {proofKind
-          ? ATTACK_PROOF[proofKind]
-          : 'Each scenario opens the packet drawer on the live frames'}
+        {link === 'down'
+          ? proofKind
+            ? ATTACK_PROOF[proofKind]
+            : 'Each scenario opens the packet drawer on the live frames'
+          : proofUp
+            ? UPLINK_PROOF[proofUp]
+            : 'Telecommands go up from Zaghouan; the satellite verifies each one on board'}
       </p>
 
-      <div className={`power ${jamming ? 'power--live' : ''}`}>
-        <label className="overline" htmlFor="attack-power">
-          Attack power
-        </label>
-        <input
-          id="attack-power"
-          type="range"
-          min={0}
-          max={15}
-          step={0.5}
-          value={power}
-          disabled={engine.demo.active}
-          onChange={(e) => engine.setPower(Number(e.target.value))}
-          style={{ ['--fill' as string]: `${(power / 15) * 100}%` }}
-          aria-valuetext={powerText}
-        />
-        <span className="power__value mono">{powerText}</span>
-      </div>
+      {link === 'up' ? (
+        <UplinkLive />
+      ) : (
+        <div className={`power ${jamming ? 'power--live' : ''}`}>
+          <label className="overline" htmlFor="attack-power">
+            Attack power
+          </label>
+          <input
+            id="attack-power"
+            type="range"
+            min={0}
+            max={15}
+            step={0.5}
+            value={power}
+            disabled={engine.demo.active}
+            onChange={(e) => engine.setPower(Number(e.target.value))}
+            style={{ ['--fill' as string]: `${(power / 15) * 100}%` }}
+            aria-valuetext={powerText}
+          />
+          <span className="power__value mono">{powerText}</span>
+        </div>
+      )}
       <p className="deck__hint">
-        {jamming
-          ? 'Drag the slider: jammer power drives the RSSI collapse live.'
-          : 'The slider sets jammer power and the hijacker’s excess power.'}
+        {link === 'up'
+          ? 'Every command is sealed with HMAC-SHA256; the satellite checks the tag, then the count.'
+          : jamming
+            ? 'Drag the slider: jammer power drives the RSSI collapse live.'
+            : 'The slider sets jammer power and the hijacker’s excess power.'}
       </p>
 
       <div className="toggles">

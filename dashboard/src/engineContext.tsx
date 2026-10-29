@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useReducer, useState, type ReactNode } from 'react';
 
 import { Engine } from './sim/engine';
+import { readFlightPlan } from './sim/fleet';
 
 export type Focus = 'overview' | 'sat' | 'station';
 
@@ -30,7 +31,7 @@ export function EngineProvider({
     let cancelled = false;
     // Let the loading screen paint before the model trains.
     const id = window.setTimeout(() => {
-      void Engine.create().then((e) => {
+      void Engine.create(readFlightPlan(window.location.search)).then((e) => {
         if (!cancelled) setEngine(e);
       });
     }, 60);

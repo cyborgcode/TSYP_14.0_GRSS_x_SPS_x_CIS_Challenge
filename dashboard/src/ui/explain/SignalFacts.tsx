@@ -1,3 +1,4 @@
+import { UPLINK } from '../../sim/geometry';
 import { ATTACK_SIGNALS, CHI_SQUARE, NATURAL, SIGNAL, STEALTH } from '../../sim/linkFacts';
 import type { PassSignal } from '../../sim/signalDb';
 import { MINUS } from '../format';
@@ -78,6 +79,21 @@ function factsFor(sig: PassSignal): { k: string; v: string; note: string }[] {
       k: 'Modulation',
       v: `${CHANNEL.modulation} · ${CHANNEL.occupiedMHz} MHz`,
       note: `one HMAC-sealed frame every ${CHANNEL.framePeriodS} s`,
+    },
+    {
+      k: 'Uplink carrier',
+      v: `${UPLINK.carrierHz / 1e6} MHz`,
+      note: `S-band telecommands from Zaghouan to the satellite: ${UPLINK.eirpDbw} dBW from the station, an omnidirectional antenna on board`,
+    },
+    {
+      k: 'Uplink Doppler',
+      v: `${kHz(sig.uplinkDopplerHz.max)} → ${kHz(sig.uplinkDopplerHz.min)} kHz`,
+      note: 'what the on-board receiver sees: the same range rate at a quarter of the frequency',
+    },
+    {
+      k: 'Received on board',
+      v: `${n(sig.uplinkRxDbm.min)} → ${n(sig.uplinkRxDbm.max)} dBm`,
+      note: 'free-space loss at 2 GHz plus the ITU-R P.618 atmosphere at that frequency',
     },
   ];
 }

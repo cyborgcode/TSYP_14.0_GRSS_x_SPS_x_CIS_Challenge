@@ -1,13 +1,20 @@
 // Copy deck: audited strings, kept in one place so terminology stays consistent.
 
 import type { AttackKind } from './signals';
+import type { UplinkThreat } from './uplink';
 
 export const STATION = 'GS-ZAG';
 export const STATION_LABEL = 'Zaghouan GS (TN)';
 export const STATION_PLACE = 'Zaghouan, Tunisia';
 export const HANDOVER_STATION = 'GS-MAT';
 export const HANDOVER_PLACE = 'Matera, Italy';
-export const SATELLITE = 'TerraSAR-X';
+/** The satellite the testbed flies, as the page names it. */
+export let SATELLITE = 'TerraSAR-X';
+
+/** Names the satellite the testbed flies, before the page renders. */
+export function setSatelliteName(name: string, noradId: number): void {
+  SATELLITE = noradId === 31698 ? 'TerraSAR-X' : noradId === 36605 ? 'TanDEM-X' : name;
+}
 export const ROGUE_NODE = '0x99A2';
 
 export const ATTACK_BUTTONS: Record<AttackKind, { label: string; sub: string; running: string }> = {
@@ -104,9 +111,11 @@ export const unansweredBanner: BannerCopy = {
 };
 
 export const TOUR_CALLOUTS = {
-  lock: {
-    text: `${SATELLITE} downlink locked on ${STATION}`,
-    sub: 'pass predicted from orbital elements',
+  get lock() {
+    return {
+      text: `${SATELLITE} downlink locked on ${STATION}`,
+      sub: 'pass predicted from orbital elements',
+    };
   },
   gate: {
     text: 'Range, Doppler, power and phase vs the orbit',
@@ -123,3 +132,61 @@ export const TOUR_CALLOUTS = {
   suppressed: { text: 'False alarm suppressed', sub: 'physical and data layers both pass' },
   controls: { text: 'Every control drives the telemetry', sub: 'and the 3D link in real time' },
 } as const;
+
+export const UPLINK_BUTTONS: Record<UplinkThreat, { label: string; sub: string; running: string }> =
+  {
+    cmdtamper: {
+      label: 'Command Tampering',
+      sub: 'telecommand rewritten in flight',
+      running: 'Command Tampering',
+    },
+    cmdinject: {
+      label: 'Command Injection',
+      sub: 'forged from a rogue uplink',
+      running: 'Command Injection',
+    },
+    cmdreplay: {
+      label: 'Command Replay',
+      sub: 'recorded command sent again',
+      running: 'Command Replay',
+    },
+  };
+
+/** What each uplink scenario proves, shown on the Simulate Attack panel. */
+export const UPLINK_PROOF: Record<UplinkThreat, string> = {
+  cmdtamper:
+    'Checksum and SHA-256 recomputed, the original tag kept: the HMAC check on board fails',
+  cmdinject: 'Tag computed under a guessed key: rejected on board, nothing executes',
+  cmdreplay: 'Tag genuine, sequence count old: the on-board anti-replay check rejects it',
+};
+
+export function activeUplinkBanner(threat: UplinkThreat): BannerCopy {
+  switch (threat) {
+    case 'cmdtamper':
+      return {
+        headline: `Uplink command tampering · DISABLE_TRANSMITTER never executes`,
+        detail: `Telecommands from ${STATION} rewritten in flight · HMAC-SHA256 tag mismatch on board ${SATELLITE}`,
+      };
+    case 'cmdinject':
+      return {
+        headline: 'Command injection from a rogue uplink · rejected on board',
+        detail: `Forged telecommands, tag under a guessed key · ${SATELLITE} executes only what mission control sealed`,
+      };
+    case 'cmdreplay':
+      return {
+        headline: 'Command replay · stale sequence counts rejected on board',
+        detail: `Recorded telecommands sent again · the tag checks out, the anti-replay counter does not`,
+      };
+  }
+}
+
+export function resolvedUplinkBanner(
+  threat: UplinkThreat,
+  blocked: number,
+  executed: number,
+): BannerCopy {
+  return {
+    headline: `Uplink clean · ${blocked} hostile ${blocked === 1 ? 'command' : 'commands'} rejected, ${executed} executed`,
+    detail: `${UPLINK_BUTTONS[threat].label} over · ${SATELLITE} kept executing mission control's commands only`,
+  };
+}

@@ -183,6 +183,12 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
   and replays it, time-compressed, with its real elevation, range, Doppler and received power.
   Offline it flies the last element set the browser downloaded, and with none, the TerraSAR-X
   element set built into the site. The header, the orbit readout and the footer say which.
+- **The fleet**: the satellite button in the header opens the whole signal database (167
+  Earth-observation satellites) with the live sky over Zaghouan; click any satellite to fly it.
+  `/?sat=<NORAD>` flies that satellite's next pass culminating at least 10° high,
+  `/?sat=<NORAD>&from=<Unix ms>` the pass under way at that time (`dashboard/src/sim/fleet.ts`).
+  Each satellite gets its own identity, hardware token and Ed25519 handshake; TerraSAR-X and
+  TanDEM-X are drawn to scale, the others as a generic Earth-observation bus.
 - **3D ground link**: that pass over the station in real-time WebGL (ACES Filmic tone mapping,
   layered atmospheric scattering), with TerraSAR-X to scale: hexagonal body, body-mounted solar
   cells, radar antenna along a side facet, downlink antenna on its boom; the camera turned toward
@@ -195,6 +201,18 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
   only hash verification sees it), Frequency Hijacking (rogue carrier +14.2 MHz, carrier to
   ~8492 MHz, proof failures) and Noise Jamming (RSSI to −96.5 dBm, fallback routing to GS-MAT).
   **Play demo** runs all four back to back.
+- **The uplink**: the link runs both ways. Mission control at Zaghouan sends a telecommand about
+  every second on the S-band uplink (2050 MHz, 50 dBW EIRP, its own Doppler and received power on
+  board, through the twin's P.618 atmosphere at S-band), each sealed with HMAC-SHA256 under the
+  uplink key; the spacecraft executes it only if the tag matches, compared in constant time, and
+  its sequence count is newer than the last one executed (`dashboard/src/sim/uplink.ts`, a port
+  of the twin's `run_uplink_command`). The **Uplink** side of the attack panel runs the twin's
+  three uplink threats: Command Tampering (a command rewritten in flight to switch the
+  transmitter off, original tag kept), Command Injection (forged from a rogue uplink in the Gulf
+  of Gabès under a guessed key) and Command Replay (a genuine command recorded and sent again).
+  The 3D view draws the uplink beam in orange and the rogue uplink in red; the ledger's
+  **Uplink commands** view lists every command received on board and its verdict, with the count
+  of hostile commands executed (always 0).
 - **Packet inspection drawer**: every frame as it went through the three tiers: raw frame and
   payload hexdump (flipped bits highlighted); the data layer (`trust_anchor.py`: MAC received
   against MAC recomputed, nonce check, ledger block and `verify_chain()`); the physical layer
@@ -206,14 +224,18 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
 - **Resilience & trust metrics**: authenticated, rejected, held and corrupted-to-analyst
   counts; live `verify_chain()` with a red-team "edit a past block" test; and per-scenario
   detection by tier (data, physical, statistical, stopped).
-- **The signal database** (`/signal`): no fixed signal. `/api/catalog` relays the latest
+- **The signal database** (`/signal`): no fixed signal, and live. `/api/catalog` relays the latest
   element sets of CelesTrak's Earth-resources group (167 Earth-observation satellites, cached
   two hours at the edge; the last download, then a built-in snapshot, when CelesTrak is
   unreachable). The browser propagates each with SGP4 to its passes over Zaghouan in the next
   12 hours and turns every pass into the signal the station receives: rise and set above the
   2° mask, culmination, slant range, Doppler, received power and SNR through the X-band link
-  budget and the ITU-R P.618 atmosphere (`dashboard/src/sim/signalDb.ts`). Pick any of the
-  ~380 signals to see it second by second; the TerraSAR-X pass the testbed replays is marked.
+  budget and the ITU-R P.618 atmosphere (`dashboard/src/sim/signalDb.ts`), and the S-band
+  uplink back to the satellite (Doppler and power received on board). The page re-propagates
+  every second: a polar sky view of the satellites above Zaghouan now, the elevation, Doppler and
+  power of each one in view, and a cursor moving along the selected pass's curves. Pick any of
+  the ~380 signals to see it second by second and **fly it on the live testbed**; the TerraSAR-X
+  pass the testbed replays by default is marked.
 - **Hiding in the noise**, on its own pages linked from the top bar: `/attacks` (three ways an
   attacker imitates natural noise), `/protection` (an interactive stealth budget and the three
   tiers) and

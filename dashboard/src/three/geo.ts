@@ -101,6 +101,8 @@ export const ATTACKERS = {
   hijack: { lat: 36.0, lon: -3.2, label: 'ROGUE-TX +14.2 MHz' },
   spoof: { lat: 39.6, lon: 4.0, label: 'NODE 0x99A2' },
   jam: { lat: 38.1, lon: 14.2, label: 'NOISE JAMMER' },
+  /** Forges or replays telecommands toward the satellite, from a boat in the Gulf of Gabès. */
+  uplink: { lat: 33.9, lon: 11.0, label: 'ROGUE-UPLINK' },
 } as const;
 
 export const stationById = (id: string) => STATIONS.find((s) => s.id === id)!;

@@ -5,6 +5,7 @@ import type { SystemState } from '../sim/engine';
 import { CARRIER_HZ } from '../sim/geometry';
 import { utcClock } from './format';
 import { passChip } from './orbitText';
+import { FleetPicker } from './FleetPicker';
 import { DishIcon } from './icons';
 import { SiteNav } from './SiteNav';
 
@@ -36,6 +37,7 @@ export function Header() {
         <h1 className="header__title">Secure Ground-Link Testbed</h1>
         <span className="header__divider" aria-hidden="true" />
         <span className="header__subtitle">Earth-observation chain · Track 1</span>
+        <FleetPicker />
       </div>
       <SiteNav current="/" />
       <div className="header__right">

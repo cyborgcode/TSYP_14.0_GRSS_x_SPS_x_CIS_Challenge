@@ -181,9 +181,10 @@ export function passProfileFor(
   record: TleRecord,
   fromMs: number,
   source: 'celestrak' | 'cache' | 'builtin',
+  minPeakDeg = MIN_PEAK_ELEVATION_DEG,
 ): PassProfile | null {
   const satrec = twoline2satrec(record.line1, record.line2);
-  const window = findPass(satrec, fromMs);
+  const window = findPass(satrec, fromMs, minPeakDeg);
   if (!window) return null;
   const duration = (window.losMs - window.aosMs) / 1000;
   const n = Math.max(2, Math.ceil(duration));
@@ -222,6 +223,7 @@ export function passProfileFor(
     satName: record.name,
     noradId: record.noradId,
     altitudeKm: (satrec.a - 1) * EARTH_RADIUS_WGS72_KM,
+    inclinationDeg: (satrec.inclo * 180) / Math.PI,
     realPassS: duration,
     maxElevationDeg: looks[k].elDeg,
     culminationAzDeg: looks[k].azDeg,

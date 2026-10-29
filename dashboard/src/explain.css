@@ -914,6 +914,331 @@
   fill: none;
   stroke: var(--accent);
   stroke-width: 2.2;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: sigdb-draw 1.2s var(--ease-out) forwards;
+}
+.sigdb__line--up {
+  stroke: var(--uplink);
+  stroke-width: 1.8;
+}
+.sigdb__line--plain {
+  stroke: var(--ice);
+}
+.sigdb__legend {
+  font: 600 10.5px var(--font-ui);
+}
+.sigdb__legend--down {
+  fill: var(--accent);
+}
+.sigdb__legend--up {
+  fill: var(--uplink);
+}
+.sigdb__now line {
+  stroke: var(--ok);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+}
+.sigdb__now-dot {
+  fill: var(--ice);
+  stroke: var(--bg-0);
+  stroke-width: 1.5;
+}
+.sigdb__now-dot--down {
+  fill: var(--accent);
+}
+.sigdb__now-dot--up {
+  fill: var(--uplink);
+}
+@keyframes sigdb-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* What is up right now: the sky and its list */
+.sigdb__sky {
+  display: grid;
+  grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+.sigdb__skyfig {
+  display: flex;
+  flex-direction: column;
+}
+.inview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 470px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  overflow: hidden;
+}
+.inview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.inview__count {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ok);
+}
+.inview__empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.inview__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow: auto;
+}
+.inview__row {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 68px 96px 86px 82px;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-0);
+  transition: background 0.2s;
+}
+.inview__row:hover {
+  background: rgba(76, 201, 240, 0.06);
+}
+.inview__row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.inview__row.is-on {
+  background: rgba(76, 201, 240, 0.14);
+}
+.inview__row > span:not(:first-child) {
+  text-align: right;
+}
+.inview__name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inview__el {
+  color: var(--ok);
+}
+.inview__down {
+  color: var(--accent);
+}
+.inview__up {
+  color: var(--uplink);
+}
+.inview__rx {
+  color: var(--text-1);
+}
+
+/* Live readout of the selected pass */
+.livebar {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  padding: 12px 16px 14px;
+}
+.livebar__status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font: 700 13px var(--font-ui);
+  color: var(--warn);
+}
+.livebar__status.is-live {
+  color: var(--ok);
+}
+.livebar__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.livebar__status.is-live .livebar__dot {
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+.livebar__clock {
+  margin-left: auto;
+  color: var(--text-1);
+  font-weight: 500;
+}
+.livebar__tiles {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+.livetile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--text-3);
+  border-radius: var(--r-tile);
+}
+.livetile--down {
+  border-left-color: var(--accent);
+}
+.livetile--up {
+  border-left-color: var(--uplink);
+}
+.livetile__label {
+  font: 700 10.5px var(--font-ui);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.livetile__value {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-0);
+  white-space: nowrap;
+}
+.livetile__unit {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+/* The table, live */
+.sigdb__row {
+  animation: sigdb-row-in 0.45s var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 22ms);
+}
+.sigdb__row.is-live th button {
+  color: var(--ok);
+}
+.sigdb__inpass {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ok);
+  font-weight: 700;
+}
+.sigdb__pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+.sigdb__soon {
+  color: var(--text-1);
+}
+.sigdb__clock {
+  margin-left: auto;
+  color: var(--text-0);
+  font-weight: 700;
+}
+.sigdb__count {
+  animation: fade-in 0.4s var(--ease-out);
+}
+.sigdb__detail {
+  animation: sigdb-detail-in 0.5s var(--ease-out) both;
+}
+.sigdb__detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sigdb__detail-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  font: 700 24px var(--font-display);
+  color: var(--text-0);
+}
+.sigdb__detail-sub {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.seg__btn {
+  transition:
+    background 0.2s,
+    color 0.2s,
+    transform 0.12s;
+}
+.seg__btn:active {
+  transform: scale(0.94);
+}
+@keyframes sigdb-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes sigdb-detail-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@keyframes live-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+@media (max-width: 1100px) {
+  .livebar__tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 900px) {
+  .sigdb__sky {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .inview {
+    max-height: 340px;
+  }
+}
+@media (max-width: 640px) {
+  .livebar__tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .inview__row {
+    grid-template-columns: minmax(0, 1fr) 58px 100px;
+  }
+  .inview__up,
+  .inview__rx {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sigdb__line {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .sigdb__row,
+  .sigdb__detail,
+  .sigdb__count {
+    animation: none;
+  }
+  .sigdb__pulse,
+  .livebar__status.is-live .livebar__dot {
+    animation: none;
+  }
 }
 
 @media (max-width: 640px) {

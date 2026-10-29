@@ -296,8 +296,12 @@ def test_the_website_flies_the_twins_atmosphere():
     assert table["carrierMHz"] == pytest.approx(LINK.freq_hz / 1e6)
     assert table["exceedancePercent"] == 50.0
     assert table["elevationDeg"] == sorted(table["elevationDeg"])
-    for el, db in zip(table["elevationDeg"], table["totalDb"], strict=True):
+    uplink = LinkBudgetCalculator(carrier_freq_hz=table["uplinkCarrierMHz"] * 1e6)
+    for el, db, up in zip(
+        table["elevationDeg"], table["totalDb"], table["uplinkTotalDb"], strict=True
+    ):
         assert db == pytest.approx(LINK.atmospheric_loss_db(el), abs=1e-4)
+        assert up == pytest.approx(uplink.atmospheric_loss_db(el), abs=1e-4)
 
 
 def test_scintillation_grows_toward_the_horizon():

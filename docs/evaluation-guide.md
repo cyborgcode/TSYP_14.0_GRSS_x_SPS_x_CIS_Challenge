@@ -10,6 +10,11 @@ real-time threat detection and cryptographic resilience, running entirely in the
   satellite at 514 km, downlinking at X-band (8477.8 MHz) to our ground station in Zaghouan,
   Tunisia (GS-ZAG). The dashboard replays its next real pass over Zaghouan, from CelesTrak's
   latest element set (offline: the last download, then an element set built into the site).
+- **Any satellite**: the satellite button in the header lists the whole signal database (167
+  Earth-observation satellites from CelesTrak) beside a live sky view of Zaghouan; click one to
+  fly its next pass on the testbed. The link `/?sat=39634` flies Sentinel-1A, for instance. The
+  name, the identity in every frame, the hardware token and the Ed25519 handshake follow the
+  satellite.
 - **Graphics**: Three.js with ACES Filmic tone mapping, a three-layer atmosphere (Rayleigh
   scattering, limb glow, Mie haze), and TerraSAR-X to scale: a hexagonal body in multi-layer
   insulation with gold end bulkheads, body-mounted solar cells, the phased-array radar antenna
@@ -18,11 +23,14 @@ real-time threat detection and cryptographic resilience, running entirely in the
   satellite; pinch or scroll to zoom. Click the satellite or the station to fly in and open its
   live signal view.
 
-## 2. One continuous signal beam
+## 2. Downlink and uplink beams
 
-The beam between TerraSAR-X and Zaghouan is one continuous signal. When an attack is triggered,
-everything changes together: the beam's colour and distortion, the Carrier Frequency chart, the
-RSSI chart, the received spectrum, the security banner and the cryptographic ledger.
+The beam from the satellite down to Zaghouan is one continuous signal. When an attack is
+triggered, everything changes together: the beam's colour and distortion, the Carrier Frequency
+chart, the RSSI chart, the received spectrum, the security banner and the cryptographic ledger.
+The orange beam climbing from the station is the telecommand uplink (S-band, 2050 MHz); it turns
+red when a command is tampered with, and a red beam from the rogue uplink in the Gulf of Gabès
+appears during command injection and replay.
 
 ## 3. Red-team attack scenarios
 
@@ -39,6 +47,21 @@ drawer on the live frames (section 5).
 The attack-power slider changes the jammer power and the hijacker's excess power live.
 **Play demo** runs all four scenarios back to back, including a false alarm that only the
 statistical layer raises: the frame is held, not rejected, and nothing escalates.
+
+Switch the panel to **Uplink** for the threats against the telecommands going up. Mission
+control seals every command with HMAC-SHA256 under the uplink key; on board, the tag is compared
+in constant time, then the sequence count must be newer than the last one executed. The live
+uplink Doppler is shown under the buttons.
+
+| Scenario | What happens | System response |
+|---|---|---|
+| **Command Tampering** | Genuine commands are caught in flight and rewritten to `DISABLE_TRANSMITTER X-BAND`; the checksum and SHA-256 are recomputed, the original tag rides along. | The tag no longer matches: every rewritten command is rejected on board (`MAC ✗`) and the transmitter stays on. |
+| **Command Injection** | A rogue uplink station forges `DISABLE_TRANSMITTER` commands with a tag computed under a guessed key. | Rejected on board (`MAC ✗`); mission control's routine commands keep executing. |
+| **Command Replay** | Genuine commands recorded off the air are transmitted again. | The tag is genuine but the count is old: the anti-replay check rejects each one (`REPLAY`). |
+
+The ledger's **Uplink commands** view lists every command the satellite received, newest
+first, with its sequence count, source and verdict; its footer counts the hostile commands
+executed, which stays at 0.
 
 The **Three-tier threat matrix** panel shows the three tiers live, in the digital twin's order:
 1. data layer (HMAC-SHA256 tag and nonce of the last frame), 2. statistical layer (Isolation
@@ -86,7 +109,10 @@ The top bar links the dashboard to four short pages, read in order with **Next**
 each. **Signals** (`/signal`) is the signal database: CelesTrak's Earth-resources group, live
 (167 satellites), every pass over Zaghouan in the next 12 hours, and the signal each pass
 delivers (rise and set, culmination, Doppler, received power, SNR, slant range, atmospheric
-loss). The status line says whether the element sets are live, the last download or the built-in
+loss), down to the station and up to the satellite. It is live: the clock, the sky view of the
+satellites above Zaghouan and their elevation, Doppler and power change every second, and a
+cursor runs along the selected pass. **Fly this pass on the live testbed** opens the dashboard
+on that satellite and pass. The status line says whether the element sets are live, the last download or the built-in
 snapshot. Filter by name or culmination and pick a pass: its elevation, Doppler and received
 power are drawn second by second, with its full parameters and where it sits against the
 spoofer, the jammer and the noise floor. Every satellite is received on the station's channel

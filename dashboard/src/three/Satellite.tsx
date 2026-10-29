@@ -39,6 +39,8 @@ interface Props {
   };
   onSelect?: () => void;
   hoverable?: boolean;
+  /** TerraSAR-X and TanDEM-X to scale, or a generic Earth-observation satellite. */
+  variant?: 'tsx' | 'generic';
 }
 
 export const SAT_SCALE = 0.86;
@@ -52,6 +54,11 @@ const A = R * Math.cos(Math.PI / 6); // apothem: centre to the middle of a facet
 const SIDE = R; // facet width
 const LENGTH = 2.9;
 const BOOM = 1.9;
+
+// Generic Earth-observation satellite: a box bus in gold insulation, two deployed solar wings
+// along the orbit normal, a nadir-pointing instrument, and the same X-band antenna on its boom.
+const BUS = { w: 1.1, h: 0.95, l: 1.5 } as const;
+const WING = 2.2;
 
 /** Facet normals, degrees from +X towards +Y: bottom, lower right, upper right, top, ... */
 const FACET = { bottom: -90, lowerRight: -30, upperRight: 30, top: 90, upperLeft: 150 } as const;
@@ -72,9 +79,12 @@ const basis = new THREE.Matrix4();
 const localTarget = new THREE.Vector3();
 
 export const Satellite = forwardRef<SatelliteHandle, Props>(function Satellite(
-  { getState, onSelect, hoverable = true },
+  { getState, onSelect, hoverable = true, variant = 'tsx' },
   ref,
 ) {
+  const tsx = variant === 'tsx';
+  const bottom = tsx ? A : BUS.h / 2;
+  const side = tsx ? R : BUS.w / 2;
   const group = useRef<THREE.Group>(null!);
   const body = useRef<THREE.Group>(null!);
   const antenna = useRef<THREE.Group>(null!);
@@ -92,6 +102,10 @@ export const Satellite = forwardRef<SatelliteHandle, Props>(function Satellite(
     solar.repeat.set(1, 4);
     solar.needsUpdate = true;
     const foil = foilBumpTexture();
+    const wing = solarCellTexture().clone();
+    wing.wrapS = wing.wrapT = THREE.RepeatWrapping;
+    wing.repeat.set(3, 1);
+    wing.needsUpdate = true;
     return {
       // Silver-white multi-layer insulation over the body.
       mli: new THREE.MeshStandardMaterial({
@@ -129,6 +143,20 @@ export const Satellite = forwardRef<SatelliteHandle, Props>(function Satellite(
         envMapIntensity: 0.35,
         emissive: '#06213f',
         emissiveIntensity: 0.2,
+      }),
+      wing: new THREE.MeshPhysicalMaterial({
+        map: wing,
+        metalness: 0.15,
+        roughness: 0.5,
+        clearcoat: 0.55,
+        clearcoatRoughness: 0.22,
+        iridescence: 0.5,
+        iridescenceIOR: 1.5,
+        iridescenceThicknessRange: [180, 420],
+        envMapIntensity: 0.35,
+        emissive: '#06213f',
+        emissiveIntensity: 0.2,
+        side: THREE.DoubleSide,
       }),
       radar: new THREE.MeshStandardMaterial({
         map: sarAntennaTexture(),
@@ -211,89 +239,131 @@ export const Satellite = forwardRef<SatelliteHandle, Props>(function Satellite(
       onPointerOut={() => setHovered(false)}
     >
       <group ref={body}>
-        {/* Hexagonal body in silver multi-layer insulation, gold end bulkheads */}
-        <mesh material={mat.mli} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[R, R, LENGTH, 6, 1, false, Math.PI / 6]} />
-        </mesh>
-        {[-1, 1].map((end) => (
-          <mesh
-            key={end}
-            material={mat.gold}
-            position={[0, 0, end * (LENGTH / 2 + 0.025)]}
-            rotation={[Math.PI / 2, 0, 0]}
-          >
-            <cylinderGeometry args={[R * 0.97, R * 0.97, 0.05, 6, 1, false, Math.PI / 6]} />
-          </mesh>
-        ))}
-
-        {/* Body-mounted solar array on the upper facets */}
-        {[FACET.top, FACET.upperLeft].map((deg) => {
-          const pose = onFacet(deg, 0.008);
-          return (
-            <mesh key={deg} material={mat.panel} position={pose.position} rotation={pose.rotation}>
-              <boxGeometry args={[SIDE * 0.9, 0.012, LENGTH * 0.92]} />
+        {!tsx && (
+          <>
+            {/* Box bus in gold multi-layer insulation */}
+            <mesh material={mat.gold} castShadow>
+              <boxGeometry args={[BUS.w, BUS.h, BUS.l]} />
             </mesh>
-          );
-        })}
-
-        {/* 4.8 m phased-array radar antenna along the lower right facet */}
-        <group position={radar.position} rotation={radar.rotation}>
-          <mesh material={mat.dark}>
-            <boxGeometry args={[SIDE * 0.92, 0.06, LENGTH * 0.97]} />
-          </mesh>
-          <group position={[0, 0.031, 0]} rotation={[0, Math.PI / 2, 0]}>
-            <mesh material={mat.radar} rotation={[-Math.PI / 2, 0, 0]}>
-              <planeGeometry args={[LENGTH * 0.95, SIDE * 0.86]} />
+            {/* Deployed solar wings on their yokes */}
+            {[-1, 1].map((s) => (
+              <group key={s} position={[(s * BUS.w) / 2, 0.12, 0]}>
+                <mesh
+                  material={mat.silver}
+                  position={[s * 0.22, 0, 0]}
+                  rotation={[0, 0, Math.PI / 2]}
+                >
+                  <cylinderGeometry args={[0.022, 0.022, 0.44, 8]} />
+                </mesh>
+                <mesh material={mat.wing} position={[s * (0.44 + WING / 2), 0, 0]}>
+                  <boxGeometry args={[WING, 0.02, 0.86]} />
+                </mesh>
+              </group>
+            ))}
+            {/* Nadir-pointing instrument */}
+            <mesh material={mat.dark} position={[0, -BUS.h / 2 - 0.1, BUS.l / 2 - 0.35]}>
+              <cylinderGeometry args={[0.17, 0.2, 0.2, 20]} />
             </mesh>
-          </group>
-        </group>
+            <mesh material={mat.silver} position={[0.3, BUS.h / 2 + 0.06, -0.4]}>
+              <cylinderGeometry args={[0.07, 0.07, 0.12, 16]} />
+            </mesh>
+          </>
+        )}
+        {tsx && (
+          <>
+            {/* Hexagonal body in silver multi-layer insulation, gold end bulkheads */}
+            <mesh material={mat.mli} rotation={[Math.PI / 2, 0, 0]} castShadow>
+              <cylinderGeometry args={[R, R, LENGTH, 6, 1, false, Math.PI / 6]} />
+            </mesh>
+            {[-1, 1].map((end) => (
+              <mesh
+                key={end}
+                material={mat.gold}
+                position={[0, 0, end * (LENGTH / 2 + 0.025)]}
+                rotation={[Math.PI / 2, 0, 0]}
+              >
+                <cylinderGeometry args={[R * 0.97, R * 0.97, 0.05, 6, 1, false, Math.PI / 6]} />
+              </mesh>
+            ))}
 
-        {/* Star trackers on the upper right facet, aft */}
-        {[-0.95, -0.6].map((z) => {
-          const pose = onFacet(FACET.upperRight, 0.08);
-          return (
-            <group
-              key={z}
-              position={[pose.position[0], pose.position[1], z]}
-              rotation={pose.rotation}
-            >
-              <mesh material={mat.silver}>
-                <cylinderGeometry args={[0.07, 0.07, 0.16, 16]} />
+            {/* Body-mounted solar array on the upper facets */}
+            {[FACET.top, FACET.upperLeft].map((deg) => {
+              const pose = onFacet(deg, 0.008);
+              return (
+                <mesh
+                  key={deg}
+                  material={mat.panel}
+                  position={pose.position}
+                  rotation={pose.rotation}
+                >
+                  <boxGeometry args={[SIDE * 0.9, 0.012, LENGTH * 0.92]} />
+                </mesh>
+              );
+            })}
+
+            {/* 4.8 m phased-array radar antenna along the lower right facet */}
+            <group position={radar.position} rotation={radar.rotation}>
+              <mesh material={mat.dark}>
+                <boxGeometry args={[SIDE * 0.92, 0.06, LENGTH * 0.97]} />
               </mesh>
-              <mesh material={mat.dark} position={[0, 0.11, 0]}>
-                <cylinderGeometry args={[0.1, 0.07, 0.08, 16, 1, true]} />
-              </mesh>
+              <group position={[0, 0.031, 0]} rotation={[0, Math.PI / 2, 0]}>
+                <mesh material={mat.radar} rotation={[-Math.PI / 2, 0, 0]}>
+                  <planeGeometry args={[LENGTH * 0.95, SIDE * 0.86]} />
+                </mesh>
+              </group>
             </group>
-          );
-        })}
 
-        {/* Cold-gas thrusters on the aft bulkhead */}
-        {[
-          [-0.3, -0.25],
-          [0.3, -0.25],
-          [-0.3, 0.25],
-          [0.3, 0.25],
-        ].map(([x, y]) => (
-          <mesh
-            key={`${x}${y}`}
-            material={mat.dark}
-            position={[x, y, -LENGTH / 2 - 0.1]}
-            rotation={[-Math.PI / 2, 0, 0]}
-          >
-            <coneGeometry args={[0.06, 0.12, 12, 1, true]} />
-          </mesh>
-        ))}
+            {/* Star trackers on the upper right facet, aft */}
+            {[-0.95, -0.6].map((z) => {
+              const pose = onFacet(FACET.upperRight, 0.08);
+              return (
+                <group
+                  key={z}
+                  position={[pose.position[0], pose.position[1], z]}
+                  rotation={pose.rotation}
+                >
+                  <mesh material={mat.silver}>
+                    <cylinderGeometry args={[0.07, 0.07, 0.16, 16]} />
+                  </mesh>
+                  <mesh material={mat.dark} position={[0, 0.11, 0]}>
+                    <cylinderGeometry args={[0.1, 0.07, 0.08, 16, 1, true]} />
+                  </mesh>
+                </group>
+              );
+            })}
 
-        {/* S-band telemetry and command antennas */}
-        <mesh material={mat.white} position={[0, A + 0.25, LENGTH / 2 - 0.2]}>
+            {/* Cold-gas thrusters on the aft bulkhead */}
+            {[
+              [-0.3, -0.25],
+              [0.3, -0.25],
+              [-0.3, 0.25],
+              [0.3, 0.25],
+            ].map(([x, y]) => (
+              <mesh
+                key={`${x}${y}`}
+                material={mat.dark}
+                position={[x, y, -LENGTH / 2 - 0.1]}
+                rotation={[-Math.PI / 2, 0, 0]}
+              >
+                <coneGeometry args={[0.06, 0.12, 12, 1, true]} />
+              </mesh>
+            ))}
+          </>
+        )}
+
+        {/* S-band telemetry and command antennas: the telecommand uplink lands here */}
+        <mesh material={mat.white} position={[0, bottom + 0.25, (tsx ? LENGTH : BUS.l) / 2 - 0.2]}>
           <cylinderGeometry args={[0.012, 0.012, 0.5, 6]} />
         </mesh>
-        <mesh material={mat.white} position={[0.25, -A - 0.25, LENGTH / 2 - 0.3]}>
+        <mesh
+          material={mat.white}
+          position={[0.25, -bottom - 0.25, (tsx ? LENGTH : BUS.l) / 2 - 0.3]}
+        >
           <cylinderGeometry args={[0.012, 0.012, 0.5, 6]} />
         </mesh>
 
         {/* X-band downlink antenna at the end of its boom, on a pointing mechanism */}
-        <group position={[0, -A, -0.75]}>
+        <group position={[0, -bottom, tsx ? -0.75 : -0.35]}>
           <mesh material={mat.silver} position={[0, -BOOM / 2, 0]}>
             <cylinderGeometry args={[0.026, 0.026, BOOM, 10]} />
           </mesh>
@@ -323,11 +393,11 @@ export const Satellite = forwardRef<SatelliteHandle, Props>(function Satellite(
         </group>
 
         {/* Navigation lights */}
-        <mesh position={[R + 0.03, 0, LENGTH / 2 - 0.1]}>
+        <mesh position={[side + 0.03, 0, (tsx ? LENGTH : BUS.l) / 2 - 0.1]}>
           <sphereGeometry args={[0.035, 8, 8]} />
           <meshBasicMaterial ref={navL} color="#ff3b4e" transparent toneMapped={false} />
         </mesh>
-        <mesh position={[-R - 0.03, 0, LENGTH / 2 - 0.1]}>
+        <mesh position={[-side - 0.03, 0, (tsx ? LENGTH : BUS.l) / 2 - 0.1]}>
           <sphereGeometry args={[0.035, 8, 8]} />
           <meshBasicMaterial ref={navR} color="#34D399" transparent toneMapped={false} />
         </mesh>

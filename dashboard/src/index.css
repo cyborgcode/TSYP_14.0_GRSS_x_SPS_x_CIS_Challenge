@@ -16,6 +16,8 @@
   --bad: #f8485e;
   --jam: #a78bfa;
   --tamper: #f472b6;
+  /* The telecommand uplink, ground to satellite. */
+  --uplink: #ff9f5a;
   --r-panel: 10px;
   --r-tile: 8px;
   --r-chip: 7px;
@@ -1134,9 +1136,13 @@ button {
   color: var(--text-2);
 }
 .term__title {
+  min-width: 0;
   margin-left: 6px;
+  overflow: hidden;
   font: 600 11.5px var(--font-data);
   color: var(--text-2);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .term__body {
   height: 250px;
@@ -1999,6 +2005,7 @@ button {
   border-color: rgba(236, 242, 248, 0.35);
 }
 .deck__proof {
+  flex: none;
   margin: 8px 0 0;
   min-height: 2.6em;
   padding: 5px 9px;
@@ -3406,9 +3413,17 @@ button {
   .attack__sub {
     display: none;
   }
-  .deck__head,
+  /* The downlink/uplink switch stays; the held-out label and the hint make room. */
+  .deck__heldout,
   .deck__hint,
   .fusion__note {
+    display: none;
+  }
+  .deck__head {
+    margin-bottom: 6px;
+  }
+  /* The ledger's uplink view lists the commands; the deck keeps the live Doppler. */
+  .uplive__row + .uplive__row {
     display: none;
   }
   .panel__header {
@@ -3591,4 +3606,431 @@ button {
   .charts > .chart:nth-child(2) {
     display: none;
   }
+}
+
+/* ------------------------------------------------------------------ sky over the station */
+
+.sky {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 360px;
+  margin: 0 auto;
+}
+.sky__horizon {
+  fill: rgba(76, 201, 240, 0.04);
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+.sky__ring {
+  fill: none;
+  stroke: rgba(30, 43, 58, 0.9);
+  stroke-width: 1;
+}
+.sky__mask {
+  fill: none;
+  stroke: rgba(76, 201, 240, 0.25);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+.sky__cardinal {
+  fill: var(--text-2);
+  font: 700 11px var(--font-data);
+}
+.sky__el {
+  fill: var(--text-3);
+  font: 500 9.5px var(--font-data);
+}
+.sky__track {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-dasharray: 4 4;
+  opacity: 0.75;
+}
+.sky__sat {
+  transition: transform 1s linear;
+}
+.sky__sat.is-pickable {
+  cursor: pointer;
+}
+.sky__hit {
+  fill: transparent;
+}
+.sky__dot {
+  fill: var(--ice);
+  stroke: var(--bg-0);
+  stroke-width: 1;
+  transition: r 0.3s var(--ease-out);
+}
+.sky__sat.is-pickable:hover .sky__dot {
+  fill: var(--accent);
+}
+.sky__sat.is-on .sky__dot {
+  fill: var(--accent);
+}
+.sky__halo {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  animation: sky-ping 1.6s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.sky__name {
+  fill: var(--accent);
+  font: 700 10.5px var(--font-ui);
+  paint-order: stroke;
+  stroke: var(--bg-0);
+  stroke-width: 3px;
+}
+.sky__legend {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+@keyframes sky-ping {
+  from {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sky__sat {
+    transition: none;
+  }
+  .sky__halo {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------ fleet picker */
+
+.fleet-wrap {
+  position: relative;
+  margin-left: 6px;
+}
+.fleet__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: var(--r-button);
+  border: 1px solid rgba(76, 201, 240, 0.45);
+  background: rgba(76, 201, 240, 0.08);
+  color: var(--text-0);
+  font: 600 13.5px var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    transform 0.12s;
+}
+.fleet__btn:hover,
+.fleet__btn.is-open {
+  background: rgba(76, 201, 240, 0.16);
+  border-color: var(--accent);
+}
+.fleet__btn:active {
+  transform: scale(0.97);
+}
+.fleet__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.fleet__btn svg {
+  color: var(--accent);
+}
+.fleet__norad {
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.fleet__caret {
+  color: var(--accent);
+  font-size: 11px;
+}
+.fleet {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 60;
+  width: min(760px, calc(100vw - 32px));
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  animation: fleet-in 0.28s var(--ease-out);
+}
+.fleet__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.fleet__title {
+  font: 700 16px var(--font-display);
+  color: var(--text-0);
+}
+.fleet__sub {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.fleet__body {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px 16px 16px;
+}
+.fleet__list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.fleet__search {
+  padding: 7px 10px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-0);
+  font: 500 13px var(--font-ui);
+}
+.fleet__search:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.fleet__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 330px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-chip);
+}
+.fleet__empty {
+  padding: 12px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.fleet__row {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(30, 43, 58, 0.6);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-0);
+  transition: background 0.15s;
+}
+.fleet__row:hover {
+  background: rgba(76, 201, 240, 0.07);
+}
+.fleet__row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.fleet__row.is-on {
+  background: rgba(76, 201, 240, 0.14);
+}
+.fleet__row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fleet__row-when {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-1);
+}
+.fleet__row-when.is-live {
+  color: var(--ok);
+}
+@keyframes fleet-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@media (max-width: 760px) {
+  .fleet {
+    position: fixed;
+    top: 64px;
+    left: 16px;
+  }
+  .fleet__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fleet__sky .sky {
+    max-width: 240px;
+  }
+  .fleet__norad {
+    display: none;
+  }
+}
+@media (max-width: 520px) {
+  /* On a phone the satellite button takes its own line under the title. */
+  .header__brand {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .fleet-wrap {
+    margin-left: 0;
+  }
+  .fleet {
+    top: 100px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fleet {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------ uplink controls */
+
+.deck__links .seg__btn {
+  padding: 4px 10px;
+}
+.seg__btn--up.seg__btn--on {
+  color: var(--uplink);
+  border-color: rgba(255, 159, 90, 0.6);
+  background: rgba(255, 159, 90, 0.1);
+}
+.attacks {
+  animation: fade-in 0.3s var(--ease-out);
+}
+.attack--up:hover:not(:disabled) {
+  border-color: rgba(255, 159, 90, 0.6);
+  background: rgba(255, 159, 90, 0.06);
+}
+.attack--up .attack__icon {
+  color: var(--uplink);
+  background: rgba(255, 159, 90, 0.12);
+}
+.attack--up.attack--running {
+  border-color: var(--uplink);
+  background: rgba(255, 159, 90, 0.1);
+}
+.attack--up .attack__progress {
+  background: var(--uplink);
+}
+.deck__proof--up {
+  border-color: var(--uplink);
+  color: var(--text-1);
+}
+.uplive {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 7px 10px;
+  border-radius: var(--r-chip);
+  border: 1px solid rgba(255, 159, 90, 0.35);
+  background: rgba(255, 159, 90, 0.05);
+}
+.uplive__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.uplive__row .overline {
+  color: var(--uplink);
+}
+.uplive__doppler {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-0);
+}
+.uplive__last {
+  font-size: 12px;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.uplive__count {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+.ledger__views {
+  margin-bottom: 8px;
+}
+.ledger__views .seg__btn {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+.uplog {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-size: 12px;
+}
+.uplog__empty {
+  padding: 8px 12px;
+  color: var(--text-2);
+}
+.uplog__row {
+  display: grid;
+  grid-template-columns: 18px 46px minmax(0, 1fr) auto 50px;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  animation: row-in 0.3s var(--ease-out);
+}
+.uplog__row--hostile {
+  background: rgba(248, 72, 94, 0.07);
+}
+.uplog__seq {
+  color: var(--text-2);
+}
+.uplog__cmd {
+  color: var(--text-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.uplog__src {
+  color: var(--text-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.uplog__verdict {
+  text-align: right;
+  font-weight: 700;
+}
+.uplog__verdict.is-ok,
+.ledger__foot .is-ok {
+  color: var(--ok);
+}
+.uplog__verdict.is-bad,
+.ledger__foot .is-bad {
+  color: var(--bad);
 }

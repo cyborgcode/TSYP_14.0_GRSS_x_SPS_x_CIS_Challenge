@@ -13,10 +13,14 @@ const KIND: Record<PassProfile['source'], string> = {
   reference: 'Emulated pass',
 };
 
+/** Sun-synchronous at low Earth orbit: retrograde, 96–100.5° depending on the altitude. */
+const sunSynchronous = (p: PassProfile) =>
+  p.altitudeKm < 1500 && p.inclinationDeg > 96 && p.inclinationDeg < 100.5;
+
 /** Viewport readout: which orbit, how high. */
 export function orbitReadout(p: PassProfile = passProfile()): string {
   const km = p.source === 'reference' ? ALTITUDE_KM : Math.round(p.altitudeKm);
-  return `${SATELLITE} · ${km} km SSO`;
+  return `${SATELLITE} · ${km} km ${sunSynchronous(p) ? 'SSO' : `${p.inclinationDeg.toFixed(0)}°`}`;
 }
 
 /** Header chip when no demo runs. */
@@ -42,7 +46,7 @@ export function orbitSource(p: PassProfile = passProfile()): string {
   return (
     `${opening}: ${SATELLITE} (NORAD ${p.noradId}) from ${from}, epoch ` +
     `${day(p.tleEpochMs)} ${hhmm(p.tleEpochMs)} UTC, propagated with SGP4 in your browser. ` +
-    `Its next pass over Zaghouan rises ${day(p.aosMs)} ${hhmm(p.aosMs)} UTC and culminates at ` +
+    `The pass flown over Zaghouan rises ${day(p.aosMs)} ${hhmm(p.aosMs)} UTC and culminates at ` +
     `${p.maxElevationDeg.toFixed(1)}°; the testbed replays it ×${Math.round(timeCompression())}.`
   );
 }

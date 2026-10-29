@@ -10,7 +10,7 @@ import {
   encodeText,
   importMacKey,
 } from '../src/sim/crypto';
-import { DEMO_LENGTH_S, Engine } from '../src/sim/engine';
+import { DEMO_LENGTH_S, Engine, UPLINK_RUN_S } from '../src/sim/engine';
 import {
   ALTITUDE_KM,
   C_KM_S,
@@ -54,6 +54,14 @@ import {
   sha256Hex,
   type Frame,
 } from '../src/sim/trustAnchor';
+import {
+  OnboardVerifier,
+  ROGUE_COMMAND,
+  UPLINK_THREATS,
+  commandText,
+  constantTimeEqual,
+  sealCommand,
+} from '../src/sim/uplink';
 import { CHANNEL_HZ, SPAN_HZ, renderSpectrum, spectrumState } from '../src/ui/spectrumModel';
 
 const KEY = Uint8Array.from({ length: 32 }, (_, i) => i);
@@ -706,5 +714,88 @@ describe('received spectrum', () => {
     await runFor(spoof, 1.2);
     const node = spectrumState(spoof).peaks.find((p) => p.rogue);
     expect(Math.abs(node!.hz)).toBeLessThan(CHANNEL_HZ / 2);
+  });
+});
+
+describe('uplink telecommands', () => {
+  const genuine = {
+    satelliteId: 'TERRASAR-X',
+    seq: 4097,
+    t: 12.5,
+    opcode: 'SET_MODE',
+    args: 'IMAGING',
+  };
+  const hmacKey = (seed: number) =>
+    crypto.subtle.importKey(
+      'raw',
+      Uint8Array.from({ length: 32 }, (_, i) => (i * 7 + seed) & 0xff),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    );
+
+  it('executes only what mission control sealed, once, in order', async () => {
+    const key = await hmacKey(1);
+    const tag = await sealCommand(key, genuine);
+    const onboard = new OnboardVerifier();
+    expect((await onboard.verify(key, genuine, tag)).verdict).toBe('EXECUTED');
+    expect(onboard.lastExecuted).toBe(4097);
+
+    // Tampered in flight: the transmitter goes off, the original tag rides along.
+    const tampered = await onboard.verify(key, { ...genuine, seq: 4098, ...ROGUE_COMMAND }, tag);
+    expect([tampered.macOk, tampered.verdict]).toEqual([false, 'REJECTED']);
+
+    // Forged under a guessed key.
+    const forged = { ...genuine, seq: 4099, ...ROGUE_COMMAND };
+    const injected = await onboard.verify(key, forged, await sealCommand(await hmacKey(2), forged));
+    expect([injected.macOk, injected.verdict]).toEqual([false, 'REJECTED']);
+
+    // Replayed: the tag is genuine, the count is old.
+    const replayed = await onboard.verify(key, genuine, tag);
+    expect([replayed.macOk, replayed.fresh, replayed.verdict]).toEqual([true, false, 'REJECTED']);
+    expect(onboard.lastExecuted).toBe(4097);
+
+    expect(commandText(genuine)).toBe('TC|TERRASAR-X|4097|12.500|SET_MODE|IMAGING');
+    expect(constantTimeEqual(tag, tag)).toBe(true);
+    expect(constantTimeEqual(tag, tag.slice(0, -1) + (tag.endsWith('0') ? '1' : '0'))).toBe(false);
+    expect(constantTimeEqual(tag, tag.slice(0, -2))).toBe(false);
+  });
+
+  it('keeps flying routine commands and rejects every hostile one on board', async () => {
+    const engine = await Engine.create();
+    await runFor(engine, 3);
+    expect(engine.pass.linkActive).toBe(true);
+    expect(engine.uplinkStats.executed).toBeGreaterThan(0);
+    expect(engine.uplink.every((r) => r.verdict === 'EXECUTED' && r.threat === null)).toBe(true);
+
+    for (const threat of UPLINK_THREATS) {
+      const before = engine.uplink.length;
+      expect(engine.triggerUplink(threat)).toBe(true);
+      expect(engine.trigger('hijack')).toBe(false);
+      await runFor(engine, 1.5);
+      expect(engine.state).toBe('UNDER ATTACK');
+      expect(engine.banner?.kind).toBe(threat);
+      await runFor(engine, UPLINK_RUN_S);
+      expect(engine.uplinkRun).toBeNull();
+
+      const run = engine.uplinkRuns[engine.uplinkRuns.length - 1];
+      expect(run.threat).toBe(threat);
+      expect(run.blocked).toBeGreaterThan(0);
+      expect(run.executed).toBe(0);
+      const received = engine.uplink.slice(0, engine.uplink.length - before);
+      const hostile = received.filter((r) => r.threat === threat);
+      expect(hostile.length).toBe(run.blocked);
+      expect(hostile.every((r) => r.verdict === 'REJECTED')).toBe(true);
+      if (threat === 'cmdreplay') expect(hostile.every((r) => r.macOk && !r.fresh)).toBe(true);
+      else expect(hostile.every((r) => !r.macOk)).toBe(true);
+      if (threat !== 'cmdtamper') {
+        expect(received.some((r) => r.threat === null && r.verdict === 'EXECUTED')).toBe(true);
+      }
+      await runFor(engine, 2.5);
+      expect(engine.state).not.toBe('UNDER ATTACK');
+    }
+    expect(engine.uplinkStats.hostileExecuted).toBe(0);
+    const seqs = engine.uplink.filter((r) => r.verdict === 'EXECUTED').map((r) => r.seq);
+    for (let i = 1; i < seqs.length; i++) expect(seqs[i]).toBeLessThan(seqs[i - 1]);
   });
 });
