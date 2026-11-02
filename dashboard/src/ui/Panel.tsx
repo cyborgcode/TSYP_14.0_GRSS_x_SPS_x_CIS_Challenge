@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { useSpotlight } from '../reactbits/SpotlightCard';
 import { AlertIcon } from './icons';
 
 export function Panel({
@@ -21,8 +22,11 @@ export function Panel({
   headerExtra?: ReactNode;
   id?: string;
 }) {
+  const spotlight = useSpotlight<HTMLElement>();
   return (
     <section
+      ref={spotlight.ref}
+      onPointerMove={spotlight.onPointerMove}
       className={`panel ${alert ? 'panel--alert' : ''} ${className}`}
       aria-labelledby={`${id ?? badge}-title`}
     >

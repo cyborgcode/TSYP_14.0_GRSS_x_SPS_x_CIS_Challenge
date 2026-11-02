@@ -7,6 +7,7 @@ import '@fontsource/jetbrains-mono/latin-500.css';
 import '@fontsource/jetbrains-mono/latin-700.css';
 import './index.css';
 import './explain.css';
+import './redesign.css';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

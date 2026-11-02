@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { useEngine } from '../engineContext';
 import type { SystemState } from '../sim/engine';
-import { CARRIER_HZ } from '../sim/geometry';
+import { ScrambleText } from '../reactbits/ScrambleText';
 import { utcClock } from './format';
 import { passChip } from './orbitText';
 import { FleetPicker } from './FleetPicker';
@@ -29,28 +29,21 @@ export function Header() {
   return (
     <header className="header">
       <div className="header__brand">
-        <span className="header__dish" aria-hidden="true">
-          <DishIcon size={22} />
+        <span className="header__mark" aria-hidden="true">
+          <DishIcon size={20} />
           <span className="header__wave" />
           <span className="header__wave header__wave--2" />
         </span>
-        <h1 className="header__title">Secure Ground-Link Testbed</h1>
-        <span className="header__divider" aria-hidden="true" />
-        <span className="header__subtitle">Earth-observation chain · Track 1</span>
+        <span className="header__brandcopy">
+          <span className="header__kicker">Earth-observation chain · Track 1</span>
+          <span className="header__title">Secure Ground-Link Testbed</span>
+        </span>
         <FleetPicker />
       </div>
       <SiteNav current="/" />
       <div className="header__right">
-        <div className="header__readout">
-          <span className="overline">Downlink</span>
-          <span className="mono">X-band {(CARRIER_HZ / 1e6).toFixed(1)} MHz</span>
-        </div>
-        <div className="header__readout">
-          <span className="overline">Frame MAC</span>
-          <span className="mono">HMAC-SHA256</span>
-        </div>
-        <span className="mode-chip">
-          <span className="mode-chip__dot" />
+        <span className="header__live">
+          <span className="header__live-dot" />
           {engine.demo.active ? 'Demo · four scenarios' : passChip()}
         </span>
         <span className="clock mono" aria-label="UTC time">
@@ -62,7 +55,7 @@ export function Header() {
           aria-live="polite"
         >
           <span className="pill__dot" />
-          {engine.state}
+          <ScrambleText text={engine.state} />
         </span>
       </div>
     </header>

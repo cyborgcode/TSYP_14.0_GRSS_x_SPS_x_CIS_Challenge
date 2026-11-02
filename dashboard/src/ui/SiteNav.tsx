@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 
+import { pageHref } from './pageHref';
+
 /** The site's pages, in reading order. The dashboard is `/`; the others share pages.html. */
 export const PAGES = [
   { path: '/', label: 'Live testbed', title: 'Live testbed' },
@@ -25,9 +27,13 @@ export function SiteNav({ current }: { current: PagePath }) {
 
   return (
     <nav ref={nav} className="site-nav" aria-label="Pages">
-      {PAGES.map(({ path, label }) => (
-        <a key={path} href={path} aria-current={path === current ? 'page' : undefined}>
-          {label}
+      {PAGES.map((page) => (
+        <a
+          key={page.path}
+          href={pageHref(page.path)}
+          aria-current={page.path === current ? 'page' : undefined}
+        >
+          {page.label}
         </a>
       ))}
     </nav>

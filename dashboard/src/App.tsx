@@ -1,6 +1,12 @@
 import { useEffect } from 'react';
 
 import { EngineProvider, useEngineCtx } from './engineContext';
+import { AnimatedContent } from './reactbits/AnimatedContent';
+import { Aurora } from './reactbits/Aurora';
+import { ClickSpark } from './reactbits/ClickSpark';
+import { ShinyText } from './reactbits/ShinyText';
+import { SATELLITE, STATION_PLACE } from './sim/copy';
+import { CARRIER_HZ } from './sim/geometry';
 import { useBelowGateLink } from './ui/BelowGate';
 import { ControlDeckPanel } from './ui/ControlDeck';
 import { Header } from './ui/Header';
@@ -30,6 +36,66 @@ function Loading() {
   );
 }
 
+function SectionHead({
+  id,
+  index,
+  title,
+  note,
+}: {
+  id: string;
+  index: string;
+  title: string;
+  note: string;
+}) {
+  return (
+    <header className="section-head">
+      <span className="section-head__index" aria-hidden="true">
+        {index}
+      </span>
+      <div className="section-head__text">
+        <h2 className="section-head__title" id={id}>
+          {title}
+        </h2>
+        <p className="section-head__note">{note}</p>
+      </div>
+    </header>
+  );
+}
+
+function HeroIntro() {
+  return (
+    <div className="hero__intro">
+      <div className="hero__copy">
+        <p className="hero__eyebrow">
+          <span className="hero__eyebrow-dot" />
+          Live testbed · {STATION_PLACE}
+        </p>
+        <h1 className="hero__title" id="hero-title">
+          See a satellite link <ShinyText>defend itself</ShinyText>.
+        </h1>
+        <p className="hero__lead">
+          A live digital twin of {SATELLITE}’s X-band downlink. Inject an attack, then watch
+          cryptography, orbital physics and machine learning decide—frame by frame—what is real.
+        </p>
+      </div>
+      <dl className="hero__facts">
+        <div>
+          <dt>Downlink</dt>
+          <dd>X-band · {(CARRIER_HZ / 1e6).toFixed(1)} MHz</dd>
+        </div>
+        <div>
+          <dt>Spacecraft</dt>
+          <dd>{SATELLITE} · SGP4</dd>
+        </div>
+        <div>
+          <dt>Verification</dt>
+          <dd>Three independent tiers</dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
 function Dashboard() {
   const { focus, setFocus } = useEngineCtx();
   useBelowGateLink();
@@ -43,48 +109,85 @@ function Dashboard() {
   }, [focus, setFocus]);
 
   return (
-    <div className="app">
+    <div className="app app--dashboard">
+      <Aurora />
+      <ClickSpark />
       <Header />
-      <main className="main">
-        <KpiTiles />
-        <div className="grid">
-          <div className="grid__col grid__col--main">
-            <div className="grid__viewport">
-              <ViewportPanel />
-            </div>
-            <div className="grid__telemetry">
+      <main className="dash-main">
+        <section className="hero" aria-labelledby="hero-title">
+          <HeroIntro />
+          <div className="hero__stage">
+            <ViewportPanel />
+          </div>
+        </section>
+
+        <AnimatedContent>
+          <section className="section metrics-section" aria-labelledby="metrics-title">
+            <SectionHead
+              id="metrics-title"
+              index="01"
+              title="Session metrics"
+              note="Every tile is measured in this browser, on the frames of this session—not a static benchmark."
+            />
+            <KpiTiles />
+          </section>
+        </AnimatedContent>
+
+        <AnimatedContent>
+          <section className="section" id="command" aria-labelledby="command-title">
+            <SectionHead
+              id="command-title"
+              index="02"
+              title="Command & telemetry"
+              note="Run one of the attacks below and follow the link from the RF front end to the trust anchor."
+            />
+            <div className="ops-grid">
+              <ControlDeckPanel />
               <TelemetryPanel />
             </div>
-          </div>
-          <div className="grid__col grid__col--ops">
-            <ControlDeckPanel />
-            <ResiliencePanel />
-          </div>
-          <div className="grid__col grid__col--trust">
-            <ThreatMatrixPanel />
-            <div className="grid__ledger">
+          </section>
+        </AnimatedContent>
+
+        <AnimatedContent>
+          <section className="section" aria-labelledby="trust-title">
+            <SectionHead
+              id="trust-title"
+              index="03"
+              title="Trust & resilience"
+              note="Three verification tiers, a hash-chained audit ledger and the resilience record they produce together."
+            />
+            <div className="trust-grid">
+              <ThreatMatrixPanel />
+              <ResiliencePanel />
               <LedgerPanel />
             </div>
-          </div>
-        </div>
+          </section>
+        </AnimatedContent>
       </main>
       <PacketDrawer />
-      <footer className="footer">
-        <p>
-          Emulation only: nothing on this page transmits or receives RF. Attacks are software
-          injectors acting on synthetic frames inside the testbed. {orbitSource()}
-        </p>
-        <p>
-          Frames are sealed and verified for real with Web Crypto (HMAC-SHA256, SHA-256 hash chain
-          from a genesis root, Ed25519-signed re-keys); the Isolation Forest is trained in your
-          browser on nominal passes; the physical layer is the digital twin’s chi-square engine,
-          against SGP4 and the ITU-R P.618 link budget. Every figure on the dashboard is measured
-          live.
-        </p>
-        <p className="footer__legal">
-          Fonts: Space Grotesk, Inter, JetBrains Mono (SIL OFL 1.1) · Land outlines: Natural Earth
-          (public domain)
-        </p>
+      <footer className="site-foot">
+        <div className="site-foot__note">
+          <span className="site-foot__mark">
+            <DishIcon size={16} /> Secure Ground-Link Testbed
+          </span>
+          <p>
+            Emulation only: nothing on this page transmits or receives RF. Attacks are software
+            injectors acting on synthetic frames inside the testbed. {orbitSource()}
+          </p>
+        </div>
+        <div className="site-foot__note">
+          <p>
+            Frames are sealed and verified for real with Web Crypto (HMAC-SHA256, SHA-256 hash chain
+            from a genesis root, Ed25519-signed re-keys); the Isolation Forest is trained in your
+            browser on nominal passes; the physical layer is the digital twin’s chi-square engine,
+            against SGP4 and the ITU-R P.618 link budget. Every figure on the dashboard is measured
+            live.
+          </p>
+          <p className="site-foot__legal">
+            Fonts: Space Grotesk, Inter, JetBrains Mono (SIL OFL 1.1) · Land outlines: Natural Earth
+            (public domain)
+          </p>
+        </div>
       </footer>
     </div>
   );

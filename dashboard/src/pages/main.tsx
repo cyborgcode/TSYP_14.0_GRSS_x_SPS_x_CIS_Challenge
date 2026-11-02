@@ -7,6 +7,7 @@ import '@fontsource/jetbrains-mono/latin-500.css';
 import '@fontsource/jetbrains-mono/latin-700.css';
 import '../index.css';
 import '../explain.css';
+import '../redesign.css';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -24,8 +25,11 @@ const ROUTES = {
   '/noise': VideoPage,
 } as const;
 
-const path = window.location.pathname.replace(/\/+$/, '');
-const route = (path in ROUTES ? path : '/signal') as keyof typeof ROUTES;
+const queryPage = new URLSearchParams(window.location.search).get('page');
+const requested = queryPage
+  ? `/${queryPage.replace(/^\/+|\/+$/g, '')}`
+  : window.location.pathname.replace(/\/+$/, '');
+const route = (requested in ROUTES ? requested : '/signal') as keyof typeof ROUTES;
 const Page = ROUTES[route];
 const title = PAGES.find((p) => p.path === route)?.title;
 document.title = `${title} · Secure Ground-Link Testbed`;

@@ -1,4 +1,5 @@
 import { useEngine } from '../engineContext';
+import { useSpotlight } from '../reactbits/SpotlightCard';
 import type { Engine } from '../sim/engine';
 import type { AttackKind } from '../sim/signals';
 import { fmtMs } from './format';
@@ -41,8 +42,13 @@ function Tile({
   tone?: Tone;
   alert?: boolean;
 }) {
+  const spotlight = useSpotlight<HTMLDivElement>();
   return (
-    <div className={`tile ${alert ? 'tile--alert' : ''}`}>
+    <div
+      ref={spotlight.ref}
+      onPointerMove={spotlight.onPointerMove}
+      className={`tile ${alert ? 'tile--alert' : ''}`}
+    >
       <div className="tile__label">{label}</div>
       <div className="tile__row">
         <span className="tile__value mono">{value}</span>
@@ -93,12 +99,6 @@ export function KpiTiles() {
 
   return (
     <div className="kpis-wrap">
-      <div className="kpis-head">
-        <span className="overline">Evaluation · live</span>
-        <span className="kpis-head__note">
-          Every tile is measured in this browser, on the frames of this session.
-        </span>
-      </div>
       <div className="kpis">
         <Tile
           label="Frames verified"
@@ -143,8 +143,8 @@ export function KpiTiles() {
           tone={integrity < 0.999 ? 'bad' : 'ok'}
           alert={attack}
         />
-        <Banner />
       </div>
+      <Banner />
     </div>
   );
 }
