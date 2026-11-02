@@ -100,6 +100,12 @@ One pass per threat vector over Zaghouan on TerraSAR-X's built-in element set
 | CCSDS sequence hijack (+512, SAFE_HOLD) | 100% | 100% | 0% | 0% | 0% | 3% |
 | Uplink command tampering / injection | 100% | 100% | — | — | — | — |
 
+The evaluation behind the report, `python -m digital_twin.evaluate`, runs the three tiers and the
+site's decision rule against eight attacks (the four of the live demo plus replay, relay, delay
+and injection), two below-the-gate jams and three uplink threats, over six seeds: no attack packet
+reaches the analyst, 0.7–1.5 % of genuine packets are held, and the chi-square engine raises 2
+false alarms in 45,000 clean packets ([docs/evaluation-report.md](docs/evaluation-report.md)).
+
 **Live orbit.** The twin flies TerraSAR-X (NORAD 31698), an X-band radar satellite on a 514 km
 sun-synchronous orbit, on its current orbit: its latest element set is downloaded from
 CelesTrak's public GP service at start-up. A download is reused for two hours, as CelesTrak asks;
@@ -150,9 +156,10 @@ digital_twin/      SGP4 digital twin of the ground link, 13 modules
   security_detector.py          chi-square gate + kinematic coupling   ← physical layer
   audit_logger.py               phase 3: hash-chained JSONL audit log
   physics_validator.py          master orchestrator and red-team report
+  evaluate.py                   seeded evaluation: 8 attacks, 6 seeds, memory and timing
   api_gateway.py                FastAPI service
   dashboard_ui.py               Streamlit causal-chain inspector
-tests/             126 tests
+tests/             139 tests
 docs/              one document per deliverable, plus roadmap and decisions
 dashboard/         React app — the Phase 2 live-demo surface
 data/              official datasets (gitignored)
@@ -187,19 +194,21 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
   Earth-observation satellites) with the live sky over Zaghouan; click any satellite to fly it.
   `/?sat=<NORAD>` flies that satellite's next pass culminating at least 10° high,
   `/?sat=<NORAD>&from=<Unix ms>` the pass under way at that time (`dashboard/src/sim/fleet.ts`).
-  Each satellite gets its own identity, hardware token and Ed25519 handshake; TerraSAR-X and
+  Each satellite gets its own identity, emulated hardware token and Ed25519 key; TerraSAR-X and
   TanDEM-X are drawn to scale, the others as a generic Earth-observation bus.
 - **3D ground link**: that pass over the station in real-time WebGL (ACES Filmic tone mapping,
   layered atmospheric scattering), with TerraSAR-X to scale: hexagonal body, body-mounted solar
   cells, radar antenna along a side facet, downlink antenna on its boom; the camera turned toward
   where the pass culminates. Click the satellite or the station to fly in and watch the signal live.
-- **One continuous signal beam**: its colour and distortion, the Carrier Frequency (MHz) and RSSI
-  (dBm) charts (Chart.js), the received spectrum, the security banner and the ledger all change
+- **One continuous signal beam**: its colour and distortion, the Carrier Frequency (MHz) and carrier
+  power (dBm) charts (Chart.js), the received spectrum, the security banner and the ledger all change
   together with the scenario.
 - **Simulate attack**: Stealth Spoofing (forged MAC headers and nonces from node 0x99A2, power
   inside a ±4 dB band but 14σ below the link budget, quarantine protocols), Data Tampering (one payload bit flipped in transit: no RF signature,
-  only hash verification sees it), Frequency Hijacking (rogue carrier +14.2 MHz, carrier to
-  ~8492 MHz, proof failures) and Noise Jamming (RSSI to −96.5 dBm, fallback routing to GS-MAT).
+  only hash verification sees it), Frequency Hijacking (rogue carrier +14.2 MHz, outside the 6 MHz channel, seen by the
+  station's 40 MHz wideband spectrum monitor; carrier to ~8492 MHz, proof failures) and Noise
+  Jamming (J/N +9.1 dB: 9.6 dB of SNR lost, carrier power estimate down to −96.5 dBm, fallback
+  routing to GS-MAT).
   **Play demo** runs all four back to back.
 - **The uplink**: the link runs both ways. Mission control at Zaghouan sends a telecommand about
   every second on the S-band uplink (2050 MHz, 50 dBW EIRP, its own Doppler and received power on
@@ -241,7 +250,8 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
   tiers) and
   `/noise` (a narrated explainer video; source and re-render steps in `dashboard/explainer/`).
 - **trust_anchor.py terminal**: live log of SHA-256 block validations from a genesis root hash,
-  HMAC-SHA256 frame seals and Ed25519 handshakes, all computed with Web Crypto in the browser.
+  HMAC-SHA256 frame seals and Ed25519 signatures on every re-key, all computed with Web Crypto
+  in the browser.
 - **Detection**: the digital twin's three tiers, ported to the browser. Data layer: the trust
   anchor (HMAC-SHA256, anti-replay nonces, SHA-256 chain, cleared identity). Statistical layer:
   an Isolation Forest trained on nominal passes at load. Physical layer: the chi-square engine

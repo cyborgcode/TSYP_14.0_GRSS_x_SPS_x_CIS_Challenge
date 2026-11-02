@@ -34,7 +34,6 @@ export const HORIZON_HOURS = 12;
 const SUMMARY_STEP_S = 5;
 const FETCH_TIMEOUT_MS = 6000;
 const CACHE_KEY = 'groundlink:catalog:resource';
-const EARTH_RADIUS_WGS72_KM = 6378.135;
 const RX_OHMS = 50;
 
 export interface CatalogSatellite {
@@ -223,7 +222,6 @@ export function signalCurve(
 /** Every pass of one satellite that brings the link up between `fromMs` and `toMs`. */
 export function passSignals(sat: CatalogSatellite, fromMs: number, toMs: number): PassSignal[] {
   const satrec = twoline2satrec(sat.line1, sat.line2);
-  const altitudeKm = (satrec.a - 1) * EARTH_RADIUS_WGS72_KM;
   const out: PassSignal[] = [];
   for (const w of passWindows(satrec, fromMs, toMs)) {
     if (w.peakDeg < MASK_ELEVATION_DEG - 1) continue;
@@ -236,6 +234,8 @@ export function passSignals(sat: CatalogSatellite, fromMs: number, toMs: number)
     if (samples.length < 2) continue;
     const top = samples.reduce((a, b) => (b.elevationDeg > a.elevationDeg ? b : a));
     const look = lookAt(satrec, top.tMs);
+    // Height above the ellipsoid at culmination, as the station sees it.
+    const altitudeKm = look?.heightKm ?? 0;
     const rx = span(samples.map((s) => s.rxDbm));
     out.push({
       id: `${sat.noradId}-${Math.round(w.aosMs)}`,

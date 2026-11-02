@@ -136,7 +136,7 @@ export interface PassProfile {
   source: 'celestrak' | 'cache' | 'builtin' | 'reference';
   satName: string;
   noradId: number | null;
-  /** Mean altitude of the orbit, km. */
+  /** Height above the ellipsoid, averaged over the pass flown, km. */
   altitudeKm: number;
   /** Inclination of the orbit, degrees. */
   inclinationDeg: number;

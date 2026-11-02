@@ -45,8 +45,8 @@ const SPECS: Record<Kind, Spec> = {
     range: null,
   },
   rssi: {
-    title: 'RSSI signal strength',
-    subtitle: 'measured vs link budget · dBm',
+    title: 'Carrier power',
+    subtitle: 'decoded carrier vs link budget · dBm',
     value: (x) => x.rssiDbm,
     model: (x) => x.rssiModelDbm,
     out: (p) => Boolean(p.x && (axisFlag(p.physics, 'rssiDb') || p.physics?.noFrames)),

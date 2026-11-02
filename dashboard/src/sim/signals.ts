@@ -31,6 +31,15 @@ const JAM_SATURATION_DB = 5;
 /** SNR the noise jammer costs the link at `powerDb` of attack power, on average. */
 export const jamSnrLossDb = (powerDb: number): number => Math.max(0, 1.4 * powerDb - 3);
 
+/**
+ * Jammer-to-noise ratio, dB, of the jam at `powerDb` of attack power: the J/N that costs the link
+ * jamSnrLossDb(powerDb), since SNR lost = 10·log10(1 + J/N). −Infinity while the jam costs nothing.
+ */
+export function jamToNoiseDb(powerDb: number): number {
+  const loss = jamSnrLossDb(powerDb);
+  return loss > 0 ? 10 * Math.log10(10 ** (loss / 10) - 1) : -Infinity;
+}
+
 /** Attack envelope: ramps in 0.05–0.3 s after the trigger, out over 0.5 s after the response. */
 export function envelope(a: Attack, s: number): number {
   return (

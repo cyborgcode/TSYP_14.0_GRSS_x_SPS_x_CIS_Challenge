@@ -2850,20 +2850,50 @@ button {
 
 /* ------------------------------------------------------------------ responsive */
 
-@media (max-width: 1840px) {
+/* The satellite picker sits in the brand row: the secondary readouts give way earlier. */
+@media (max-width: 2140px) {
   .header__subtitle,
   .header__divider {
     display: none;
   }
 }
 
-@media (max-width: 1760px) {
+@media (max-width: 2060px) {
   .header__readout {
     display: none;
   }
 }
 
-@media (max-width: 1480px) {
+/* Laptop widths: the satellite picker, the page links and the status share one row. */
+@media (min-width: 901px) and (max-width: 1420px) {
+  .fleet__norad {
+    display: none;
+  }
+}
+@media (min-width: 901px) and (max-width: 1300px) {
+  .header {
+    gap: 10px;
+    padding: 0 14px;
+  }
+  .header__brand {
+    gap: 8px;
+  }
+  .header__title {
+    font-size: 16px;
+  }
+  .fleet-wrap {
+    margin-left: 0;
+  }
+  .fleet__btn {
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .header .site-nav a {
+    padding: 7px 7px;
+    font-size: 12.5px;
+  }
+}
+@media (max-width: 1760px) {
   .mode-chip {
     display: none;
   }

@@ -34,8 +34,8 @@
           "say": "The frequency is not random. It moves only with the Doppler shift, up to about two hundred kilohertz either way, and the orbit predicts it."
         },
         {
-          "text": "At Zaghouan the carrier arrives between −89 and −74 dBm: an amplitude of 11.4 to 60 µV.",
-          "say": "At Zagwan, it arrives between minus eighty-nine and minus seventy-four D B M: an amplitude of eleven to sixty microvolts."
+          "text": "At Zaghouan the carrier arrives between −88.8 and −74.4 dBm: an amplitude of 11.4 to 60.0 µV.",
+          "say": "At Zagwan, it arrives between minus eighty-eight point eight and minus seventy-four point four D B M: an amplitude of eleven point four to sixty microvolts."
         },
         {
           "text": "The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 11 to 26 dB over the pass.",
@@ -133,7 +133,7 @@
           "text": "Change one bit, by accident or on purpose, and the tag breaks: the frame is dropped and requested again."
         },
         {
-          "text": "Either deterministic layer, data or physical, rejects a frame. When two layers fire at once, the link is quarantined."
+          "text": "Either deterministic tier, data or physical, rejects a frame. When two tiers fire at once, the link is quarantined."
         }
       ]
     },

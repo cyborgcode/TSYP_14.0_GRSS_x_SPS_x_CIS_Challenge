@@ -79,11 +79,13 @@ class MLAnomalyDetector:
         if not self.is_trained:
             raise RuntimeError("train the detector on nominal passes first")
         features = self._standardise([link_packet])
-        is_anomaly = bool(self.model.predict(features)[0] == -1)  # 1 inlier, -1 anomaly
+        # One scoring pass: predict() is exactly decision_function() < 0.
+        score = float(self.model.decision_function(features)[0])
+        is_anomaly = score < 0.0
         return {
             "layer": "Statistical Layer (ML)",
             # Positive for inliers, negative for outliers; the decision threshold is zero.
-            "anomaly_score": float(self.model.decision_function(features)[0]),
+            "anomaly_score": score,
             "threat_detected": is_anomaly,
             "verdict": "ML_ANOMALY_FLAGGED" if is_anomaly else "ML_NOMINAL_INLIER",
         }

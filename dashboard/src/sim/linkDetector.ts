@@ -48,9 +48,9 @@ export interface RfMeasurement {
 
 export const FEATURE_NAMES = [
   'carrier residual',
-  'RSSI residual',
+  'power residual',
   'carrier step',
-  'RSSI step',
+  'power step',
 ] as const;
 
 export interface DetectorResult {
@@ -105,7 +105,7 @@ export class LinkDetector {
 
   constructor(seed = 42) {
     const train = nominalFeatures(3000, 17.3, 0);
-    this.forest = new IsolationForest({ nEstimators: 100, sampleSize: 256, seed }).fit(train);
+    this.forest = new IsolationForest({ nEstimators: 256, sampleSize: 256, seed }).fit(train);
     this.threshold = quantile(
       train.map((f) => this.forest.score(f)),
       1 - CONTAMINATION,
@@ -125,7 +125,7 @@ export class LinkDetector {
       physicsReasons.push('carrier offset no orbit can produce');
     if (Math.abs(features[2]) > MAX_CARRIER_STEP_MHZ) physicsReasons.push('carrier jump');
     if (Math.abs(features[1]) > MAX_RSSI_RESIDUAL_DB)
-      physicsReasons.push('RSSI outside the link-budget band');
+      physicsReasons.push('carrier power outside the link-budget band');
 
     const score = this.forest.score(features);
     const forest = score > this.threshold;
@@ -178,7 +178,9 @@ export function zeroTrust(
   if (!claimed) reasons.push('no frame decoded');
   else if (claimed.satellite_id !== SAT_ID) reasons.push(`${claimed.satellite_id} is not cleared`);
   else if (claimed.hw_token !== SAT_TOKEN)
-    reasons.push(`hardware token ${claimed.hw_token} does not match ${SAT_ID} registration`);
+    reasons.push(
+      `emulated hardware token ${claimed.hw_token} does not match ${SAT_ID} registration`,
+    );
   if (authentic && !authentic.ok) reasons.push(`trust anchor: ${authentic.reason}`);
   if (detection?.anomaly) reasons.push('detector: RF anomaly');
   return reasons.length

@@ -55,7 +55,7 @@ export function activeBanner(kind: AttackKind, ms: number | null): BannerCopy {
     case 'hijack':
       return {
         headline: `Frequency hijack detected${t} · carrier at 8492 MHz`,
-        detail: `Rogue carrier +14.2 MHz off the ${SATELLITE} downlink · proof failures on every frame`,
+        detail: `Rogue carrier +14.2 MHz, outside the 6 MHz channel, on the wideband spectrum monitor · proof failures on every frame`,
       };
     case 'spoof':
       return {
@@ -69,7 +69,7 @@ export function activeBanner(kind: AttackKind, ms: number | null): BannerCopy {
       };
     case 'jam':
       return {
-        headline: `Noise jamming at ${STATION} · RSSI −96.5 dBm`,
+        headline: `Noise jamming at ${STATION} · carrier power −96.5 dBm`,
         detail: `Broadband white noise saturating the receiver · forcing fallback routing to ${HANDOVER_STATION}`,
       };
   }
@@ -90,7 +90,7 @@ export function resolvedBanner(
     case 'spoof':
       return {
         headline: `Node ${ROGUE_NODE} isolated · spoofed frames quarantined`,
-        detail: `Ed25519 handshake renewed · keys rotated to epoch ${e}`,
+        detail: `Keys rotated to epoch ${e} · re-key signed with Ed25519`,
       };
     case 'tamper':
       return {

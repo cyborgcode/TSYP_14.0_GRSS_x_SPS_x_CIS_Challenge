@@ -12,6 +12,7 @@ import {
   degreesToRadians,
   ecfToLookAngles,
   eciToEcf,
+  eciToGeodetic,
   gstime,
   propagate,
   twoline2satrec,
@@ -27,7 +28,7 @@ import {
   type RealGeometry,
 } from './geometry';
 
-export const LIVE_NORAD_ID = 31698; // TerraSAR-X: X-band SAR, ~510 km sun-synchronous
+export const LIVE_NORAD_ID = 31698; // TerraSAR-X: X-band SAR, ~514 km sun-synchronous
 export const TLE_ENDPOINT = '/api/tle';
 /** Passes lower than this make a poor replay: the next higher one is chosen. */
 export const MIN_PEAK_ELEVATION_DEG = 10;
@@ -44,7 +45,6 @@ export const BUILTIN_TLE: TleRecord = {
   line2: '2 31698  97.4456 305.3111 0001816  81.2566 278.8874 15.19151530 73153',
   fetchedUtc: '2026-10-27T20:02:37.594Z',
 };
-const EARTH_RADIUS_WGS72_KM = 6378.135;
 
 /** Zaghouan ground station (GS-ZAG). */
 const STATION = {
@@ -97,6 +97,8 @@ export interface Look {
   azDeg: number;
   elDeg: number;
   rangeKm: number;
+  /** Geodetic height of the satellite above the WGS-72 ellipsoid, km. */
+  heightKm: number;
 }
 
 /** Azimuth, elevation and slant range of the satellite from Zaghouan at `ms`. */
@@ -104,11 +106,13 @@ export function lookAt(satrec: SatRec, ms: number): Look | null {
   const date = new Date(ms);
   const state = propagate(satrec, date);
   if (!state) return null;
-  const look = ecfToLookAngles(STATION, eciToEcf(state.position, gstime(date)));
+  const gmst = gstime(date);
+  const look = ecfToLookAngles(STATION, eciToEcf(state.position, gmst));
   return {
     azDeg: (look.azimuth * 180) / Math.PI,
     elDeg: (look.elevation * 180) / Math.PI,
     rangeKm: look.rangeSat,
+    heightKm: eciToGeodetic(state.position, gmst).height,
   };
 }
 
@@ -222,7 +226,8 @@ export function passProfileFor(
     source,
     satName: record.name,
     noradId: record.noradId,
-    altitudeKm: (satrec.a - 1) * EARTH_RADIUS_WGS72_KM,
+    // Height above the ellipsoid, averaged over the pass: what an observer at Zaghouan sees.
+    altitudeKm: looks.reduce((sum, look) => sum + look.heightKm, 0) / looks.length,
     inclinationDeg: (satrec.inclo * 180) / Math.PI,
     realPassS: duration,
     maxElevationDeg: looks[k].elDeg,

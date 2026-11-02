@@ -296,7 +296,7 @@ function StationPanel() {
       </div>
       <div className="metrics">
         <Metric
-          label="RSSI"
+          label="Carrier power"
           value={x ? `${x.rssiDbm.toFixed(1)} dBm` : '—'}
           tone={
             x && x.rssiDbm < x.rssiModelDbm && axisFlag(engine.physics, 'rssiDb')

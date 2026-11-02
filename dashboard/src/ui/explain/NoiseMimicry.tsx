@@ -39,7 +39,7 @@ const TECHNIQUES: Technique[] = [
     imitates: 'natural fading and the Doppler track',
     how: `Node 0x99A2 pre-corrects its carrier to the satellite’s Doppler curve and adds artificial fading: the carrier stays within tens of hertz and the power only ${ATTACK_SIGNALS.spoofPowerDropDb} dB low.`,
     gains: `It stays inside a ±${STEALTH.boxBandDb} dB band: a gate with fixed tolerances lets it through.`,
-    givesAway: `The χ² engine knows the power to ${NATURAL.powerDb.sigma} dB: ${ATTACK_SIGNALS.spoofPowerDropDb} dB low is ${Math.round(ATTACK_SIGNALS.spoofPowerDropDb / NATURAL.powerDb.sigma)}σ off the link budget. It also cannot produce a valid HMAC-SHA256 tag without the key, it reuses nonces, and its hardware token is wrong.`,
+    givesAway: `The χ² engine knows the power to ${NATURAL.powerDb.sigma} dB: ${ATTACK_SIGNALS.spoofPowerDropDb} dB low is ${Math.round(ATTACK_SIGNALS.spoofPowerDropDb / NATURAL.powerDb.sigma)}σ off the link budget. It also cannot produce a valid HMAC-SHA256 tag without the key, it reuses nonces, and its emulated hardware token is wrong.`,
   },
   {
     name: 'Bit flips disguised as bit errors',
@@ -49,7 +49,7 @@ const TECHNIQUES: Technique[] = [
     how: 'Flips chosen payload bits between the satellite and the station, then recomputes the CRC, which anyone can do.',
     gains: 'The frame looks like a noisy one that passed its checksum. No RF signature at all.',
     givesAway:
-      'The HMAC tag, which needs the secret key, no longer matches: the data layer rejects the frame. One failure looks like weather and is resent; a burst trips two tiers and the link is quarantined.',
+      'The HMAC tag, which needs the secret key, no longer matches: the data layer rejects the frame. One HMAC failure is treated as possibly benign and the frame is resent; a burst of failures escalates to quarantine.',
   },
 ];
 

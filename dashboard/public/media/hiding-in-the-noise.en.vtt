@@ -1,79 +1,79 @@
 WEBVTT
 
-00:00:02.200 --> 00:00:06.008
+00:00:02.200 --> 00:00:05.848
 Every satellite signal reaches the ground buried in natural noise.
 
-00:00:06.428 --> 00:00:10.300
+00:00:06.268 --> 00:00:10.076
 A careful attacker can shape an attack to look exactly like that noise.
 
-00:00:10.720 --> 00:00:14.880
+00:00:10.496 --> 00:00:14.880
 This is how it works, and how our ground-link testbed still catches it.
 
-00:00:16.680 --> 00:00:27.736
+00:00:16.680 --> 00:00:27.496
 TerraSAR-X flies at 514 km and sends a fixed X-band carrier at 8477.8 MHz.
 
-00:00:28.156 --> 00:00:35.772
+00:00:27.916 --> 00:00:35.932
 The frequency is not random: it moves only with the Doppler shift, up to ±199 kHz, which the orbit predicts.
 
-00:00:36.192 --> 00:00:43.552
-At Zaghouan the carrier arrives between −89 and −74 dBm: an amplitude of 11.4 to 60 µV.
+00:00:36.352 --> 00:00:45.424
+At Zaghouan the carrier arrives between −88.8 and −74.4 dBm: an amplitude of 11.4 to 60.0 µV.
 
-00:00:43.972 --> 00:00:50.324
+00:00:45.844 --> 00:00:52.356
 The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 11 to 26 dB over the pass.
 
-00:00:52.224 --> 00:00:54.288
+00:00:54.256 --> 00:00:56.128
 Natural noise has a signature.
 
-00:00:54.708 --> 00:00:58.532
+00:00:56.548 --> 00:01:00.548
 Thermal noise is Gaussian and white: a flat floor across the band.
 
-00:00:58.952 --> 00:01:05.256
+00:01:00.968 --> 00:01:07.160
 Against the orbit model, the carrier wanders by less than 20 Hz and the power by less than 1 dB.
 
-00:01:05.676 --> 00:01:08.604
+00:01:07.580 --> 00:01:10.604
 That narrow envelope is where an attacker has to hide.
 
-00:01:10.504 --> 00:01:17.304
+00:01:12.504 --> 00:01:20.040
 One: noise-shaped jamming. Gaussian noise, raised slowly like a rain fade, so the floor creeps up instead of jumping.
 
-00:01:17.724 --> 00:01:25.644
+00:01:20.460 --> 00:01:28.012
 Two: fade-mimicking spoofing. A rogue node matches the Doppler and adds fake fading, so its power sits only 3 dB low.
 
-00:01:26.064 --> 00:01:33.648
+00:01:28.432 --> 00:01:36.064
 Three: bit flips disguised as channel errors. Chosen bits are flipped and the checksum recomputed, so the frame just looks noisy.
 
-00:01:35.648 --> 00:01:39.216
+00:01:38.064 --> 00:01:41.712
 Our idea is to make every imitation either harmless or visible.
 
-00:01:39.636 --> 00:01:47.476
+00:01:42.132 --> 00:01:49.828
 The physical layer is a chi-square engine: range, Doppler, power and phase are each compared with the orbit, in units of their natural spread.
 
-00:01:47.896 --> 00:01:59.384
+00:01:50.248 --> 00:02:01.560
 To stay hidden, injected noise must stay 5.3 dB below the thermal noise: that costs at most 1.1 dB of signal-to-noise ratio, and every frame still verifies.
 
-00:01:59.804 --> 00:02:05.996
+00:02:01.980 --> 00:02:08.380
 Push harder, and the chi-square gate fires: a spoofer's 3 dB fade is 14 sigma off the link budget.
 
-00:02:07.796 --> 00:02:11.796
+00:02:10.180 --> 00:02:14.180
 The statistical layer is an Isolation Forest trained only on clean passes.
 
-00:02:12.216 --> 00:02:19.032
+00:02:14.600 --> 00:02:21.192
 It scores each reading together with how fast it changed, so a disguise must copy the rhythm of nature, not just its level.
 
-00:02:20.832 --> 00:02:27.936
+00:02:22.992 --> 00:02:30.048
 The data layer is cryptography, which noise cannot imitate: every frame carries an HMAC-SHA256 tag made with a secret key.
 
-00:02:28.356 --> 00:02:34.708
+00:02:30.468 --> 00:02:36.324
 Change one bit, by accident or on purpose, and the tag breaks: the frame is dropped and requested again.
 
-00:02:35.128 --> 00:02:42.456
-Either deterministic layer, data or physical, rejects a frame. When two layers fire at once, the link is quarantined.
+00:02:36.744 --> 00:02:44.136
+Either deterministic tier, data or physical, rejects a frame. When two tiers fire at once, the link is quarantined.
 
-00:02:44.256 --> 00:02:50.064
+00:02:45.936 --> 00:02:51.728
 In our tests, every attack packet was denied, and no corrupted frame reached the analyst.
 
-00:02:50.484 --> 00:02:53.540
+00:02:52.148 --> 00:02:55.060
 About one percent of genuine packets were held back.
 
-00:02:53.960 --> 00:02:55.944
+00:02:55.480 --> 00:02:57.352
 Try it live at tsyp-pi.vercel.app.

@@ -728,3 +728,24 @@ def test_dashboard_runs_a_tick(tmp_path, monkeypatch):
     assert labels["Dominant residual"] == "slant_range_km"
     assert labels["Range-Doppler coupling"].endswith("sigma")
     assert len(app.dataframe[0].value) == 5  # the kinematic row joins the four residuals
+
+
+def test_the_seeded_evaluation_stops_every_attack_packet():
+    from digital_twin.evaluate import ATTACKS, EVASION, run_seed
+
+    result = run_seed(3, n_train=400, n_nominal=160, bursts=2, burst_len=10, uplink_commands=5)
+    counts = result["counts"]
+    for attack in ATTACKS:
+        assert counts[attack]["n"] == 20
+        assert counts[attack]["DELIVERED"] == 0, attack
+    # Genuine frames verify, and the forest alone only ever holds them.
+    assert counts["NONE"]["data"] == 0
+    assert counts["NONE"]["REJECTED"] + counts["NONE"]["QUARANTINED"] <= 1
+    # Below the gate the jam costs little SNR and every frame still verifies.
+    demo = counts["JAM_BELOW_GATE_DEMO"]
+    assert demo["verified"] == demo["n"]
+    assert demo["snr_loss_db"] / demo["n"] < 0.3
+    edge = counts["JAM_AT_STEALTH_LIMIT"]
+    assert abs(edge["snr_loss_db"] / edge["n"] - 1.115) < 0.01
+    assert set(EVASION) <= set(counts)
+    assert all(u["executed"] == 0 for u in result["uplink"].values())

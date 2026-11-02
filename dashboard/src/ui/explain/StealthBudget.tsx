@@ -117,7 +117,7 @@ export function StealthBudget() {
         <line x1={X(limit)} x2={X(limit)} y1={Y(0)} y2={Y(YMAX)} className="budget__limit" />
         <text x={X(limit) + 6} y={Y(0) - 8} className="budget__limit-label">
           {sign(limit)}
-          {Math.abs(limit).toFixed(1)} dB
+          {Math.abs(limit).toFixed(1)} dB · {dbm(SIGNAL.noiseFloorDbm + limit)}
         </text>
         <path d={CURVE} className="budget__curve" />
         <circle
@@ -140,8 +140,17 @@ export function StealthBudget() {
       />
       <dl className="budget__readout">
         <div>
-          <dt>Jammer power</dt>
-          <dd className="mono">{dbm(SIGNAL.noiseFloorDbm + above)}</dd>
+          <dt>J/N</dt>
+          <dd className="mono">
+            {sign(above)}
+            {Math.abs(above).toFixed(1)} dB
+          </dd>
+        </div>
+        <div>
+          <dt>Jammer at the receiver</dt>
+          <dd className="mono">
+            {dbm(SIGNAL.noiseFloorDbm + above)} · floor {dbm(SIGNAL.noiseFloorDbm)}
+          </dd>
         </div>
         <div>
           <dt>SNR at the 2° mask</dt>

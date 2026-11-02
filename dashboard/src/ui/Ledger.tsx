@@ -190,8 +190,8 @@ export function LedgerPanel() {
           <>
             <span>
               block #{engine.blockHeight.toLocaleString('en-US')} · {engine.framesRejected} rejected
-              · {engine.framesLost} lost · {engine.handshakes}{' '}
-              {engine.handshakes === 1 ? 'handshake' : 'handshakes'}
+              · {engine.framesLost} lost · {engine.handshakes} Ed25519{' '}
+              {engine.handshakes === 1 ? 'check' : 'checks'}
             </span>
             <span>{overhead === null ? '' : `${fmtMs(overhead)} per frame · measured`}</span>
           </>

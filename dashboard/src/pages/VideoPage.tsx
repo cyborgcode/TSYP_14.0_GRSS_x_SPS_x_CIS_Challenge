@@ -5,7 +5,7 @@ import { SIGNAL } from '../sim/linkFacts';
 import { MINUS } from '../ui/format';
 import { DocPage } from './DocPage';
 
-const dbm = (v: number) => `${MINUS}${Math.abs(v).toFixed(0)}`;
+const dbm = (v: number) => `${MINUS}${Math.abs(v).toFixed(1)}`;
 
 export function VideoPage() {
   const video = useRef<HTMLVideoElement>(null);
@@ -88,8 +88,8 @@ export function VideoPage() {
             range, Doppler, power and phase, caps how much noise can hide (5.3 dB below the thermal
             noise, at most 1.1 dB of SNR). The statistical layer, an Isolation Forest, scores the
             rhythm of each reading, not just its level. And noise cannot forge the data layer’s
-            HMAC-SHA256 tag on every frame: one failure is resent, two tiers firing quarantine the
-            link.
+            HMAC-SHA256 tag on every frame: one failure is treated as possibly benign and resent, a
+            burst escalates to quarantine.
           </p>
         </div>
       </section>

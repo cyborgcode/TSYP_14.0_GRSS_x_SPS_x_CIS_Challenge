@@ -1,4 +1,5 @@
-import { jamSnrLossDb } from '../sim/signals';
+import { STEALTH } from '../sim/linkFacts';
+import { jamSnrLossDb, jamToNoiseDb } from '../sim/signals';
 import { BELOW_GATE_DB, BELOW_GATE_HREF } from '../ui/BelowGate';
 import { Protection } from '../ui/explain/NoiseMimicry';
 import { JamIcon } from '../ui/icons';
@@ -17,9 +18,11 @@ export function ProtectionPage() {
             Run a below-the-gate jam on the live testbed
           </a>
           <p className="explain__hint">
-            Starts Noise Jamming at +{BELOW_GATE_DB} dB: the SNR dips about{' '}
-            {jamSnrLossDb(BELOW_GATE_DB).toFixed(1)} dB, stays inside the χ² gate, nothing escalates
-            and every frame is accepted.
+            Starts Noise Jamming at a jammer-to-noise ratio of J/N ={' '}
+            {jamToNoiseDb(BELOW_GATE_DB).toFixed(1).replace('-', '−')} dB: the SNR dips about{' '}
+            {jamSnrLossDb(BELOW_GATE_DB).toFixed(1)} dB, inside the{' '}
+            {STEALTH.maxSnrLossDb.toFixed(1)} dB budget, so it stays inside the χ² gate, nothing
+            escalates and every frame is accepted.
           </p>
         </div>
       }

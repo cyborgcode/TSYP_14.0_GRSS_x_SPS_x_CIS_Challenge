@@ -182,7 +182,7 @@ describe('detector (port of detector.py) and zero trust', () => {
     expect(flagged / n).toBeLessThan(0.03);
   });
 
-  it('flags a +14.2 MHz carrier and a collapsed RSSI with physics reasons', () => {
+  it('flags a +14.2 MHz carrier and a collapsed carrier power with physics reasons', () => {
     const hijack = detector.evaluate(rf(14.2, 0));
     expect(hijack.physics).toBe(true);
     expect(hijack.physicsReasons).toContain('carrier offset no orbit can produce');
@@ -190,7 +190,7 @@ describe('detector (port of detector.py) and zero trust', () => {
     // that is what the physics gate is for.
     expect(hijack.confidence).toBeGreaterThan(0.5);
     const jam = detector.evaluate(rf(0, -11.5));
-    expect(jam.physicsReasons).toContain('RSSI outside the link-budget band');
+    expect(jam.physicsReasons).toContain('carrier power outside the link-budget band');
   });
 
   it('zero trust drops on any failing evidence, whatever the frame claims', () => {
@@ -208,7 +208,7 @@ describe('detector (port of detector.py) and zero trust', () => {
   });
 });
 
-describe('Ed25519 handshake', () => {
+describe('Ed25519 authentication', () => {
   it('signs and verifies a handshake challenge with Ed25519', async () => {
     const id = await createEd25519();
     expect(id).not.toBeNull();
@@ -460,7 +460,7 @@ describe('engine scenarios', () => {
     const log = engine.terminal.map((l) => l.text).join('\n');
     expect(log).toContain(`genesis root ${engine.genesis.slice(0, 24)}`);
     expect(log).toMatch(/✓ block #\d+ [0-9a-f]{10}…[0-9a-f]{4} hmac ok/);
-    expect(log).toMatch(/Ed25519 handshake ✓ /);
+    expect(log).toMatch(/Ed25519 auth ✓ /);
     expect(engine.handshakes).toBeGreaterThanOrEqual(2);
   });
 

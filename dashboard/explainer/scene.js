@@ -716,7 +716,7 @@ function signal(ctx, lt, sc, t) {
     [
       'RECEIVED POWER',
       `${F.rxMask.toFixed(1)} → ${F.rxZenith} dBm`,
-      `amplitude ${F.ampMask} → ${F.ampZenith} µV peak · 50 Ω`,
+      `amplitude ${F.ampMask.toFixed(1)} → ${F.ampZenith.toFixed(1)} µV peak · 50 Ω`,
     ],
     [
       'NOISE FLOOR',
@@ -1405,19 +1405,19 @@ function crypto(ctx, lt, sc, t) {
       else check(ctx, x + 25, 735, 26, C.ok);
     }
     if (shown > 3) {
-      text(ctx, 'one failure: weather, resent', M + 3 * 62 - 10, 800, MONO(700, 20), C.text1);
+      text(ctx, 'one failure: rejected, resent', M + 3 * 62 - 10, 800, MONO(700, 20), C.text1);
     }
     if (shown > 14) {
-      text(ctx, 'a burst: an attack', M + 11 * 62, 800, MONO(700, 20), C.bad);
+      text(ctx, 'a burst: failure rate flagged', M + 11 * 62, 800, MONO(700, 20), C.bad);
     }
     const lit = shown > 14;
     const single = shown >= 4 && shown <= 6;
     const dets = [
-      ['PHYSICS', false],
-      ['TRUST ANCHOR', lit || single],
-      ['AI MODEL', lit],
+      ['PHYSICAL', false],
+      ['DATA', lit || single],
+      ['STATISTICAL', lit],
     ];
-    if (single) text(ctx, '1 of 3 · hold', 1420, 920, MONO(700, 22), C.warn);
+    if (single) text(ctx, '1 of 3 · reject, resend', 1420, 920, MONO(700, 22), C.warn);
     dets.forEach(([name, on], i) => {
       const y = 712 + i * 58;
       box(ctx, 1420, y, 380, 46, {

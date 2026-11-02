@@ -66,7 +66,7 @@ function Hud() {
               <b>CARRIER</b> {x ? `${x.carrierMHz.toFixed(3)} MHz` : '—'}
             </span>
             <span>
-              <b>RSSI</b> {x ? `${x.rssiDbm.toFixed(1).replace('-', MINUS)} dBm` : '—'}
+              <b>POWER</b> {x ? `${x.rssiDbm.toFixed(1).replace('-', MINUS)} dBm` : '—'}
             </span>
           </div>
           <div className="hud__hint">

@@ -76,9 +76,10 @@ function Dashboard() {
         </p>
         <p>
           Frames are sealed and verified for real with Web Crypto (HMAC-SHA256, SHA-256 hash chain
-          from a genesis root, Ed25519 handshakes); the Isolation Forest is trained in your browser
-          on nominal passes; the physical layer is the digital twin’s chi-square engine, against
-          SGP4 and the ITU-R P.618 link budget. Every figure on the dashboard is measured live.
+          from a genesis root, Ed25519-signed re-keys); the Isolation Forest is trained in your
+          browser on nominal passes; the physical layer is the digital twin’s chi-square engine,
+          against SGP4 and the ITU-R P.618 link budget. Every figure on the dashboard is measured
+          live.
         </p>
         <p className="footer__legal">
           Fonts: Space Grotesk, Inter, JetBrains Mono (SIL OFL 1.1) · Land outlines: Natural Earth

@@ -8,8 +8,9 @@
 //    Doppler.
 // Each frame is decided as physics_validator.py decides it: either deterministic layer rejects,
 // the statistical layer alone holds. Incident response escalates when two tiers flag at once.
-// Each frame leaves a packet record for the inspection drawer. The trust anchor also renews an
-// Ed25519 handshake with the spacecraft; its log is streamed as the trust_anchor.py terminal.
+// Each frame leaves a packet record for the inspection drawer. The trust anchor also checks an
+// Ed25519 signature from the spacecraft at each re-key; its log is streamed as the
+// trust_anchor.py terminal.
 //
 // Everything here is emulation. No component transmits or receives RF.
 
@@ -518,7 +519,7 @@ export class Engine {
       const ok = await signer.verify(challenge, signature);
       this.handshakes++;
       this.log(
-        `Ed25519 handshake ${ok ? '✓' : '✗'} ${reason} · sig ${toHex(signature).slice(0, 12)}…`,
+        `Ed25519 auth ${ok ? '✓' : '✗'} ${reason} · sig ${toHex(signature).slice(0, 12)}…`,
         ok ? 'ok' : 'bad',
       );
     });
@@ -702,7 +703,8 @@ export class Engine {
     if (this.pass.linkActive) {
       if (s >= this.nextFrameAt) {
         this.emitFrame(s);
-        this.nextFrameAt = s + FRAME_PERIOD_S;
+        // On the 0.32 s grid, not 0.32 s after the tick that sent it: 3.1 frames a second.
+        this.nextFrameAt = Math.max(this.nextFrameAt + FRAME_PERIOD_S, s);
       }
     } else {
       this.nextFrameAt = s;
@@ -1223,9 +1225,14 @@ export class Engine {
         this.log('!! ALERT data tampering · hash verification failing', 'bad');
         break;
       case 'jam':
-        say('RSSI collapsing to −96.5 dBm', 'driven live by the power slider', 'telemetry', 'warn');
+        say(
+          'Carrier power collapsing to −96.5 dBm',
+          'driven live by the power slider',
+          'telemetry',
+          'warn',
+        );
         say('Broadband noise floods Zaghouan', undefined, 'station', 'warn');
-        this.log('!! ALERT noise jamming · RSSI collapse', 'warn');
+        this.log('!! ALERT noise jamming · carrier power collapse', 'warn');
         break;
     }
     this.emit();
@@ -1318,7 +1325,7 @@ export class Engine {
       } else {
         this.statusLine =
           run.kind === 'jam'
-            ? 'Jamming stayed below the detection gate · RSSI held in the band'
+            ? 'Jamming stayed below the detection gate · carrier power held in the band'
             : 'Attack ended without escalation';
       }
       this.compromised = null;

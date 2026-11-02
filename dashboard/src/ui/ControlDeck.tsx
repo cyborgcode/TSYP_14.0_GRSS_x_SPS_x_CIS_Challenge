@@ -3,7 +3,7 @@ import { useEffect, useState, type MouseEvent } from 'react';
 import { useEngine, useEngineCtx } from '../engineContext';
 import { ATTACK_BUTTONS, ATTACK_PROOF, UPLINK_BUTTONS, UPLINK_PROOF } from '../sim/copy';
 import { C_KM_S, UPLINK } from '../sim/geometry';
-import type { AttackKind } from '../sim/signals';
+import { jamToNoiseDb, type AttackKind } from '../sim/signals';
 import { UPLINK_THREATS, type UplinkThreat } from '../sim/uplink';
 import { ATTACK_ICONS, LockIcon, PlayIcon, SearchIcon, StopIcon } from './icons';
 import { MINUS } from './format';
@@ -204,7 +204,12 @@ export function ControlDeckPanel() {
   const proofKind = hovered ?? engine.attack?.kind ?? null;
   const proofUp = hoveredUp ?? uplinkThreat;
   const power = engine.appliedPower;
-  const powerText = `${power < 0 ? MINUS : '+'}${Math.abs(power).toFixed(1)} dB`;
+  const jn = jamToNoiseDb(power);
+  // The jam is read as its jammer-to-noise ratio; the other attacks as excess power.
+  const powerText =
+    engine.attack?.kind === 'jam' || hovered === 'jam'
+      ? `J/N ${Number.isFinite(jn) ? `${jn < 0 ? MINUS : '+'}${Math.abs(jn).toFixed(1)}` : `<${MINUS}30`} dB`
+      : `${power < 0 ? MINUS : '+'}${Math.abs(power).toFixed(1)} dB`;
   const statusTone =
     engine.state === 'UNDER ATTACK'
       ? 'bad'
@@ -302,7 +307,7 @@ export function ControlDeckPanel() {
         {link === 'up'
           ? 'Every command is sealed with HMAC-SHA256; the satellite checks the tag, then the count.'
           : jamming
-            ? 'Drag the slider: jammer power drives the RSSI collapse live.'
+            ? 'Drag the slider: jammer power drives the SNR loss and carrier power live.'
             : 'The slider sets jammer power and the hijacker’s excess power.'}
       </p>
 

@@ -1,6 +1,6 @@
 # TSYP 14 Secure Ground-Link Testbed — Evaluation Guide
 
-Open the live testbed: <https://tsyp-cyb0rgcodes-projects.vercel.app>. The dashboard is our
+Open the live testbed: <https://tsyp-pi.vercel.app>. The dashboard is our
 simulation for TSYP 14 Track 1 (Secure Ground-Link Testbed): satellite-to-ground telemetry,
 real-time threat detection and cryptographic resilience, running entirely in the browser.
 
@@ -13,7 +13,7 @@ real-time threat detection and cryptographic resilience, running entirely in the
 - **Any satellite**: the satellite button in the header lists the whole signal database (167
   Earth-observation satellites from CelesTrak) beside a live sky view of Zaghouan; click one to
   fly its next pass on the testbed. The link `/?sat=39634` flies Sentinel-1A, for instance. The
-  name, the identity in every frame, the hardware token and the Ed25519 handshake follow the
+  name, the identity in every frame, the emulated hardware token and the Ed25519 key follow the
   satellite.
 - **Graphics**: Three.js with ACES Filmic tone mapping, a three-layer atmosphere (Rayleigh
   scattering, limb glow, Mie haze), and TerraSAR-X to scale: a hexagonal body in multi-layer
@@ -27,7 +27,7 @@ real-time threat detection and cryptographic resilience, running entirely in the
 
 The beam from the satellite down to Zaghouan is one continuous signal. When an attack is
 triggered, everything changes together: the beam's colour and distortion, the Carrier Frequency
-chart, the RSSI chart, the received spectrum, the security banner and the cryptographic ledger.
+chart, the carrier power chart, the received spectrum, the security banner and the cryptographic ledger.
 The orange beam climbing from the station is the telecommand uplink (S-band, 2050 MHz); it turns
 red when a command is tampered with, and a red beam from the rogue uplink in the Gulf of Gabès
 appears during command injection and replay.
@@ -39,10 +39,10 @@ drawer on the live frames (section 5).
 
 | Scenario | What happens | System response |
 |---|---|---|
-| **Frequency Hijacking** | A rogue carrier sweeping around +14.2 MHz is injected into the link. | The carrier chart jumps to ~8492 MHz, the beam turns red with a rapid oscillation, and the ledger logs `PROOF FAIL` for every rogue frame. Keys are rotated after quarantine. |
-| **Stealth Spoofing** | Node `0x99A2` injects frames with forged MAC headers and cryptographic nonces. The carrier stays on the Doppler track and the power inside a ±4 dB band, only 3.2 dB low. | The beam turns amber, RSSI degrades, the banner reads *Quarantine protocols engaged*. All three tiers fire: the data layer (forged MAC, reused nonces, wrong hardware token), the physical layer (3.2 dB is 14σ below the link budget for the chi-square engine) and the statistical layer. |
+| **Frequency Hijacking** | A rogue carrier sweeping around +14.2 MHz, outside the 6 MHz channel, offers frames to the station; its 40 MHz wideband spectrum monitor sees it. | The carrier chart jumps to ~8492 MHz, the beam turns red with a rapid oscillation, and the ledger logs `PROOF FAIL` for every rogue frame. Keys are rotated after quarantine. |
+| **Stealth Spoofing** | Node `0x99A2` injects frames with forged MAC headers and cryptographic nonces. The carrier stays on the Doppler track and the power inside a ±4 dB band, only 3.2 dB low. | The beam turns amber, the carrier power drops 3.2 dB, the banner reads *Quarantine protocols engaged*. All three tiers fire: the data layer (forged MAC, reused nonces, wrong emulated hardware token), the physical layer (3.2 dB is 14σ below the link budget for the chi-square engine) and the statistical layer. |
 | **Data Tampering** | A relay between TerraSAR-X and Zaghouan flips one payload bit after the satellite sealed the frame. The RF is untouched. | The beam turns pink, the physical and statistical layers see nothing, and the data layer logs `HASH MISMATCH` for every altered frame. The frames are quarantined and a retransmission is requested; keys are not rotated, since the relay never had them. |
-| **Noise Jamming** | Broadband Gaussian white noise saturates the receiver. | The beam turns purple with high-frequency static, RSSI drops to −96.5 dBm, frames go missing, and fallback routing to GS-MAT (Matera, Italy) is forced. |
+| **Noise Jamming** | Broadband Gaussian white noise at J/N +9.1 dB saturates the receiver. | The beam turns purple with high-frequency static, the SNR drops 9.6 dB and the carrier power estimate falls to −96.5 dBm, frames go missing, and fallback routing to GS-MAT (Matera, Italy) is forced. |
 
 The attack-power slider changes the jammer power and the hijacker's excess power live.
 **Play demo** runs all four scenarios back to back, including a false alarm that only the
@@ -73,9 +73,9 @@ rejects a frame; the forest alone holds it; two tiers at once escalate.
 
 - **trust_anchor.py terminal** (bottom right): the live log starts from the genesis root hash and
   the spacecraft's Ed25519 public key, then shows each frame as a SHA-256 block validation, the
-  Ed25519 handshakes (at session open, periodically and after every re-key), proof failures,
+  Ed25519 signature checks (at session open, periodically and after every re-key), proof failures,
   forged nonces, quarantine and fallback routing.
-- **Live charts**: Carrier Frequency (MHz) and RSSI Signal Strength (dBm) stream through Chart.js
+- **Live charts**: Carrier Frequency (MHz) and Carrier Power (dBm) stream through Chart.js
   against the orbit-predicted carrier and the link budget; points the chi-square engine rejects
   turn red. The
   received spectrum (amplitude against frequency, ±20 MHz) shows the 6 MHz downlink channel, the
@@ -122,7 +122,7 @@ jamming, fade-mimicking spoofing, bit flips disguised as bit errors). **Protecti
 (`/protection`) shows why each is either harmless or visible: a jammer must stay 5.3 dB below
 the thermal noise before the chi-square engine fires, which costs at most 1.1 dB of SNR (the old
 ±4 dB box gate let 4 dB go unseen). Its **Run a below-the-gate jam** button opens the dashboard
-and starts that case live. **Explainer video** (`/noise`) is a 3:00 narrated video with
+and starts that case live. **Explainer video** (`/noise`) is a 3:01 narrated video with
 chapters, captions and a transcript.
 
 The browser ports produce the same frame text, HMAC seal and block hashes as the Python modules
