@@ -1,79 +1,79 @@
 WEBVTT
 
-00:00:02.200 --> 00:00:06.056
+00:00:02.200 --> 00:00:06.024
 Every satellite signal reaches the ground buried in natural noise.
 
-00:00:06.476 --> 00:00:10.428
+00:00:06.444 --> 00:00:10.364
 A careful attacker can shape an attack to look exactly like that noise.
 
-00:00:10.848 --> 00:00:15.088
+00:00:10.784 --> 00:00:14.768
 This is how it works, and how our ground-link testbed still catches it.
 
-00:00:16.888 --> 00:00:27.448
+00:00:16.568 --> 00:00:27.944
 TerraSAR-X flies at 514 km and sends a fixed X-band carrier at 8477.8 MHz.
 
-00:00:27.868 --> 00:00:35.836
+00:00:28.364 --> 00:00:36.172
 The frequency is not random: it moves only with the Doppler shift, up to ±199 kHz, which the orbit predicts.
 
-00:00:36.256 --> 00:00:44.992
+00:00:36.592 --> 00:00:45.504
 At Zaghouan the carrier arrives between −88.8 and −74.4 dBm: an amplitude of 11.4 to 60.0 µV.
 
-00:00:45.412 --> 00:00:51.844
+00:00:45.924 --> 00:00:52.340
 The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 11 to 26 dB over the pass.
 
-00:00:53.744 --> 00:00:55.696
+00:00:54.240 --> 00:00:56.176
 Natural noise has a signature.
 
-00:00:56.116 --> 00:00:59.988
+00:00:56.596 --> 00:01:00.436
 Thermal noise is Gaussian and white: a flat floor across the band.
 
-00:01:00.408 --> 00:01:06.440
+00:01:00.856 --> 00:01:06.984
 Against the orbit model, the carrier wanders by less than 20 Hz and the power by less than 1 dB.
 
-00:01:06.860 --> 00:01:09.820
+00:01:07.404 --> 00:01:10.364
 That narrow envelope is where an attacker has to hide.
 
-00:01:11.720 --> 00:01:19.240
+00:01:12.264 --> 00:01:19.448
 One: noise-shaped jamming. Gaussian noise, raised slowly like a rain fade, so the floor creeps up instead of jumping.
 
-00:01:19.660 --> 00:01:27.196
+00:01:19.868 --> 00:01:27.964
 Two: fade-mimicking spoofing. A rogue node matches the Doppler and adds fake fading, so its power sits only 3 dB low.
 
-00:01:27.616 --> 00:01:35.056
+00:01:28.384 --> 00:01:35.616
 Three: bit flips disguised as channel errors. Chosen bits are flipped and the checksum recomputed, so the frame just looks noisy.
 
-00:01:37.056 --> 00:01:40.432
+00:01:37.616 --> 00:01:41.152
 Our idea is to make every imitation either harmless or visible.
 
-00:01:40.852 --> 00:01:48.356
+00:01:41.572 --> 00:01:49.508
 The physical layer is a chi-square engine: range, Doppler, power and phase are each compared with the orbit, in units of their natural spread.
 
-00:01:48.776 --> 00:02:03.976
+00:01:49.928 --> 00:02:04.696
 To stay hidden overhead, injected noise must stay 5.3 dB below the thermal noise: at most 1.1 dB of signal-to-noise ratio, 1.7 dB at the 2° mask where the gate widens. Every frame still verifies.
 
-00:02:04.396 --> 00:02:10.476
+00:02:05.116 --> 00:02:11.612
 Push harder, and the chi-square gate fires: a spoofer's 3 dB fade is 14 sigma off the link budget.
 
-00:02:12.276 --> 00:02:16.452
+00:02:13.412 --> 00:02:17.380
 The statistical layer is an Isolation Forest trained only on clean passes.
 
-00:02:16.872 --> 00:02:23.624
+00:02:17.800 --> 00:02:24.728
 It scores each reading together with how fast it changed, so a disguise must copy the rhythm of nature, not just its level.
 
-00:02:25.424 --> 00:02:32.528
+00:02:26.528 --> 00:02:33.680
 The data layer is cryptography, which noise cannot imitate: every frame carries an HMAC-SHA256 tag made with a secret key.
 
-00:02:32.948 --> 00:02:39.044
+00:02:34.100 --> 00:02:40.196
 Change one bit, by accident or on purpose, and the tag breaks: the frame is dropped and requested again.
 
-00:02:39.464 --> 00:02:47.032
+00:02:40.616 --> 00:02:48.344
 Either deterministic tier, data or physical, rejects a frame. When two tiers fire at once, the link is quarantined.
 
-00:02:48.832 --> 00:02:54.592
-In our tests, every attack packet was denied, and no corrupted frame reached the analyst.
+00:02:50.144 --> 00:02:55.984
+In our tests, every attack packet was flagged, and no corrupted frame reached the analyst.
 
-00:02:55.012 --> 00:02:57.844
+00:02:56.404 --> 00:02:59.348
 About one percent of genuine packets were held back.
 
-00:02:58.264 --> 00:03:00.424
+00:02:59.768 --> 00:03:01.736
 Try it live on the testbed, in the dashboard folder of our code.

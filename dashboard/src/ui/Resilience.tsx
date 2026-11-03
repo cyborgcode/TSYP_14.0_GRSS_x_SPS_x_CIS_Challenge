@@ -67,7 +67,7 @@ function MatrixRow({
         className={`mono rmatrix__drop ${good ? 'is-ok' : 'is-bad'}`}
         role="cell"
         title={
-          genuine || first === null ? undefined : `first frame stopped ${Math.round(first)} ms in`
+          genuine || first === null ? undefined : `first frame flagged ${Math.round(first)} ms in`
         }
       >
         {rate(dropped, frames)}

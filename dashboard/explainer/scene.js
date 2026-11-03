@@ -1450,19 +1450,19 @@ function result(ctx, lt, sc) {
   const cards = [
     [
       '100%',
-      'of attack packets denied',
-      '6 seeds · 6,000 attack packets per run',
+      'of attack packets flagged',
+      '6 seeds · 15,000 attack packets per run',
       C.ok,
       sc.cues[0].s,
     ],
     [
       '0',
       'corrupted frames reached the analyst',
-      'across all four attack scenarios',
+      'across all ten attacks',
       C.ok,
       sc.cues[0].s + 1.2,
     ],
-    ['≈1%', 'of genuine packets held back', '0.82–1.30%, target under 2%', C.accent, sc.cues[1].s],
+    ['≈1%', 'of genuine packets held back', '1.0–1.4%, target under 2%', C.accent, sc.cues[1].s],
   ];
   cards.forEach(([big, label, sub, color, at], i) =>
     rise(ctx, lt, at, () => {
@@ -1476,7 +1476,7 @@ function result(ctx, lt, sc) {
     }),
   );
   rise(ctx, lt, sc.cues[2].s, () => {
-    chip(ctx, 'TRY IT LIVE · TSYP-PI.VERCEL.APP', M, 800, C.accent, { size: 40 });
+    chip(ctx, 'TRY IT LIVE · RUN THE DASHBOARD LOCALLY', M, 800, C.accent, { size: 40 });
     text(
       ctx,
       'Synthetic traffic: every figure will be re-measured on the official reference datasets.',

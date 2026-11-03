@@ -144,7 +144,7 @@
       "tailS": 4.0,
       "lines": [
         {
-          "text": "In our tests, every attack packet was denied, and no corrupted frame reached the analyst."
+          "text": "In our tests, every attack packet was flagged, and no corrupted frame reached the analyst."
         },
         {
           "text": "About one percent of genuine packets were held back."

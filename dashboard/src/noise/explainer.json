@@ -1,26 +1,26 @@
 {
   "title": "Hiding in the noise",
-  "duration": 184.424,
+  "duration": 185.736,
   "scenes": [
     {
       "id": "intro",
       "chapter": "Hiding in the noise",
       "start": 0.0,
-      "end": 15.988,
+      "end": 15.668,
       "cues": [
         {
           "start": 2.2,
-          "end": 6.056,
+          "end": 6.024,
           "text": "Every satellite signal reaches the ground buried in natural noise."
         },
         {
-          "start": 6.476,
-          "end": 10.428,
+          "start": 6.444,
+          "end": 10.364,
           "text": "A careful attacker can shape an attack to look exactly like that noise."
         },
         {
-          "start": 10.848,
-          "end": 15.088,
+          "start": 10.784,
+          "end": 14.768,
           "text": "This is how it works, and how our ground-link testbed still catches it."
         }
       ]
@@ -28,27 +28,27 @@
     {
       "id": "signal",
       "chapter": "The signal we chose",
-      "start": 15.988,
-      "end": 52.844,
+      "start": 15.668,
+      "end": 53.34,
       "cues": [
         {
-          "start": 16.888,
-          "end": 27.448,
+          "start": 16.568,
+          "end": 27.944,
           "text": "TerraSAR-X flies at 514 km and sends a fixed X-band carrier at 8477.8 MHz."
         },
         {
-          "start": 27.868,
-          "end": 35.836,
+          "start": 28.364,
+          "end": 36.172,
           "text": "The frequency is not random: it moves only with the Doppler shift, up to ±199 kHz, which the orbit predicts."
         },
         {
-          "start": 36.256,
-          "end": 44.992,
+          "start": 36.592,
+          "end": 45.504,
           "text": "At Zaghouan the carrier arrives between −88.8 and −74.4 dBm: an amplitude of 11.4 to 60.0 µV."
         },
         {
-          "start": 45.412,
-          "end": 51.844,
+          "start": 45.924,
+          "end": 52.34,
           "text": "The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 11 to 26 dB over the pass."
         }
       ]
@@ -56,27 +56,27 @@
     {
       "id": "natural",
       "chapter": "What natural noise looks like",
-      "start": 52.844,
-      "end": 70.82,
+      "start": 53.34,
+      "end": 71.364,
       "cues": [
         {
-          "start": 53.744,
-          "end": 55.696,
+          "start": 54.24,
+          "end": 56.176,
           "text": "Natural noise has a signature."
         },
         {
-          "start": 56.116,
-          "end": 59.988,
+          "start": 56.596,
+          "end": 60.436,
           "text": "Thermal noise is Gaussian and white: a flat floor across the band."
         },
         {
-          "start": 60.408,
-          "end": 66.44,
+          "start": 60.856,
+          "end": 66.984,
           "text": "Against the orbit model, the carrier wanders by less than 20 Hz and the power by less than 1 dB."
         },
         {
-          "start": 66.86,
-          "end": 69.82,
+          "start": 67.404,
+          "end": 70.364,
           "text": "That narrow envelope is where an attacker has to hide."
         }
       ]
@@ -84,22 +84,22 @@
     {
       "id": "imitate",
       "chapter": "How an attacker imitates it",
-      "start": 70.82,
-      "end": 96.156,
+      "start": 71.364,
+      "end": 96.716,
       "cues": [
         {
-          "start": 71.72,
-          "end": 79.24,
+          "start": 72.264,
+          "end": 79.448,
           "text": "One: noise-shaped jamming. Gaussian noise, raised slowly like a rain fade, so the floor creeps up instead of jumping."
         },
         {
-          "start": 79.66,
-          "end": 87.196,
+          "start": 79.868,
+          "end": 87.964,
           "text": "Two: fade-mimicking spoofing. A rogue node matches the Doppler and adds fake fading, so its power sits only 3 dB low."
         },
         {
-          "start": 87.616,
-          "end": 95.056,
+          "start": 88.384,
+          "end": 95.616,
           "text": "Three: bit flips disguised as channel errors. Chosen bits are flipped and the checksum recomputed, so the frame just looks noisy."
         }
       ]
@@ -107,27 +107,27 @@
     {
       "id": "physics",
       "chapter": "Physical layer · χ²",
-      "start": 96.156,
-      "end": 131.476,
+      "start": 96.716,
+      "end": 132.612,
       "cues": [
         {
-          "start": 97.056,
-          "end": 100.432,
+          "start": 97.616,
+          "end": 101.152,
           "text": "Our idea is to make every imitation either harmless or visible."
         },
         {
-          "start": 100.852,
-          "end": 108.356,
+          "start": 101.572,
+          "end": 109.508,
           "text": "The physical layer is a chi-square engine: range, Doppler, power and phase are each compared with the orbit, in units of their natural spread."
         },
         {
-          "start": 108.776,
-          "end": 123.976,
+          "start": 109.928,
+          "end": 124.696,
           "text": "To stay hidden overhead, injected noise must stay 5.3 dB below the thermal noise: at most 1.1 dB of signal-to-noise ratio, 1.7 dB at the 2° mask where the gate widens. Every frame still verifies."
         },
         {
-          "start": 124.396,
-          "end": 130.476,
+          "start": 125.116,
+          "end": 131.612,
           "text": "Push harder, and the chi-square gate fires: a spoofer's 3 dB fade is 14 sigma off the link budget."
         }
       ]
@@ -135,17 +135,17 @@
     {
       "id": "ai",
       "chapter": "Statistical layer · AI",
-      "start": 131.476,
-      "end": 144.624,
+      "start": 132.612,
+      "end": 145.728,
       "cues": [
         {
-          "start": 132.276,
-          "end": 136.452,
+          "start": 133.412,
+          "end": 137.38,
           "text": "The statistical layer is an Isolation Forest trained only on clean passes."
         },
         {
-          "start": 136.872,
-          "end": 143.624,
+          "start": 137.8,
+          "end": 144.728,
           "text": "It scores each reading together with how fast it changed, so a disguise must copy the rhythm of nature, not just its level."
         }
       ]
@@ -153,22 +153,22 @@
     {
       "id": "crypto",
       "chapter": "Data layer · Cryptography",
-      "start": 144.624,
-      "end": 168.032,
+      "start": 145.728,
+      "end": 169.344,
       "cues": [
         {
-          "start": 145.424,
-          "end": 152.528,
+          "start": 146.528,
+          "end": 153.68,
           "text": "The data layer is cryptography, which noise cannot imitate: every frame carries an HMAC-SHA256 tag made with a secret key."
         },
         {
-          "start": 152.948,
-          "end": 159.044,
+          "start": 154.1,
+          "end": 160.196,
           "text": "Change one bit, by accident or on purpose, and the tag breaks: the frame is dropped and requested again."
         },
         {
-          "start": 159.464,
-          "end": 167.032,
+          "start": 160.616,
+          "end": 168.344,
           "text": "Either deterministic tier, data or physical, rejects a frame. When two tiers fire at once, the link is quarantined."
         }
       ]
@@ -176,22 +176,22 @@
     {
       "id": "result",
       "chapter": "Result",
-      "start": 168.032,
-      "end": 184.424,
+      "start": 169.344,
+      "end": 185.736,
       "cues": [
         {
-          "start": 168.832,
-          "end": 174.592,
-          "text": "In our tests, every attack packet was denied, and no corrupted frame reached the analyst."
+          "start": 170.144,
+          "end": 175.984,
+          "text": "In our tests, every attack packet was flagged, and no corrupted frame reached the analyst."
         },
         {
-          "start": 175.012,
-          "end": 177.844,
+          "start": 176.404,
+          "end": 179.348,
           "text": "About one percent of genuine packets were held back."
         },
         {
-          "start": 178.264,
-          "end": 180.424,
+          "start": 179.768,
+          "end": 181.736,
           "text": "Try it live on the testbed, in the dashboard folder of our code."
         }
       ]
