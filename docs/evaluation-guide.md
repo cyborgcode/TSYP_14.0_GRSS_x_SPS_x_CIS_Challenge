@@ -41,8 +41,8 @@ drawer on the live frames (section 5).
 |---|---|---|
 | **Frequency Hijacking** | A rogue carrier sweeping around +14.2 MHz, outside the 6 MHz channel, offers frames to the station; its 40 MHz wideband spectrum monitor sees it. | The carrier chart jumps to ~8492 MHz, the beam turns red with a rapid oscillation, and the ledger logs `PROOF FAIL` for every rogue frame. Keys are rotated after quarantine. |
 | **Stealth Spoofing** | Node `0x99A2` injects frames with forged MAC headers and cryptographic nonces. The carrier stays on the Doppler track and the power inside a ±4 dB band, only 3.2 dB low. | The beam turns amber, the carrier power drops 3.2 dB, the banner reads *Quarantine protocols engaged*. All three tiers fire: the data layer (forged MAC, reused nonces, wrong emulated hardware token), the physical layer (3.2 dB is 14σ below the link budget for the chi-square engine) and the statistical layer. |
-| **Data Tampering** | A relay between TerraSAR-X and Zaghouan flips one payload bit after the satellite sealed the frame. The RF is untouched. | The beam turns pink, the physical and statistical layers see nothing, and the data layer logs `HASH MISMATCH` for every altered frame. The frames are quarantined and a retransmission is requested; keys are not rotated, since the relay never had them. |
-| **Noise Jamming** | Broadband Gaussian white noise at J/N +9.1 dB saturates the receiver. | The beam turns purple with high-frequency static, the SNR drops 9.6 dB and the carrier power estimate falls to −96.5 dBm, frames go missing, and fallback routing to GS-MAT (Matera, Italy) is forced. |
+| **Data Tampering** | A relay between TerraSAR-X and Zaghouan flips one payload bit after the satellite sealed the frame. The RF is untouched. | The beam turns pink, the physical and statistical layers see nothing, and the data layer logs `HASH MISMATCH` for every altered frame. Each failed frame is dropped and resent; 3 failures within 10 frames quarantine the link (the burst rule). Keys are not rotated, since the relay never had them. |
+| **Noise Jamming** | Broadband Gaussian white noise at J/N +9.1 dB saturates the receiver. | The beam turns purple with high-frequency static, the SNR drops 9.6 dB and the carrier power estimate falls to −96.5 dBm. Where the SNR left is below the decoder's 4.4 dB threshold (low elevation) frames go missing; the others decode, verify, and arrive flagged `DEGRADED` with a jamming alarm. Fallback routing to GS-MAT (Matera, Italy) is forced about 2.8 s after the jam starts. |
 
 The attack-power slider changes the jammer power and the hijacker's excess power live.
 **Play demo** runs all four scenarios back to back, including a false alarm that only the
@@ -91,16 +91,16 @@ rejects a frame; the forest alone holds it; two tiers at once escalate.
   status; the physical layer, `security_detector.py`: range, Doppler, power and phase claimed
   against the SGP4 and ITU-R P.618 prediction, each gap in sigma, the chi-square against its
   gate and the kinematic coupling; the Isolation Forest features, score, threshold and
-  confidence; and the `physics_validator.py` decision (`ACCEPTED`, `HELD` or `REJECTED`) with
-  its reasons. *Live* / *Paused*
+  confidence; and the `decision.py` decision (`ACCEPTED`, `DEGRADED`, `HELD`, `REJECTED` or
+  `QUARANTINED`) with its reasons. *Live* / *Paused*
   freezes the list. The red-team label is shown for the jury only; the pipeline never reads it.
 - **Resilience & trust metrics**: frames authenticated, rejected (MAC or nonce), held on RF
   evidence and corrupted frames that reached the analyst (0). `verify_chain()` re-checks the
   ledger every 5 s; *Verify* re-checks it from the genesis block, and *Edit block* lets the red
   team change a verdict recorded in a past block, which the next check reports by index before
   the block is restored. The matrix gives, per scenario, the share of frames flagged by each
-  tier (data, physical, statistical) and the share stopped; hovering a stopped share gives the
-  median time to the first stop. The **Detection rate** and **False-alarm rate** tiles are
+  tier (data, physical, statistical) and the share flagged (held, rejected, quarantined, or
+  delivered as degraded); hovering it gives the median time to the first flag. The **Detection rate** and **False-alarm rate** tiles are
   measured on the frames of the session.
 
 ## 6. Hiding in the noise
@@ -119,10 +119,11 @@ spoofer, the jammer and the noise floor. Every satellite is received on the stat
 (8477.8 MHz) through the same link budget, so the signals differ by their geometry.
 **Noise attacks** (`/attacks`) shows three ways an attacker imitates natural noise (noise-shaped
 jamming, fade-mimicking spoofing, bit flips disguised as bit errors). **Protection**
-(`/protection`) shows why each is either harmless or visible: a jammer must stay 5.3 dB below
-the thermal noise before the chi-square engine fires, which costs at most 1.1 dB of SNR (the old
-±4 dB box gate let 4 dB go unseen). Its **Run a below-the-gate jam** button opens the dashboard
-and starts that case live. **Explainer video** (`/noise`) is a 3:01 narrated video with
+(`/protection`) shows why each is either harmless or visible: overhead a jammer must stay 5.3 dB
+below the thermal noise before the chi-square engine fires, which costs at most 1.1 dB of SNR;
+at the 2° mask, where the gate widens, 3.1 dB below and 1.7 dB (the old ±4 dB box gate let 4 dB
+go unseen). Its elevation buttons move the budget. Its **Run a below-the-gate jam** button opens the dashboard
+and starts that case live. **Explainer video** (`/noise`) is a 3:04 narrated video with
 chapters, captions and a transcript.
 
 The browser ports produce the same frame text, HMAC seal and block hashes as the Python modules

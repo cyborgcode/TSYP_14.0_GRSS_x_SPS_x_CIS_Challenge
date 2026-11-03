@@ -100,11 +100,14 @@ One pass per threat vector over Zaghouan on TerraSAR-X's built-in element set
 | CCSDS sequence hijack (+512, SAFE_HOLD) | 100% | 100% | 0% | 0% | 0% | 3% |
 | Uplink command tampering / injection | 100% | 100% | — | — | — | — |
 
-The evaluation behind the report, `python -m digital_twin.evaluate`, runs the three tiers and the
-site's decision rule against eight attacks (the four of the live demo plus replay, relay, delay
-and injection), two below-the-gate jams and three uplink threats, over six seeds: no attack packet
-reaches the analyst, 0.7–1.5 % of genuine packets are held, and the chi-square engine raises 2
-false alarms in 45,000 clean packets ([docs/evaluation-report.md](docs/evaluation-report.md)).
+The evaluation behind the report, `python -m digital_twin.evaluate`, runs the three tiers, the
+decoder and the decision rule of `decision.py` (the site's too) against ten attacks (the four of
+the live demo, the twin's meaconing, phase slip and sequence hijack, replay, delay and a co-channel
+capture), three below-the-gate jams and three uplink threats, over six seeds: all 90,000 attack
+packets are flagged from the first packet of each burst, 98.8 % of the 46,800 genuine packets are
+delivered clean, and 0 of 900 hostile telecommands execute
+([docs/evaluation-report.md](docs/evaluation-report.md)). `--dataset official --path` runs the
+same evaluation on the official reference data ([data/README.md](data/README.md)).
 
 **Live orbit.** The twin flies TerraSAR-X (NORAD 31698), an X-band radar satellite on a 514 km
 sun-synchronous orbit, on its current orbit: its latest element set is downloaded from
@@ -156,10 +159,13 @@ digital_twin/      SGP4 digital twin of the ground link, 13 modules
   security_detector.py          chi-square gate + kinematic coupling   ← physical layer
   audit_logger.py               phase 3: hash-chained JSONL audit log
   physics_validator.py          master orchestrator and red-team report
-  evaluate.py                   seeded evaluation: 8 attacks, 6 seeds, memory and timing
+  fec.py                        CCSDS rate-1/2 decoder: frames lost below 4.4 dB
+  decision.py                   five outcomes, burst rule, degraded delivery
+  datasets.py                   dataset adapter: synthetic or official, one format
+  evaluate.py                   seeded evaluation: 10 attacks, 6 seeds, ablation, ROC, memory
   api_gateway.py                FastAPI service
   dashboard_ui.py               Streamlit causal-chain inspector
-tests/             139 tests
+tests/             142 tests
 docs/              one document per deliverable, plus roadmap and decisions
 dashboard/         React app — the Phase 2 live-demo surface
 data/              official datasets (gitignored)
@@ -228,11 +234,11 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
   (`security_detector.py`: range, Doppler, power and phase claimed against what SGP4 and the
   ITU-R P.618 link budget predict, each gap in sigma, the chi-square against its
   elevation-adaptive gate, the kinematic coupling of range and Doppler); the statistical layer
-  (Isolation Forest score and confidence); and the decision of `physics_validator.py`
-  (`ACCEPTED`, `HELD` or `REJECTED`) with its reasons.
+  (Isolation Forest score and confidence); and the decision of `decision.py`
+  (`ACCEPTED`, `DEGRADED`, `HELD`, `REJECTED` or `QUARANTINED`) with its reasons.
 - **Resilience & trust metrics**: authenticated, rejected, held and corrupted-to-analyst
   counts; live `verify_chain()` with a red-team "edit a past block" test; and per-scenario
-  detection by tier (data, physical, statistical, stopped).
+  detection by tier (data, physical, statistical, flagged).
 - **The signal database** (`/signal`): no fixed signal, and live. `/api/catalog` relays the latest
   element sets of CelesTrak's Earth-resources group (167 Earth-observation satellites, cached
   two hours at the edge; the last download, then a built-in snapshot, when CelesTrak is

@@ -1,26 +1,26 @@
 {
   "title": "Hiding in the noise",
-  "duration": 181.352,
+  "duration": 184.424,
   "scenes": [
     {
       "id": "intro",
       "chapter": "Hiding in the noise",
       "start": 0.0,
-      "end": 15.78,
+      "end": 15.988,
       "cues": [
         {
           "start": 2.2,
-          "end": 5.848,
+          "end": 6.056,
           "text": "Every satellite signal reaches the ground buried in natural noise."
         },
         {
-          "start": 6.268,
-          "end": 10.076,
+          "start": 6.476,
+          "end": 10.428,
           "text": "A careful attacker can shape an attack to look exactly like that noise."
         },
         {
-          "start": 10.496,
-          "end": 14.88,
+          "start": 10.848,
+          "end": 15.088,
           "text": "This is how it works, and how our ground-link testbed still catches it."
         }
       ]
@@ -28,27 +28,27 @@
     {
       "id": "signal",
       "chapter": "The signal we chose",
-      "start": 15.78,
-      "end": 53.356,
+      "start": 15.988,
+      "end": 52.844,
       "cues": [
         {
-          "start": 16.68,
-          "end": 27.496,
+          "start": 16.888,
+          "end": 27.448,
           "text": "TerraSAR-X flies at 514 km and sends a fixed X-band carrier at 8477.8 MHz."
         },
         {
-          "start": 27.916,
-          "end": 35.932,
+          "start": 27.868,
+          "end": 35.836,
           "text": "The frequency is not random: it moves only with the Doppler shift, up to ±199 kHz, which the orbit predicts."
         },
         {
-          "start": 36.352,
-          "end": 45.424,
+          "start": 36.256,
+          "end": 44.992,
           "text": "At Zaghouan the carrier arrives between −88.8 and −74.4 dBm: an amplitude of 11.4 to 60.0 µV."
         },
         {
-          "start": 45.844,
-          "end": 52.356,
+          "start": 45.412,
+          "end": 51.844,
           "text": "The receiver's noise floor is −100 dBm, so the signal-to-noise ratio runs from 11 to 26 dB over the pass."
         }
       ]
@@ -56,27 +56,27 @@
     {
       "id": "natural",
       "chapter": "What natural noise looks like",
-      "start": 53.356,
-      "end": 71.604,
+      "start": 52.844,
+      "end": 70.82,
       "cues": [
         {
-          "start": 54.256,
-          "end": 56.128,
+          "start": 53.744,
+          "end": 55.696,
           "text": "Natural noise has a signature."
         },
         {
-          "start": 56.548,
-          "end": 60.548,
+          "start": 56.116,
+          "end": 59.988,
           "text": "Thermal noise is Gaussian and white: a flat floor across the band."
         },
         {
-          "start": 60.968,
-          "end": 67.16,
+          "start": 60.408,
+          "end": 66.44,
           "text": "Against the orbit model, the carrier wanders by less than 20 Hz and the power by less than 1 dB."
         },
         {
-          "start": 67.58,
-          "end": 70.604,
+          "start": 66.86,
+          "end": 69.82,
           "text": "That narrow envelope is where an attacker has to hide."
         }
       ]
@@ -84,22 +84,22 @@
     {
       "id": "imitate",
       "chapter": "How an attacker imitates it",
-      "start": 71.604,
-      "end": 97.164,
+      "start": 70.82,
+      "end": 96.156,
       "cues": [
         {
-          "start": 72.504,
-          "end": 80.04,
+          "start": 71.72,
+          "end": 79.24,
           "text": "One: noise-shaped jamming. Gaussian noise, raised slowly like a rain fade, so the floor creeps up instead of jumping."
         },
         {
-          "start": 80.46,
-          "end": 88.012,
+          "start": 79.66,
+          "end": 87.196,
           "text": "Two: fade-mimicking spoofing. A rogue node matches the Doppler and adds fake fading, so its power sits only 3 dB low."
         },
         {
-          "start": 88.432,
-          "end": 96.064,
+          "start": 87.616,
+          "end": 95.056,
           "text": "Three: bit flips disguised as channel errors. Chosen bits are flipped and the checksum recomputed, so the frame just looks noisy."
         }
       ]
@@ -107,27 +107,27 @@
     {
       "id": "physics",
       "chapter": "Physical layer · χ²",
-      "start": 97.164,
-      "end": 129.38,
+      "start": 96.156,
+      "end": 131.476,
       "cues": [
         {
-          "start": 98.064,
-          "end": 101.712,
+          "start": 97.056,
+          "end": 100.432,
           "text": "Our idea is to make every imitation either harmless or visible."
         },
         {
-          "start": 102.132,
-          "end": 109.828,
+          "start": 100.852,
+          "end": 108.356,
           "text": "The physical layer is a chi-square engine: range, Doppler, power and phase are each compared with the orbit, in units of their natural spread."
         },
         {
-          "start": 110.248,
-          "end": 121.56,
-          "text": "To stay hidden, injected noise must stay 5.3 dB below the thermal noise: that costs at most 1.1 dB of signal-to-noise ratio, and every frame still verifies."
+          "start": 108.776,
+          "end": 123.976,
+          "text": "To stay hidden overhead, injected noise must stay 5.3 dB below the thermal noise: at most 1.1 dB of signal-to-noise ratio, 1.7 dB at the 2° mask where the gate widens. Every frame still verifies."
         },
         {
-          "start": 121.98,
-          "end": 128.38,
+          "start": 124.396,
+          "end": 130.476,
           "text": "Push harder, and the chi-square gate fires: a spoofer's 3 dB fade is 14 sigma off the link budget."
         }
       ]
@@ -135,17 +135,17 @@
     {
       "id": "ai",
       "chapter": "Statistical layer · AI",
-      "start": 129.38,
-      "end": 142.192,
+      "start": 131.476,
+      "end": 144.624,
       "cues": [
         {
-          "start": 130.18,
-          "end": 134.18,
+          "start": 132.276,
+          "end": 136.452,
           "text": "The statistical layer is an Isolation Forest trained only on clean passes."
         },
         {
-          "start": 134.6,
-          "end": 141.192,
+          "start": 136.872,
+          "end": 143.624,
           "text": "It scores each reading together with how fast it changed, so a disguise must copy the rhythm of nature, not just its level."
         }
       ]
@@ -153,22 +153,22 @@
     {
       "id": "crypto",
       "chapter": "Data layer · Cryptography",
-      "start": 142.192,
-      "end": 165.136,
+      "start": 144.624,
+      "end": 168.032,
       "cues": [
         {
-          "start": 142.992,
-          "end": 150.048,
+          "start": 145.424,
+          "end": 152.528,
           "text": "The data layer is cryptography, which noise cannot imitate: every frame carries an HMAC-SHA256 tag made with a secret key."
         },
         {
-          "start": 150.468,
-          "end": 156.324,
+          "start": 152.948,
+          "end": 159.044,
           "text": "Change one bit, by accident or on purpose, and the tag breaks: the frame is dropped and requested again."
         },
         {
-          "start": 156.744,
-          "end": 164.136,
+          "start": 159.464,
+          "end": 167.032,
           "text": "Either deterministic tier, data or physical, rejects a frame. When two tiers fire at once, the link is quarantined."
         }
       ]
@@ -176,22 +176,22 @@
     {
       "id": "result",
       "chapter": "Result",
-      "start": 165.136,
-      "end": 181.352,
+      "start": 168.032,
+      "end": 184.424,
       "cues": [
         {
-          "start": 165.936,
-          "end": 171.728,
+          "start": 168.832,
+          "end": 174.592,
           "text": "In our tests, every attack packet was denied, and no corrupted frame reached the analyst."
         },
         {
-          "start": 172.148,
-          "end": 175.06,
+          "start": 175.012,
+          "end": 177.844,
           "text": "About one percent of genuine packets were held back."
         },
         {
-          "start": 175.48,
-          "end": 177.352,
+          "start": 178.264,
+          "end": 180.424,
           "text": "Try it live at tsyp-pi.vercel.app."
         }
       ]
