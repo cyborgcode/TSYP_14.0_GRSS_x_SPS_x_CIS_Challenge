@@ -1,7 +1,7 @@
 # Seven-minute demo
 
 The path is scripted to the second. If the live dashboard fails, play
-`docs/demo/fallback-demo.mp4`, a recording of the same path (2:12), and narrate over it.
+`docs/demo/fallback-demo.mp4`, a recording of the same path (2:30), and narrate over it.
 
 Before the session: `cd dashboard && npm ci && npm run dev`, open http://localhost:5173 at
 1600 × 900, wait for the 3D scene, close every other tab. Keep `docs/figures/` open in a second

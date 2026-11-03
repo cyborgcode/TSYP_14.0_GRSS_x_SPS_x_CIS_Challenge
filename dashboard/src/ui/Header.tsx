@@ -25,9 +25,7 @@ export function Header() {
       <div className="header__brand">
         <span className="dash-status__label">Satellite flown</span>
         <FleetPicker />
-        <span className="dash-status__hint">
-          Click it to fly any Earth-observation satellite from CelesTrak
-        </span>
+        <span className="dash-status__hint">Click to fly another satellite</span>
       </div>
       <span className="header__live">
         <span className="header__live-dot" />
