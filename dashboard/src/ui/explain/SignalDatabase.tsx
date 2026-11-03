@@ -638,7 +638,7 @@ export function SignalDatabase() {
               </span>
             </h2>
             <a className="explain__cta" href={testbedHref(selected)}>
-              Fly this pass on the live testbed →
+              Switch the live testbed to this satellite →
             </a>
           </div>
           <LiveReadout sig={selected} live={live} now={now} />

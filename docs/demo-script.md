@@ -16,6 +16,7 @@ window for minutes 5 and 6.
 | 1:15 | Tampering | No RF signature at all: the χ² sees nothing, the HMAC breaks. Data tier only. |
 | 1:25 | Spoofing | A 3.2 dB "fade" on the Doppler track: 14 σ off the link budget. |
 | 1:35 | Jamming | Power collapses; frames that still decode are delivered **flagged as degraded**, the rest are lost, routing falls back to the second station. |
+| 1:40 | Click **Change satellite** in the status strip, then close it | The testbed flies any of the 167 satellites: pick one and it switches to that satellite's next pass. |
 | 1:45 | Click **Inspect packets**, scroll | One frame through every tier: tag, nonce, the four χ² residuals, the forest's six features, the decision and its reasons. |
 | 2:30 | **Protection** page, elevation buttons 2°, 9°, 30°, 90° | Issue 2: the stealth budget depends on elevation (table below). |
 | 3:30 | Same page, the jam curve | Issue 3: what a jam under the gate costs, before and after the degraded-delivery rule. |

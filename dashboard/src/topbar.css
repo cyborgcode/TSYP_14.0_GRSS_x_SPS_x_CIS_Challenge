@@ -185,3 +185,36 @@
   color: var(--text-2, #8aa0b6);
   white-space: nowrap;
 }
+
+.dash-status__hint {
+  font-size: 12px;
+  color: var(--text-2, #8aa0b6);
+  white-space: nowrap;
+}
+
+/* The satellite button says what it does: change the satellite the testbed flies. */
+.fleet__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: #04121a;
+  background: var(--accent, #6ee7ff);
+  font: 700 11.5px var(--font-ui, sans-serif);
+  letter-spacing: 0.02em;
+}
+.fleet__cta .fleet__caret {
+  color: inherit;
+}
+.fleet__row-go {
+  flex: none;
+  font: 600 11.5px var(--font-ui, sans-serif);
+  color: var(--accent, #6ee7ff);
+  opacity: 0.55;
+}
+.fleet__row:hover .fleet__row-go,
+.fleet__row:focus-visible .fleet__row-go {
+  opacity: 1;
+}

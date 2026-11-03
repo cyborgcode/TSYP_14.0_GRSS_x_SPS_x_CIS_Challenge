@@ -235,7 +235,7 @@ large one.
   and replays it, time-compressed, with its real elevation, range, Doppler and received power.
   Offline it flies the last element set the browser downloaded, and with none, the TerraSAR-X
   element set built into the site. The status strip and the orbit readout say which.
-- **The fleet**: the satellite button in the status strip opens the whole signal database (167
+- **Change satellite**: the **Change satellite** button in the status strip opens the whole signal database (167
   Earth-observation satellites) with the live sky over Zaghouan; click any satellite to fly it.
   `/?sat=<NORAD>` flies that satellite's next pass culminating at least 10° high,
   `/?sat=<NORAD>&from=<Unix ms>` the pass under way at that time (`dashboard/src/sim/fleet.ts`).

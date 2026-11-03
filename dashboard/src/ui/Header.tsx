@@ -23,8 +23,11 @@ export function Header() {
   return (
     <header className="header dash-status">
       <div className="header__brand">
-        <span className="dash-status__label">Live testbed</span>
+        <span className="dash-status__label">Satellite flown</span>
         <FleetPicker />
+        <span className="dash-status__hint">
+          Click it to fly any Earth-observation satellite from CelesTrak
+        </span>
       </div>
       <span className="header__live">
         <span className="header__live-dot" />

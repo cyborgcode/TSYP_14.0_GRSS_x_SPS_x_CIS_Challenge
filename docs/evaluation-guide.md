@@ -12,7 +12,7 @@ real-time threat detection and cryptographic resilience, running entirely in the
   satellite at 514 km, downlinking at X-band (8477.8 MHz) to our ground station in Zaghouan,
   Tunisia (GS-ZAG). The dashboard replays its next real pass over Zaghouan, from CelesTrak's
   latest element set (offline: the last download, then an element set built into the site).
-- **Any satellite**: the satellite button in the testbed's status strip lists the whole signal database (167
+- **Change satellite**: the **Change satellite** button in the testbed's status strip lists the whole signal database (167
   Earth-observation satellites from CelesTrak) beside a live sky view of Zaghouan; click one to
   fly its next pass on the testbed. The link `/?sat=39634` flies Sentinel-1A, for instance. The
   name, the identity in every frame, the emulated hardware token and the Ed25519 key follow the
@@ -114,7 +114,7 @@ each. **Signals** (`/signal`) is the signal database: CelesTrak's Earth-resource
 delivers (rise and set, culmination, Doppler, received power, SNR, slant range, atmospheric
 loss), down to the station and up to the satellite. It is live: the clock, the sky view of the
 satellites above Zaghouan and their elevation, Doppler and power change every second, and a
-cursor runs along the selected pass. **Fly this pass on the live testbed** opens the dashboard
+cursor runs along the selected pass. **Switch the live testbed to this satellite** opens the dashboard
 on that satellite and pass. The status line says whether the element sets are live, the last download or the built-in
 snapshot. Filter by name or culmination and pick a pass: its elevation, Doppler and received
 power are drawn second by second, with its full parameters and where it sits against the

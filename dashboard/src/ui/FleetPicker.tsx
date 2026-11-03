@@ -29,7 +29,7 @@ function loadFleet() {
   return fleet;
 }
 
-/** The header's satellite button: the whole database, the sky right now, one click to fly. */
+/** The satellite button: the whole database, the sky right now, one click to switch to one. */
 export function FleetPicker() {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<{ catalog: Catalog; signals: PassSignal[] } | null>(null);
@@ -113,23 +113,27 @@ export function FleetPicker() {
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        title="Fly another satellite of the CelesTrak database"
+        aria-label={`Satellite flown: ${SATELLITE}, NORAD ${flying}. Change satellite`}
+        title="Change satellite: fly any Earth-observation satellite of the CelesTrak database"
       >
         <SatelliteIcon size={15} />
         <span className="fleet__name">{SATELLITE}</span>
         <span className="fleet__norad mono">NORAD {flying}</span>
-        <span className="fleet__caret" aria-hidden="true">
-          ▾
+        <span className="fleet__cta">
+          Change satellite
+          <span className="fleet__caret" aria-hidden="true">
+            ▾
+          </span>
         </span>
       </button>
       {open && (
-        <div ref={panel} className="fleet" role="dialog" aria-label="Fly another satellite">
+        <div ref={panel} className="fleet" role="dialog" aria-label="Change satellite">
           <div className="fleet__head">
             <div>
-              <div className="fleet__title">The fleet</div>
+              <div className="fleet__title">Change satellite</div>
               <div className="fleet__sub">
                 {data
-                  ? `${data.catalog.satellites.length} Earth-observation satellites from CelesTrak · ${sky.length} above Zaghouan now`
+                  ? `Pick any of ${data.catalog.satellites.length} Earth-observation satellites from CelesTrak (${sky.length} above Zaghouan now): the testbed switches to it and flies its next pass.`
                   : 'Loading the signal database…'}
               </div>
             </div>
@@ -145,7 +149,10 @@ export function FleetPicker() {
           <div className="fleet__body">
             <div className="fleet__sky">
               <SkyView points={sky} selected={flying} onPick={fly} />
-              <p className="sky__legend">Live sky over Zaghouan. Click a satellite to fly it.</p>
+              <p className="sky__legend">
+                Live sky over Zaghouan. Click a satellite here, or a row of the list, to switch the
+                testbed to it.
+              </p>
             </div>
             <div className="fleet__list-wrap">
               <input
@@ -167,7 +174,7 @@ export function FleetPicker() {
                     >
                       <span className="fleet__row-name">
                         {sat.name}
-                        {sat.noradId === flying && <span className="sigdb__tag">flying</span>}
+                        {sat.noradId === flying && <span className="sigdb__tag">flying now</span>}
                       </span>
                       <span className={`mono fleet__row-when ${live ? 'is-live' : ''}`}>
                         {live
@@ -176,6 +183,11 @@ export function FleetPicker() {
                             ? `rises ${hhmm(pass.aosMs)} · ${pass.maxElevationDeg.toFixed(0)}°`
                             : `no pass in ${HORIZON_HOURS} h`}
                       </span>
+                      {sat.noradId !== flying && (
+                        <span className="fleet__row-go" aria-hidden="true">
+                          Switch to it →
+                        </span>
+                      )}
                     </button>
                   </li>
                 ))}
