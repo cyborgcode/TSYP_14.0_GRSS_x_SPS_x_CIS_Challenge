@@ -92,6 +92,9 @@ describe('flying the fleet', () => {
     expect(copy.SATELLITE).toBe('SENTINEL-1A');
     expect(link.SAT_ID).toBe('SENTINEL-1A');
     expect(link.SAT_TOKEN).toBe(link.tokenFor(SENTINEL_1A));
+    // The element set flown is recorded by its SHA-256, with its epoch age.
+    expect(engine.elementSetSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(engine.terminal.some((l) => l.text.startsWith('orbit: element set sha256 '))).toBe(true);
     for (let i = 0; i < 60; i++) {
       engine.step();
       await engine.settle();

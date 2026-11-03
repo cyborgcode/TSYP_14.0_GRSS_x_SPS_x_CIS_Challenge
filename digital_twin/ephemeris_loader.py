@@ -25,6 +25,7 @@ off the network, GROUNDLINK_TLE_CACHE moves the cache directory.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import http.client
 import json
 import logging
@@ -104,6 +105,8 @@ def parse_tle(text: str) -> dict:
         "line2": line2,
         "epoch_utc": epoch.isoformat(),
         "epoch_unix": epoch.timestamp(),
+        # The relay that served the set is not trusted for integrity: record what was flown.
+        "sha256": hashlib.sha256(f"{line1}\n{line2}".encode()).hexdigest(),
     }
 
 
@@ -204,9 +207,10 @@ def describe(tle: dict) -> str:
     """One line on the orbit flown: satellite, where its elements came from, their age."""
     source = tle.get("source_detail", "element set given by the caller")
     age_days = (time.time() - tle["epoch_unix"]) / 86400.0
+    digest = tle.get("sha256", "")[:16]
     return (
         f"{tle['sat_name']} (NORAD {tle['norad_id']}): {source}, "
-        f"epoch {tle['epoch_utc']} ({age_days:.1f} days old)"
+        f"epoch {tle['epoch_utc']} ({age_days:.1f} days old), sha256 {digest}…"
     )
 
 

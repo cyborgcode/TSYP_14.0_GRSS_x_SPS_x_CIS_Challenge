@@ -618,9 +618,17 @@ def test_every_attack_tick_in_a_pass_is_stopped(twin, first_pass, vector, layer)
 
     assert report["attack_ticks"] > 0
     assert report["attack_stopped"] == 1.0
-    assert report["attack_rejected"] == 1.0
+    assert report["attack_rejected"] == 1.0  # rejected or quarantined
     assert report[layer] == 1.0
     assert report["clean_rejected"] == 0.0
+
+
+def test_a_hijack_burst_quarantines_the_link(twin, first_pass):
+    report = twin.run_pass("CCSDS_SEQUENCE_HIJACK", start=first_pass["aos_unix"])
+    decisions = [t["final_decision"] for t in report["ticks"] if t["red_team_vector"] != "NONE"]
+
+    assert decisions[:2] == ["REJECTED", "REJECTED"]
+    assert set(decisions[2:]) == {"QUARANTINED"}
 
 
 def test_the_meaconing_onset_breaks_the_range_doppler_coupling(twin, first_pass):
@@ -682,7 +690,8 @@ def test_api_gateway(twin, first_pass, monkeypatch):
         json={"attack_vector": "COHERENT_PHASE_SLIP", "timestamp": first_pass["tca_unix"]},
     )
     assert tick.status_code == 200
-    assert tick.json()["final_decision"] == "REJECTED"
+    # The physics and the statistical layers both see the slip: two tiers quarantine.
+    assert tick.json()["final_decision"] == "QUARANTINED"
     assert client.post("/simulate/tick", json={"attack_vector": "JAMMING"}).status_code == 400
 
     report = client.post(
@@ -724,16 +733,26 @@ def test_dashboard_runs_a_tick(tmp_path, monkeypatch):
     app.sidebar.button[0].click().run()
     assert not app.exception
     labels = {metric.label: metric.value for metric in app.metric}
-    assert labels["Final decision"] == "REJECTED"
+    # Physics sees the range, the forest the louder power: two tiers quarantine.
+    assert labels["Final decision"] == "QUARANTINED"
     assert labels["Dominant residual"] == "slant_range_km"
     assert labels["Range-Doppler coupling"].endswith("sigma")
     assert len(app.dataframe[0].value) == 5  # the kinematic row joins the four residuals
 
 
-def test_the_seeded_evaluation_stops_every_attack_packet():
-    from digital_twin.evaluate import ATTACKS, EVASION, run_seed
+def test_the_seeded_evaluation_flags_every_attack_packet(tmp_path):
+    from digital_twin.evaluate import ATTACKS, EVASION, run_dataset, run_seed
 
-    result = run_seed(3, n_train=400, n_nominal=160, bursts=2, burst_len=10, uplink_commands=5)
+    export = tmp_path / "run.jsonl"
+    result = run_seed(
+        3,
+        n_train=400,
+        n_nominal=200,
+        bursts=2,
+        burst_len=10,
+        uplink_commands=5,
+        export_path=str(export),
+    )
     counts = result["counts"]
     for attack in ATTACKS:
         assert counts[attack]["n"] == 20
@@ -741,11 +760,47 @@ def test_the_seeded_evaluation_stops_every_attack_packet():
     # Genuine frames verify, and the forest alone only ever holds them.
     assert counts["NONE"]["data"] == 0
     assert counts["NONE"]["REJECTED"] + counts["NONE"]["QUARANTINED"] <= 1
+    # A burst of authentication failures: two frames rejected, then the link quarantined.
+    for attack in ("DATA_TAMPERING", "INJECTION"):
+        assert counts[attack]["REJECTED"] == 4, attack
+        assert counts[attack]["QUARANTINED"] == 16, attack
     # Below the gate the jam costs little SNR and every frame still verifies.
     demo = counts["JAM_BELOW_GATE_DEMO"]
     assert demo["verified"] == demo["n"]
     assert demo["snr_loss_db"] / demo["n"] < 0.3
     edge = counts["JAM_AT_STEALTH_LIMIT"]
     assert abs(edge["snr_loss_db"] / edge["n"] - 1.115) < 0.01
+    # A jam the chi-square sees on the power alone: genuine frames delivered as degraded.
+    assert edge["REJECTED"] + edge["QUARANTINED"] == 0
     assert set(EVASION) <= set(counts)
     assert all(u["executed"] == 0 for u in result["uplink"].values())
+    # The dataset adapter reads the exported run back and reaches the same decisions.
+    again = run_dataset(str(export))["counts"]
+    for name, c in counts.items():
+        for key in ("n", "data", "statistical", "physical", "DELIVERED", "DEGRADED", "QUARANTINED"):
+            assert again[name][key] == c[key], (name, key)
+
+
+def test_the_decoder_loses_frames_below_its_threshold():
+    from digital_twin.fec import decoding_threshold_db, frame_error_rate
+
+    assert frame_error_rate(11.2) < 1e-20  # the link at the 2 deg mask
+    assert frame_error_rate(1.6) == 1.0  # the same link under the J/N +9.1 dB jam
+    assert 4.0 < decoding_threshold_db(0.01) < 4.8
+
+
+def test_the_decision_rule():
+    from digital_twin.decision import BurstMonitor, TierFlags, decide
+
+    assert decide(TierFlags(False, False, False))[0] == "DELIVERED"
+    assert decide(TierFlags(False, True, False))[0] == "HELD"
+    assert decide(TierFlags(True, False, False))[0] == "REJECTED"
+    assert decide(TierFlags(False, True, True))[0] == "QUARANTINED"
+    # Genuine, authenticated, only the power residual out: delivered tagged as degraded.
+    assert decide(TierFlags(False, True, True, power_only=True))[0] == "DEGRADED"
+    monitor = BurstMonitor()
+    outcomes = [
+        decide(TierFlags(True, False, False, auth_failure=True), monitor.observe(True))[0]
+        for _ in range(4)
+    ]
+    assert outcomes == ["REJECTED", "REJECTED", "QUARANTINED", "QUARANTINED"]

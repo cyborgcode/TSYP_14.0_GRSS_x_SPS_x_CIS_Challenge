@@ -7,14 +7,15 @@ import { AlertIcon, ATTACK_ICONS, CheckIcon } from './icons';
 
 const ATTACKS: AttackKind[] = ['spoof', 'tamper', 'hijack', 'jam'];
 
-/** Attack frames stopped and genuine frames held or rejected, so far in this browser. */
+/** Attack frames flagged and genuine frames held or rejected, so far in this browser. */
 function measured(engine: Engine) {
   let attackFrames = 0;
   let stopped = 0;
   for (const kind of ATTACKS) {
     const st = engine.layerStats[kind];
     attackFrames += st?.frames ?? 0;
-    stopped += st?.blocked ?? 0;
+    // Flagged: held, rejected, quarantined, or a jammed frame delivered tagged as degraded.
+    stopped += st?.flagged ?? 0;
   }
   const genuine = engine.layerStats.genuine;
   return {

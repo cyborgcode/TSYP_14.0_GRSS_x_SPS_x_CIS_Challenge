@@ -11,6 +11,7 @@ import {
   importMacKey,
 } from '../src/sim/crypto';
 import { DEMO_LENGTH_S, Engine, UPLINK_RUN_S } from '../src/sim/engine';
+import { frameErrorRate } from '../src/sim/fec';
 import {
   ALTITUDE_KM,
   C_KM_S,
@@ -368,7 +369,7 @@ describe('physical layer (port of security_detector.py)', () => {
     expect(consistent).toBe(10);
   });
 
-  it('decides as physics_validator.py: either deterministic layer rejects, the forest holds', () => {
+  it('decides as decision.py: one deterministic tier rejects, two quarantine, the forest holds', () => {
     const claimOk = { satellite_id: 'TERRASAR-X', hw_token: '0x4FE2' };
     const authOk = { ok: true, reason: 'AUTHENTIC' as const };
     const engine = new PhysicsEngine();
@@ -380,11 +381,29 @@ describe('physical layer (port of security_detector.py)', () => {
     expect(decide(claimOk, authOk, clean, null).verdict).toBe('ACCEPTED');
     expect(decide(claimOk, authOk, clean, forest).verdict).toBe('HELD');
     expect(decide(claimOk, authOk, clean, forest).action).toBe('HOLD_FOR_REVIEW');
-    expect(decide(claimOk, authOk, breach, forest).verdict).toBe('REJECTED');
-    const forged = decide(claimOk, { ok: false, reason: 'MAC_MISMATCH' }, clean, null);
+    expect(decide(claimOk, authOk, breach, null).verdict).toBe('REJECTED');
+    expect(decide(claimOk, authOk, breach, forest).verdict).toBe('QUARANTINED');
+    const macFail = { ok: false, reason: 'MAC_MISMATCH' as const };
+    const forged = decide(claimOk, macFail, clean, null);
     expect(forged.verdict).toBe('REJECTED');
     expect(forged.reasons).toEqual(['data: trust anchor: MAC_MISMATCH']);
     expect(decide(null, null, null, null).verdict).toBe('REJECTED');
+    // A burst of authentication failures quarantines the link.
+    const burst = decide(claimOk, macFail, clean, null, true);
+    expect(burst.verdict).toBe('QUARANTINED');
+    expect(burst.reasons[0]).toMatch(/burst · 3 authentication failures within the last 10 frames/);
+    // Genuine, authenticated, only the power residual out: delivered tagged as degraded.
+    const faded = {
+      ...clean,
+      breach: true,
+      chiSquareBreach: true,
+      chiSquare: clean.chiSquare + 400,
+      normalized: { ...clean.normalized, rssiDb: -20 },
+    };
+    const degraded = decide(claimOk, authOk, faded, forest);
+    expect(degraded.verdict).toBe('DEGRADED');
+    expect(degraded.allow).toBe(true);
+    expect(decide(claimOk, macFail, faded, null).verdict).toBe('QUARANTINED');
   });
 
   it('moves the carrier to ~8492 MHz under hijack and RSSI to −96.5 dBm under jamming', () => {
@@ -397,7 +416,20 @@ describe('physical layer (port of security_detector.py)', () => {
     expect(Math.abs(hijacked.phaseDeg)).toBeGreaterThan(30);
     const jammed = at(attack('jam', 9));
     expect(Math.abs(jammed.rssiDbm - JAMMED_RSSI_DBM)).toBeLessThan(1);
-    expect(jammed.timingUs).toBeNull();
+    // 15 dB less the jam's 9.6 dB is above the decoder's threshold: the frame decodes.
+    expect(jammed.timingUs).not.toBeNull();
+    // At the mask, 11.2 dB less 9.6 dB is below it: the decoder fails and the frame is lost.
+    const atMask = sample(12, 11.2, {
+      attacks: [{ ...attack('jam', 9), tTrigger: 10 }],
+      falseAlarm: 0,
+      dopplerPredHz: 0,
+    });
+    expect(atMask.timingUs).toBeNull();
+    expect(frameErrorRate(11.2)).toBeLessThan(1e-20);
+    expect(frameErrorRate(1.6)).toBe(1);
+    // The same waterfall as digital_twin/fec.py.
+    expect(frameErrorRate(3.5)).toBeCloseTo(0.185, 2);
+    expect(frameErrorRate(4.0)).toBeCloseTo(0.0378, 3);
     const spoofed = at(attack('spoof'));
     expect(spoofed.rssiDbm).toBeLessThan(spoofed.rssiModelDbm - 2);
     expect(spoofed.rssiDbm).toBeGreaterThan(spoofed.rssiModelDbm - 4);
@@ -494,7 +526,8 @@ describe('engine scenarios', () => {
     const forged = engine.packets.filter((p) => p.label === 'spoof');
     expect(forged.length).toBeGreaterThan(0);
     for (const p of forged) {
-      expect(p.decision.verdict).toBe('REJECTED');
+      // Forged tag and a χ² breach: two tiers, or a burst of failures, quarantine.
+      expect(p.decision.verdict).toBe('QUARANTINED');
       expect(p.decision.reasons.some((r) => r.startsWith('data: '))).toBe(true);
     }
     expect(engine.state).toBe('UNDER ATTACK');
@@ -504,7 +537,7 @@ describe('engine scenarios', () => {
     expect(engine.corruptedToAnalyst).toBe(0);
   });
 
-  it('noise jamming: RSSI collapses, frames are lost and routing falls back to GS-MAT', async () => {
+  it('noise jamming: power collapses, frames are lost or delivered degraded, routing falls back', async () => {
     const engine = await Engine.create();
     await runFor(engine, 1);
     engine.setPower(9);
@@ -512,7 +545,17 @@ describe('engine scenarios', () => {
     await runFor(engine, 1.5);
     expect(engine.state).toBe('JAMMING');
     expect(engine.current!.rssiDbm).toBeLessThan(-95);
-    expect(engine.ledger.some((r) => r.verdict === 'LOST')).toBe(true);
+    const jammed = engine.packets.filter((p) => p.label === 'jam');
+    expect(jammed.length).toBeGreaterThan(0);
+    for (const p of jammed) {
+      // Lost to the decoder, or genuine and delivered flagged: never accepted as clean.
+      expect(p.decision.verdict).not.toBe('ACCEPTED');
+      if (p.frame) {
+        expect(p.auth.ok).toBe(true);
+        expect(p.decision.verdict).toBe('DEGRADED');
+      }
+    }
+    expect(engine.corruptedToAnalyst).toBe(0);
     await runFor(engine, 3);
     expect(engine.route).toBe('MAT');
     expect(engine.terminal.some((l) => l.text.includes('fallback routing → GS-MAT'))).toBe(true);
@@ -547,10 +590,17 @@ describe('engine scenarios', () => {
       expect(p.mac).not.toBe(p.expectedMac);
     }
     expect(engine.terminal.some((l) => l.text.includes('HASH MISMATCH'))).toBe(true);
-    await runFor(engine, 4);
-    expect(engine.state === 'UNDER ATTACK' || engine.runs.some((r) => r.kind === 'tamper')).toBe(
-      true,
-    );
+    // The burst rule, replayed over the frames in order: a failure is rejected unless the last
+    // 10 decoded frames hold 3 failures, then it quarantines the link.
+    const window: boolean[] = [];
+    for (const p of [...engine.packets].reverse()) {
+      if (!p.frame) continue;
+      window.push(!p.auth.ok);
+      if (window.length > 10) window.shift();
+      if (p.label !== 'tamper') continue;
+      const burst = window.filter(Boolean).length >= 3;
+      expect(p.decision.verdict).toBe(burst ? 'QUARANTINED' : 'REJECTED');
+    }
     expect(engine.keyEpoch).toBe(0x3f);
     expect(engine.corruptedToAnalyst).toBe(0);
   });

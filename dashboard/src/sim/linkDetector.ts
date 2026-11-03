@@ -161,10 +161,16 @@ export class LinkDetector {
 }
 
 export interface Decision {
+  /** The frame reaches the analyst (accepted, or delivered tagged as degraded). */
   allow: boolean;
-  action: 'ALLOW_STREAM' | 'HOLD_FOR_REVIEW' | 'QUARANTINE_AND_DROP';
-  /** The digital twin's final decision (physics_validator.py). */
-  verdict: 'ACCEPTED' | 'HELD' | 'REJECTED';
+  action:
+    | 'ALLOW_STREAM'
+    | 'DELIVER_DEGRADED'
+    | 'HOLD_FOR_REVIEW'
+    | 'QUARANTINE_AND_DROP'
+    | 'QUARANTINE_LINK';
+  /** The digital twin's final decision (digital_twin/decision.py). */
+  verdict: 'ACCEPTED' | 'DEGRADED' | 'HELD' | 'REJECTED' | 'QUARANTINED';
   reasons: string[];
 }
 

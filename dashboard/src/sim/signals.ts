@@ -4,6 +4,8 @@
 // range and elevation, so it rises and falls with the pass. The physical layer judges these
 // residuals with the chi-square engine in physicsEngine.ts.
 
+import { FRAME_PERIOD_S } from './constants';
+import { frameDraw, frameErrorRate } from './fec';
 import { CARRIER_HZ, NOISE_FLOOR_DBM } from './geometry';
 import { clamp, smooth, sn } from './noise';
 
@@ -82,8 +84,8 @@ export function sample(s: number, snrModelDb: number, ctx: SignalContext): Sampl
   let snr = snrModelDb + 0.7 * sn(s * 2.6, 31) + 0.3 * sn(s * 11, 33);
   let timing: number | null = 2 * Math.sin(s * 2.3) + 2.4 * sn(s * 3, 21) + 0.8 * sn(s * 11, 24);
   let phase = 1.2 * Math.sin(s * 1.7 + 0.6) + 3.8 * sn(s * 2.9, 51) + 1.5 * sn(s * 10, 52);
-  let lost = false;
   let jamRssi: { weight: number; e: number } | null = null;
+  let jamLock: { e: number; p: number } | null = null;
 
   for (const a of ctx.attacks) {
     const e = envelope(a, s);
@@ -106,16 +108,23 @@ export function sample(s: number, snrModelDb: number, ctx: SignalContext): Sampl
         phase += e * 2 * sn(s * 6, 54);
         break;
       case 'jam':
-        dop += e * clamp((p - 5) / 5) * 720 * sn(s * 22, 15);
-        phase += e * clamp((p - 5) / 5) * 38 * sn(s * 19, 55);
         snr -= e * jamSnrLossDb(p) + e * clamp((p - 5) / 5) * 1.5 * sn(s * 16, 35);
-        if (s >= a.tTrigger && s < a.tResponse && p > 7) lost = true;
+        jamLock = { e, p };
         jamRssi = {
           weight: e * clamp((p - JAM_SATURATION_DB) / (JAM_REFERENCE_POWER_DB - JAM_SATURATION_DB)),
           e,
         };
         break;
     }
+  }
+
+  // The decoder (fec.ts): below its threshold the frame is lost. Where the jam leaves less SNR
+  // than that, the carrier loop loses lock too and the carrier and phase wander.
+  const lost = frameDraw(Math.floor(s / FRAME_PERIOD_S)) < frameErrorRate(snr);
+  if (jamLock && frameErrorRate(snr) > 0.5) {
+    const k = jamLock.e * clamp((jamLock.p - 5) / 5);
+    dop += k * 720 * sn(s * 22, 15);
+    phase += k * 38 * sn(s * 19, 55);
   }
 
   const evmModelPct = evmFromSnr(snrModelDb);

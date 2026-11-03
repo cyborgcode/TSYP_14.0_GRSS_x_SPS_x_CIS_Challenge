@@ -106,9 +106,17 @@ function Hexdump({ p }: { p: PacketRecord }) {
   );
 }
 
-function Status({ ok, children }: { ok: boolean; children: React.ReactNode }) {
+function Status({
+  ok,
+  warn = false,
+  children,
+}: {
+  ok: boolean;
+  warn?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <span className={`pstat pstat--${ok ? 'ok' : 'bad'}`}>
+    <span className={`pstat pstat--${warn ? 'warn' : ok ? 'ok' : 'bad'}`}>
       {ok ? <CheckIcon size={12} /> : <CrossIcon size={12} />}
       {children}
     </span>
@@ -386,13 +394,19 @@ function Detail({ p }: { p: PacketRecord }) {
       <Section
         file="physics_validator.py"
         title="Three-tier decision"
-        verdict={<Status ok={p.decision.allow}>{p.decision.verdict}</Status>}
+        verdict={
+          <Status ok={p.decision.allow} warn={p.decision.verdict === 'DEGRADED'}>
+            {p.decision.verdict}
+          </Status>
+        }
       >
         <Row k="Action">
           <span className="mono">{p.decision.action}</span>
         </Row>
         {p.decision.reasons.length ? (
-          <ul className={`preasons ${p.decision.verdict === 'HELD' ? 'preasons--warn' : ''}`}>
+          <ul
+            className={`preasons ${p.decision.verdict === 'HELD' || p.decision.verdict === 'DEGRADED' ? 'preasons--warn' : ''}`}
+          >
             {p.decision.reasons.map((r) => (
               <li key={r}>{r}</li>
             ))}

@@ -152,6 +152,8 @@ export interface PassProfile {
   aosMs: number | null;
   tleEpochMs: number | null;
   fetchedMs: number | null;
+  /** The two lines of the element set flown, for the ledger's SHA-256 record. */
+  tleLines?: [string, string];
   /** Real geometry at fraction u of the pass, from horizon (0) to horizon (1). */
   at: (u: number) => RealGeometry;
 }

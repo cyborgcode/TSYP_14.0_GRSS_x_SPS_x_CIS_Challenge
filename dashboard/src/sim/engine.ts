@@ -43,7 +43,7 @@ import {
   type PhysicsResult,
   type Residual,
 } from './physicsEngine';
-import { decide } from './validator';
+import { BURST_FAILURES, BURST_WINDOW, decide } from './validator';
 import {
   OnboardVerifier,
   ROGUE_COMMAND,
@@ -106,6 +106,8 @@ const TERMINAL_LINES = 160;
 const UPLINK_PERIOD_S = 1.1;
 /** Hostile commands come this often during an uplink attack, which lasts UPLINK_RUN_S. */
 const HOSTILE_PERIOD_S = 0.7;
+/** An element set older than this is flagged as stale in the ledger. */
+export const ELEMENT_SET_STALE_DAYS = 3;
 export const UPLINK_RUN_S = 5;
 const HANDSHAKE_EVERY_S = 8;
 
@@ -220,6 +222,10 @@ export interface LayerStats {
   forest: number;
   detector: number;
   blocked: number;
+  /** Frames that raised an alarm: blocked, or delivered tagged as degraded. */
+  flagged: number;
+  /** Frames delivered tagged as degraded: genuine, on a jammed link. */
+  degraded: number;
   /** Frames the statistical layer alone held for review. */
   held: number;
   /** Per run: milliseconds from attack onset to the first blocked attack frame. */
@@ -412,6 +418,13 @@ export class Engine {
   packets: PacketRecord[] = [];
   layerStats: Partial<Record<StatKey, LayerStats>> = {};
   heldByZeroTrust = 0;
+  /** SHA-256 of the element set flown (its two lines), recorded at start-up. */
+  elementSetSha256: string | null = null;
+  /** Genuine frames delivered tagged as degraded (a jammed link). */
+  degradedToAnalyst = 0;
+  /** Authentication results of the last BURST_WINDOW decoded frames, for the burst rule. */
+  private authWindow: boolean[] = [];
+  private burstActive = false;
   chainStatus: ChainStatus | null = null;
   /** Red-team edit of a past ledger block, restored after a few seconds. */
   ledgerTamper: { index: number; until: number } | null = null;
@@ -493,7 +506,33 @@ export class Engine {
     setPassProfile(profile);
     setSatelliteIdentity(profile.satName, profile.noradId ?? 31698);
     copy.setSatelliteName(profile.satName, profile.noradId ?? 31698);
-    return new Engine(hsm, attackerKey, new AiModel(), anchor, signer);
+    const engine = new Engine(hsm, attackerKey, new AiModel(), anchor, signer);
+    await engine.recordElementSet(profile);
+    return engine;
+  }
+
+  /**
+   * Records the SHA-256 of the element set flown and checks its epoch: the relay that served it
+   * is not trusted for integrity, so the ledger keeps what was used. A stale set drifts the χ²
+   * prediction; the kinematic test of range against Doppler needs no orbit and still holds.
+   */
+  private async recordElementSet(profile: ReturnType<typeof passProfile>) {
+    if (!profile.tleLines) return;
+    const digest = await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(profile.tleLines.join('\n')),
+    );
+    const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    const ageDays =
+      profile.tleEpochMs === null ? null : (Date.now() - profile.tleEpochMs) / 86_400_000;
+    const age = ageDays === null ? 'epoch unknown' : `epoch age ${ageDays.toFixed(1)} d`;
+    const stale = ageDays !== null && ageDays > ELEMENT_SET_STALE_DAYS;
+    this.elementSetSha256 = hex;
+    this.log(
+      `orbit: element set sha256 ${hex.slice(0, 16)}…${hex.slice(-6)} · ${age}` +
+        (stale ? ' · stale: χ² prediction drifts, kinematic test still holds' : ' · fresh'),
+      stale ? 'warn' : 'info',
+    );
   }
 
   /** Root of the ledger: SHA-256 of the genesis block, identical to trust_anchor.py. */
@@ -876,7 +915,9 @@ export class Engine {
           flipped: { byte, bit },
         });
       } else {
-        await this.verify(frame, mac, genuineSource, 'genuine', s, rf, link, underAttack, null);
+        // On a jammed link the genuine frames that still decode are the jam's frames.
+        const label: FrameLabel = active && kind === 'jam' ? 'jam' : 'genuine';
+        await this.verify(frame, mac, genuineSource, label, s, rf, link, underAttack, null);
       }
     });
   }
@@ -916,8 +957,13 @@ export class Engine {
       : null;
     const detection = rf ? this.linkDetector.evaluate(rf) : null;
     const detectorMs = performance.now() - t0;
-    const decision = decide(frame, auth, physics, detection);
-    if (decision.allow && rf) this.linkDetector.accept(rf);
+    // The burst rule: authentication failures over the last BURST_WINDOW decoded frames.
+    this.authWindow.push(!auth.ok);
+    if (this.authWindow.length > BURST_WINDOW) this.authWindow.shift();
+    const burst = !auth.ok && this.authWindow.filter(Boolean).length >= BURST_FAILURES;
+    const decision = decide(frame, auth, physics, detection, burst);
+    if (decision.verdict === 'ACCEPTED' && rf) this.linkDetector.accept(rf);
+    if (decision.verdict === 'DEGRADED') this.degradedToAnalyst++;
 
     const verdict: Verdict = auth.ok
       ? 'VERIFIED'
@@ -929,7 +975,7 @@ export class Engine {
     if (this.overheadMs.length > 240) this.overheadMs.shift();
     if (verdict === 'VERIFIED') {
       this.framesVerified++;
-      if (label !== 'genuine') this.corruptedToAnalyst++;
+      if (decision.allow && label !== 'genuine' && label !== 'jam') this.corruptedToAnalyst++;
       this.arrivals.push({ t: s, outcome: 'ok' });
       if (!decision.allow) this.heldByZeroTrust++;
     } else {
@@ -952,7 +998,19 @@ export class Engine {
 
     this.blockHeight = block.index;
     const short = `${block.hash.slice(0, 10)}…${block.hash.slice(-4)}`;
-    if (verdict === 'VERIFIED') {
+    if (burst && !this.burstActive) {
+      this.log(
+        `!! burst: ${BURST_FAILURES} authentication failures in the last ${BURST_WINDOW} frames · link quarantined`,
+        'bad',
+      );
+    }
+    this.burstActive = burst || (this.burstActive && this.authWindow.some(Boolean));
+    if (decision.verdict === 'DEGRADED') {
+      this.log(
+        `⚠ block #${block.index} ${short} hmac ok · degraded link, delivered flagged`,
+        'warn',
+      );
+    } else if (verdict === 'VERIFIED') {
       this.log(`✓ block #${block.index} ${short} hmac ok`, 'ok');
     } else if (label === 'spoof') {
       this.log(
@@ -1005,6 +1063,8 @@ export class Engine {
       forest: 0,
       detector: 0,
       blocked: 0,
+      flagged: 0,
+      degraded: 0,
       held: 0,
       firstBlockMs: [],
     });
@@ -1016,10 +1076,13 @@ export class Engine {
     if (r.detector?.forest) st.forest++;
     if (r.physics?.breach || !r.frame || r.detector?.forest) st.detector++;
     if (!r.decision.allow) st.blocked++;
+    if (!r.decision.allow || r.decision.verdict === 'DEGRADED') st.flagged++;
+    if (r.decision.verdict === 'DEGRADED') st.degraded++;
     if (r.decision.verdict === 'HELD') st.held++;
 
     const run = this.run;
-    if (run && r.label === run.kind && !r.decision.allow && run.firstBlockMs === null)
+    const alarm = !r.decision.allow || r.decision.verdict === 'DEGRADED';
+    if (run && r.label === run.kind && alarm && run.firstBlockMs === null)
       run.firstBlockMs = Math.max(0, (r.t - run.start) * 1000);
   }
 

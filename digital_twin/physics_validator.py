@@ -8,8 +8,11 @@ Digital twin, phase 3: the master orchestrator, the ground link end to end, one 
 3. The receiver measures the link with its natural noise; a threat vector, if any, acts here.
 4. Three independent layers judge what arrived: crypto, Isolation Forest, and the physics
    engine (chi-square against the orbit, kinematic coupling of range and Doppler).
-5. Either deterministic layer (crypto or physics) rejects the packet; the statistical layer
-   alone holds it for review; otherwise it is accepted. Each tick can go to the audit log.
+5. The decision (decision.py): either deterministic layer (crypto or physics) rejects the
+   packet, two layers at once or a burst of authentication failures (3 within 10 frames)
+   quarantine it, the statistical layer alone holds it for review, a genuine frame whose only
+   physical anomaly is its power is delivered as degraded; otherwise it is accepted. Each
+   tick can go to the audit log.
 
 Uplink commands take the reverse path: mission control seals a CCSDS telecommand, a threat
 may tamper with it or inject a forged one, and the spacecraft executes only what passes
@@ -35,6 +38,7 @@ from .attack_injector import ATTACK_VECTORS, UPLINK_THREATS, AerospaceAttackInje
 from .audit_logger import AuditLogger
 from .ccsds_framing import CCSDSFrameHandler
 from .crypto_hash_verifier import CryptoIntegrityVerifier, sha256_digest
+from .decision import BurstMonitor, TierFlags, decide, power_only
 from .ephemeris_loader import EphemerisLoader, describe
 from .isolation_forest_detector import MLAnomalyDetector
 from .link_budget import LinkBudgetCalculator
@@ -86,6 +90,7 @@ class MasterTelemetryValidator:
         self.rng = np.random.default_rng(seed)
         self.sequence = 0
         self.uplink_sequence = 0
+        self.burst = BurstMonitor()
         self._train_statistical_layer(training_passes)
 
     # ------------------------------------------------------------------ physics
@@ -186,17 +191,26 @@ class MasterTelemetryValidator:
         )
 
         # Step 5: decision.
+        physical = physics["physical_breach_detected"]
+        flags = TierFlags(
+            data=not crypto["integrity_passed"],
+            statistical=ml["threat_detected"],
+            physical=physical,
+            power_only=physical and power_only(physics),
+            auth_failure=not crypto["integrity_passed"],
+        )
+        burst = self.burst.observe(flags.auth_failure)
+        outcome, _ = decide(flags, burst)
+        decision = "ACCEPTED" if outcome == "DELIVERED" else outcome
         reasons = []
-        if not crypto["integrity_passed"]:
+        if burst:
+            reasons.append("crypto: burst of authentication failures, link quarantined")
+        if flags.data:
             reasons.append("crypto: " + crypto["verdict"])
-        if physics["physical_breach_detected"]:
+        if physical:
             reasons.append("physics: " + physics["verdict"])
-        if reasons:
-            decision = "REJECTED"
-        elif ml["threat_detected"]:
-            decision, reasons = "HELD", ["ml: " + ml["verdict"]]
-        else:
-            decision = "ACCEPTED"
+        if flags.statistical:
+            reasons.append("ml: " + ml["verdict"])
 
         result.update(
             link_available=True,
@@ -283,7 +297,10 @@ def summarise(ticks: list[dict]) -> dict:
     return {
         "ticks_with_link": len(linked),
         "attack_ticks": len(attacked),
-        "attack_rejected": share(attacked, lambda r: r["final_decision"] == "REJECTED"),
+        "attack_rejected": share(
+            attacked, lambda r: r["final_decision"] in ("REJECTED", "QUARANTINED")
+        ),
+        "attack_quarantined": share(attacked, lambda r: r["final_decision"] == "QUARANTINED"),
         "attack_stopped": share(attacked, lambda r: r["final_decision"] != "ACCEPTED"),
         "crypto_flagged": share(attacked, lambda r: not r["crypto_result"]["integrity_passed"]),
         "physics_flagged": share(
@@ -295,7 +312,9 @@ def summarise(ticks: list[dict]) -> dict:
         ),
         "ml_flagged": share(attacked, lambda r: r["ml_result"]["threat_detected"]),
         "clean_ticks": len(clean),
-        "clean_rejected": share(clean, lambda r: r["final_decision"] == "REJECTED"),
+        "clean_rejected": share(
+            clean, lambda r: r["final_decision"] in ("REJECTED", "QUARANTINED")
+        ),
         "clean_held": share(clean, lambda r: r["final_decision"] == "HELD"),
     }
 

@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent } from 'react';
 
-import { SIGNAL, STEALTH, snrLossDb } from '../../sim/linkFacts';
+import { SIGNAL, STEALTH, STEALTH_BY_ELEVATION, snrLossDb } from '../../sim/linkFacts';
 import { MINUS } from '../format';
 
 const XMIN = -14;
@@ -21,18 +21,22 @@ const CURVE = Array.from({ length: 181 }, (_, i) => {
   return `${i ? 'L' : 'M'}${X(v).toFixed(1)},${Y(snrLossDb(v)).toFixed(1)}`;
 }).join('');
 
+const elevationLabel = (el: number) => (el >= 90 ? 'overhead' : `${el}°`);
+
 /**
  * How much noise an attacker can add before the chi-square engine sees it, and what that costs
- * the link: SNR lost = 10·log10(1 + J/N). The power residual alone may reach 0.23 dB × √23.5
- * before the gate fires, so a hidden jammer stays below the thermal noise and costs ~1 dB. The
- * old ±4 dB box band is drawn for comparison.
+ * the link: SNR lost = 10·log10(1 + J/N). The power residual alone may reach 0.23 dB × √gate
+ * before the gate fires, and the gate widens near the horizon: 1.1 dB overhead (J/N −5.3 dB),
+ * 1.7 dB at the 2° mask (J/N −3.1 dB). The old ±4 dB box band is drawn for comparison.
  */
 export function StealthBudget() {
   const [above, setAbove] = useState(-8);
+  const [at, setAt] = useState(STEALTH_BY_ELEVATION.length - 1);
   const svg = useRef<SVGSVGElement>(null);
+  const budget = STEALTH_BY_ELEVATION[at];
   const loss = snrLossDb(above);
-  const hidden = loss <= STEALTH.maxSnrLossDb;
-  const limit = STEALTH.maxNoiseAboveFloorDb;
+  const hidden = loss <= budget.maxSnrLossDb;
+  const limit = budget.maxNoiseAboveFloorDb;
 
   const fromPointer = (e: PointerEvent<SVGSVGElement>) => {
     const box = svg.current?.getBoundingClientRect();
@@ -63,9 +67,9 @@ export function StealthBudget() {
       >
         <rect
           x={X(XMIN)}
-          y={Y(STEALTH.maxSnrLossDb)}
+          y={Y(budget.maxSnrLossDb)}
           width={X(limit) - X(XMIN)}
-          height={Y(0) - Y(STEALTH.maxSnrLossDb)}
+          height={Y(0) - Y(budget.maxSnrLossDb)}
           className="budget__zone budget__zone--ok"
         />
         <rect
@@ -107,12 +111,13 @@ export function StealthBudget() {
         <line
           x1={X(XMIN)}
           x2={X(XMAX)}
-          y1={Y(STEALTH.maxSnrLossDb)}
-          y2={Y(STEALTH.maxSnrLossDb)}
+          y1={Y(budget.maxSnrLossDb)}
+          y2={Y(budget.maxSnrLossDb)}
           className="budget__gate"
         />
-        <text x={X(XMIN) + 8} y={Y(STEALTH.maxSnrLossDb) - 8} className="budget__gate-label">
-          χ² gate · {STEALTH.maxSnrLossDb.toFixed(1)} dB of power alone
+        <text x={X(XMIN) + 8} y={Y(budget.maxSnrLossDb) - 8} className="budget__gate-label">
+          χ² gate {elevationLabel(budget.elevationDeg)} · {budget.maxSnrLossDb.toFixed(2)} dB of
+          power alone
         </text>
         <line x1={X(limit)} x2={X(limit)} y1={Y(0)} y2={Y(YMAX)} className="budget__limit" />
         <text x={X(limit) + 6} y={Y(0) - 8} className="budget__limit-label">
@@ -127,6 +132,21 @@ export function StealthBudget() {
           className={`budget__dot ${hidden ? 'budget__dot--ok' : 'budget__dot--bad'}`}
         />
       </svg>
+      <div className="budget__elevations" role="group" aria-label="Satellite elevation">
+        <span className="budget__elevations-label">Elevation</span>
+        {STEALTH_BY_ELEVATION.map((b, i) => (
+          <button
+            key={b.elevationDeg}
+            type="button"
+            className={`seg__btn ${i === at ? 'seg__btn--on' : ''}`}
+            aria-pressed={i === at}
+            onClick={() => setAt(i)}
+            title={`Gate ${b.gate.toFixed(1)} (×${b.widening.toFixed(2)}) · ${b.maxSnrLossDb.toFixed(2)} dB · J/N ${b.maxNoiseAboveFloorDb.toFixed(1)} dB`}
+          >
+            {elevationLabel(b.elevationDeg)}
+          </button>
+        ))}
+      </div>
       <input
         type="range"
         className="budget__range"
@@ -159,6 +179,13 @@ export function StealthBudget() {
         <div>
           <dt>SNR overhead</dt>
           <dd className="mono">{(SIGNAL.snrDb.zenith - loss).toFixed(1)} dB</dd>
+        </div>
+        <div>
+          <dt>Budget {elevationLabel(budget.elevationDeg)}</dt>
+          <dd className="mono">
+            {budget.maxSnrLossDb.toFixed(2)} dB · J/N {sign(limit)}
+            {Math.abs(limit).toFixed(1)} dB
+          </dd>
         </div>
         <div>
           <dt>Outcome</dt>

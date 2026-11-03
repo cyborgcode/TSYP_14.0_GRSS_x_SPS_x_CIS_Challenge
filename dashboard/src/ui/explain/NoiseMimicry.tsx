@@ -30,7 +30,7 @@ const TECHNIQUES: Technique[] = [
     imitates: 'thermal noise and rain fade',
     how: 'Transmits Gaussian, white noise across the band and ramps it up slowly, so the floor creeps instead of jumping.',
     gains: 'A lower signal-to-noise ratio with no spike to see on the spectrum.',
-    givesAway: `Louder than ${Math.abs(STEALTH.maxNoiseAboveFloorDb).toFixed(1)} dB below the thermal noise, it takes more than ${STEALTH.maxSnrLossDb.toFixed(1)} dB of SNR and the χ² engine fires on the power residual alone. Quieter than that, it costs at most ${STEALTH.maxSnrLossDb.toFixed(1)} dB and every frame still verifies.`,
+    givesAway: `The budget depends on elevation, because the χ² gate widens near the horizon. Overhead, louder than ${Math.abs(STEALTH.maxNoiseAboveFloorDb).toFixed(1)} dB below the thermal noise, it takes more than ${STEALTH.maxSnrLossDb.toFixed(1)} dB of SNR and the χ² engine fires on the power residual alone; at the 2° mask the limit is ${Math.abs(STEALTH.atMask.maxNoiseAboveFloorDb).toFixed(1)} dB below the noise and ${STEALTH.atMask.maxSnrLossDb.toFixed(1)} dB of SNR. Quieter than that, every frame still verifies. Once the power residual alone fires, the genuine frames still reach the analyst, flagged as degraded, with a jamming alarm.`,
   },
   {
     name: 'Fade-mimicking spoofing',
@@ -49,7 +49,7 @@ const TECHNIQUES: Technique[] = [
     how: 'Flips chosen payload bits between the satellite and the station, then recomputes the CRC, which anyone can do.',
     gains: 'The frame looks like a noisy one that passed its checksum. No RF signature at all.',
     givesAway:
-      'The HMAC tag, which needs the secret key, no longer matches: the data layer rejects the frame. One HMAC failure is treated as possibly benign and the frame is resent; a burst of failures escalates to quarantine.',
+      'The HMAC tag, which needs the secret key, no longer matches: the data layer rejects the frame. One HMAC failure is treated as possibly benign and the frame is resent; a burst of 3 failures within 10 frames quarantines the link.',
   },
 ];
 
@@ -67,12 +67,12 @@ const LAYERS: { name: string; Icon: ComponentType<{ size?: number }>; body: stri
   {
     name: 'Physical layer · χ² engine',
     Icon: OrbitIcon,
-    body: `SGP4 and the ITU-R P.618 link budget predict the range, Doppler, power and carrier phase for every second of the pass. Each residual is divided by its natural spread (${NATURAL.timingUs.sigma} µs, ${NATURAL.carrierHz.sigma} Hz, ${NATURAL.powerDb.sigma} dB, ${NATURAL.phaseDeg.sigma}°) and the squares are summed: the sum must stay under ${CHI_SQUARE.gate.toFixed(1)}, the 10⁻⁴ false-alarm quantile of a ${CHI_SQUARE.dof}-degree χ², widened up to 3× near the horizon. A disguise can cost the link at most ${STEALTH.maxSnrLossDb.toFixed(1)} dB. Range and Doppler must also agree with each other: a delay without the matching Doppler fails the kinematic test, ±${CHI_SQUARE.kinematicGateZ.toFixed(2)}σ, even when the orbit is stale.`,
+    body: `SGP4 and the ITU-R P.618 link budget predict the range, Doppler, power and carrier phase for every second of the pass. Each residual is divided by its natural spread (${NATURAL.timingUs.sigma} µs, ${NATURAL.carrierHz.sigma} Hz, ${NATURAL.powerDb.sigma} dB, ${NATURAL.phaseDeg.sigma}°) and the squares are summed: the sum must stay under ${CHI_SQUARE.gate.toFixed(1)}, the 10⁻⁴ false-alarm quantile of a ${CHI_SQUARE.dof}-degree χ², widened up to 3× near the horizon. A disguise can cost the link at most ${STEALTH.maxSnrLossDb.toFixed(1)} dB overhead and ${STEALTH.atMask.maxSnrLossDb.toFixed(1)} dB at the 2° mask. Range and Doppler must also agree with each other: a delay without the matching Doppler fails the kinematic test, ±${CHI_SQUARE.kinematicGateZ.toFixed(2)}σ, even when the orbit is stale.`,
   },
   {
     name: 'Decision and response',
     Icon: ShieldIcon,
-    body: 'Either deterministic layer, data or physical, rejects a frame; the statistical layer alone only holds it for review. A single failure is dropped and resent; when two tiers flag at once the link is quarantined and re-keyed.',
+    body: 'Either deterministic layer, data or physical, rejects a frame; the statistical layer alone only holds it for review. A single failure is dropped and resent; two tiers at once, or a burst of 3 authentication failures within 10 frames, quarantine the link. A genuine frame whose only anomaly is its power is delivered flagged as degraded, with a jamming alarm. The key is rotated only after forged frames, never for tampering or jamming.',
   },
 ];
 

@@ -40,8 +40,9 @@ function MatrixRow({
   genuine: boolean;
 }) {
   const frames = st?.frames ?? 0;
-  const dropped = st?.blocked ?? 0;
-  // Genuine rows should be allowed (drop = false alarm); attack rows should all be dropped.
+  // Genuine rows: frames not delivered (false alarms). Attack rows: frames flagged (held,
+  // rejected, quarantined, or delivered tagged as degraded on a jammed link).
+  const dropped = (genuine ? st?.blocked : st?.flagged) ?? 0;
   const good = !frames || (genuine ? dropped / frames < 0.05 : dropped === frames);
   const first = median(st?.firstBlockMs ?? []);
   return (
@@ -189,9 +190,9 @@ export function ResiliencePanel() {
           </span>
           <span
             role="columnheader"
-            title="Rejected by a deterministic layer or held by the statistical layer"
+            title="Attack rows: flagged (held, rejected, quarantined, or delivered as degraded). Genuine rows: not delivered."
           >
-            Stop
+            Flag
           </span>
         </div>
         {ROWS.map((r) => (

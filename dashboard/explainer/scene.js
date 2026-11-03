@@ -1285,14 +1285,21 @@ function ai(ctx, lt, sc) {
       ctx.save();
       ctx.globalAlpha *= smooth(0.3, 0.7, creep);
       text(ctx, 'slow creep with natural steps:', X(-4.8), Y(-0.75), MONO(700, 22), C.warn);
-      text(ctx, 'capped by the χ² budget: 1.1 dB', X(-4.8), Y(-0.75) + 30, UI(400, 22), C.text1);
+      text(
+        ctx,
+        'capped by the χ² budget: 1.1 dB overhead, 1.7 dB at the mask',
+        X(-4.8),
+        Y(-0.75) + 30,
+        UI(400, 22),
+        C.text1,
+      );
       ctx.restore();
     }
   });
   const blocks = [
     [
       'Isolation Forest',
-      '100 trees, trained on clean passes only, 1% contamination threshold',
+      '256 trees, trained on clean passes only, 1% contamination threshold',
       0.4,
     ],
     [
@@ -1408,7 +1415,7 @@ function crypto(ctx, lt, sc, t) {
       text(ctx, 'one failure: rejected, resent', M + 3 * 62 - 10, 800, MONO(700, 20), C.text1);
     }
     if (shown > 14) {
-      text(ctx, 'a burst: failure rate flagged', M + 11 * 62, 800, MONO(700, 20), C.bad);
+      text(ctx, 'a burst, 3 in 10: quarantined', M + 11 * 62, 800, MONO(700, 20), C.bad);
     }
     const lit = shown > 14;
     const single = shown >= 4 && shown <= 6;

@@ -95,12 +95,35 @@ export const NATURAL = {
   phaseDeg: { sigma: NATURAL_SIGMA.phaseDeg, max: 5.4, gate: alone('phaseDeg') },
 } as const;
 
-/** The most noise an attacker can add before the power residual alone fires the gate. */
+/** J/N of a jam that costs the link `lossDb` of SNR: SNR lost = 10·log10(1 + J/N). */
+const jamToNoiseFor = (lossDb: number) => 10 * Math.log10(10 ** (lossDb / 10) - 1);
+
+/**
+ * The stealth budget at `elevationDeg`: the most SNR a jammer can take before the power residual
+ * alone fires the chi-square gate, which widens near the horizon, and the J/N that costs it.
+ */
+export function stealthBudgetAt(elevationDeg: number) {
+  const maxSnrLossDb = physics.axisLimit('rssiDb', elevationDeg);
+  return {
+    elevationDeg,
+    gate: physics.adaptiveThreshold(elevationDeg),
+    widening: physics.adaptiveThreshold(elevationDeg) / CHI_SQUARE.gate,
+    maxSnrLossDb,
+    maxNoiseAboveFloorDb: jamToNoiseFor(maxSnrLossDb),
+  };
+}
+
+/** The budget at the 2° mask, at 9° and 30°, and overhead. */
+export const STEALTH_BY_ELEVATION = [2, 9, 30, 90].map(stealthBudgetAt);
+
+/** The most noise an attacker can add overhead, the strictest case. */
 const maxSnrLossDb = NATURAL.powerDb.gate;
 export const STEALTH = {
   maxSnrLossDb,
-  maxNoiseAboveFloorDb: 10 * Math.log10(10 ** (maxSnrLossDb / 10) - 1),
-  maxNoiseDbm: NOISE_FLOOR_DBM + 10 * Math.log10(10 ** (maxSnrLossDb / 10) - 1),
+  maxNoiseAboveFloorDb: jamToNoiseFor(maxSnrLossDb),
+  maxNoiseDbm: NOISE_FLOOR_DBM + jamToNoiseFor(maxSnrLossDb),
+  /** At the 2° mask, where the gate is widest. */
+  atMask: stealthBudgetAt(2),
   /** The old ±4 dB band of box gates, for comparison: 4 dB of SNR could go unseen. */
   boxBandDb: 4,
 } as const;

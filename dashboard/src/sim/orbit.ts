@@ -237,6 +237,7 @@ export function passProfileFor(
     aosMs: window.aosMs,
     tleEpochMs: tleEpochMs(record.line1),
     fetchedMs: Date.parse(record.fetchedUtc),
+    tleLines: [record.line1, record.line2],
     at(u: number) {
       const x = Math.min(Math.max(u, 0), 1) * n;
       const i = Math.min(Math.floor(x), n - 1);

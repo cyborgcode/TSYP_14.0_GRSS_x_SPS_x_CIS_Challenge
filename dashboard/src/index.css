@@ -2673,6 +2673,9 @@ button {
 .pstat--ok {
   color: var(--ok);
 }
+.pstat--warn {
+  color: var(--warn);
+}
 .pstat--bad {
   color: var(--bad);
 }

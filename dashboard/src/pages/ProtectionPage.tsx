@@ -20,9 +20,10 @@ export function ProtectionPage() {
           <p className="explain__hint">
             Starts Noise Jamming at a jammer-to-noise ratio of J/N ={' '}
             {jamToNoiseDb(BELOW_GATE_DB).toFixed(1).replace('-', '−')} dB: the SNR dips about{' '}
-            {jamSnrLossDb(BELOW_GATE_DB).toFixed(1)} dB, inside the{' '}
-            {STEALTH.maxSnrLossDb.toFixed(1)} dB budget, so it stays inside the χ² gate, nothing
-            escalates and every frame is accepted.
+            {jamSnrLossDb(BELOW_GATE_DB).toFixed(1)} dB, inside the budget at every elevation (
+            {STEALTH.maxSnrLossDb.toFixed(1)} dB overhead, {STEALTH.atMask.maxSnrLossDb.toFixed(1)}{' '}
+            dB at the 2° mask), so it stays inside the χ² gate, nothing escalates and every frame is
+            accepted.
           </p>
         </div>
       }

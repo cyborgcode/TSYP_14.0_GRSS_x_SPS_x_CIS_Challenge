@@ -96,8 +96,8 @@
           "say": "The physical layer is a chi-square engine. Range, Doppler, power and phase are each compared with the orbit, in units of their natural spread."
         },
         {
-          "text": "To stay hidden, injected noise must stay 5.3 dB below the thermal noise: that costs at most 1.1 dB of signal-to-noise ratio, and every frame still verifies.",
-          "say": "To stay hidden, the injected noise must stay five point three decibels below the thermal noise. That costs at most one point one decibels of signal-to-noise ratio, and every frame still verifies."
+          "text": "To stay hidden overhead, injected noise must stay 5.3 dB below the thermal noise: at most 1.1 dB of signal-to-noise ratio, 1.7 dB at the 2° mask where the gate widens. Every frame still verifies.",
+          "say": "To stay hidden overhead, the injected noise must stay five point three decibels below the thermal noise. That is at most one point one decibels of signal-to-noise ratio, or one point seven at the two degree mask, where the gate widens. Every frame still verifies."
         },
         {
           "text": "Push harder, and the chi-square gate fires: a spoofer's 3 dB fade is 14 sigma off the link budget.",
