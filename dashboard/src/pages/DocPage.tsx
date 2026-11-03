@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 
 import { Aurora } from '../reactbits/Aurora';
 import { ClickSpark } from '../reactbits/ClickSpark';
-import { DishIcon } from '../ui/icons';
-import { PAGES, SiteNav, type PagePath } from '../ui/SiteNav';
+import { PAGES, type PagePath } from '../ui/SiteNav';
+import { TopBar } from '../ui/TopBar';
 import { pageHref } from '../ui/pageHref';
 
 /** Shell of every page after the dashboard: fixed top bar, hero, content, previous/next. */
@@ -29,13 +29,7 @@ export function DocPage({
     <div className="app doc-page">
       <Aurora />
       <ClickSpark />
-      <header className="npage-bar">
-        <a className="npage-bar__brand" href="/">
-          <DishIcon size={22} />
-          <span>Secure Ground-Link Testbed</span>
-        </a>
-        <SiteNav current={path} />
-      </header>
+      <TopBar current={path} />
 
       <main className="npage">
         <header className="npage__head">

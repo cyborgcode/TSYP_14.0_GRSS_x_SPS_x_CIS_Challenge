@@ -107,3 +107,55 @@ seed-dependent and is now reported as a range.
 
 **Rule going forward.** Detector figures in the report come from multiple seeds and are
 stated as a range or with a spread, never from one run.
+
+---
+
+## 2026-11-03 — The statistical tier reads what the χ² does not
+
+**Decision.** The per-frame forest (twin and site) uses six features none of which is a residual
+the χ² gate tests: EVM, frame-loss rate, arrival jitter, MAC/nonce failure rate, carrier and power
+steps, with a training-range check. Quarantine needs two tiers, one of them deterministic.
+
+**Why.** Two tiers reading the same residuals are not two pieces of evidence. On genuine traffic
+the statistical and physical flags now correlate at φ = 0.056.
+
+**Rules out.** Counting a statistical flag as independent confirmation of a physical one when both
+read the same measurement.
+
+---
+
+## 2026-11-03 — Re-key only on evidence of a key holder
+
+**Decision.** A new key epoch only when a frame carries a valid tag with a foreign hardware token,
+or a valid tag on new content under a stale count.
+
+**Why.** A forged tag, a rogue carrier, a replay, tampering or jamming show no key at work;
+re-keying for them costs a handshake and proves nothing.
+
+**Rules out.** Re-keying as a reflex after every quarantine.
+
+---
+
+## 2026-11-03 — A genuine frame on a jammed link is delivered, flagged
+
+**Decision.** When the data tier proves a frame genuine, the kinematic test passes and the χ²
+fails only on the power residual, the frame reaches the analyst flagged as degraded, with a
+jamming alarm.
+
+**Why.** Rejecting frames whose tags prove them genuine handed the jammer its goal: at J/N −5.3 dB,
+34.7–37.1 % of genuine frames were rejected. Now 89.4 % reach the analyst.
+
+**Rules out.** Calling a jam under the stealth budget harmless: it is bounded, and reported as such.
+
+---
+
+## 2026-11-03 — A sample-level receiver beside the measurement model
+
+**Decision.** `digital_twin/iq_receiver.py` builds every frame's QPSK waveform and measures it
+(correlator, PLL, M2M4, EVM); the evaluation runs with either receiver.
+
+**Why.** Residuals measured from samples include the estimators' own noise and biases, and show
+what a second carrier on the channel does to the constellation.
+
+**Rules out.** Nothing: the measurement model stays the default, so both sets of numbers can be
+compared.

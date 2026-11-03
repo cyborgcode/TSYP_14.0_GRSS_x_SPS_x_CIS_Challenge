@@ -1,5 +1,9 @@
 # Team roles
 
+> Planning record from the start of the project (September 2026), kept as written. The
+> design and the results as submitted are documented in deliverables 1 to 6 and in
+> [evaluation-report.md](evaluation-report.md).
+
 Five members, one role each. Every role owns code, a deliverable, and part of the Q&A.
 The owner is accountable for the deliverable. That doesn't mean they write it alone.
 

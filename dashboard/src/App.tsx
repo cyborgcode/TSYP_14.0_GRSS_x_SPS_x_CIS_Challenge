@@ -13,7 +13,6 @@ import { Header } from './ui/Header';
 import { DishIcon } from './ui/icons';
 import { KpiTiles } from './ui/KpiTiles';
 import { LedgerPanel } from './ui/Ledger';
-import { orbitSource } from './ui/orbitText';
 import { PacketDrawer } from './ui/PacketDrawer';
 import { ResiliencePanel } from './ui/Resilience';
 import { TelemetryPanel } from './ui/Telemetry';
@@ -165,30 +164,6 @@ function Dashboard() {
         </AnimatedContent>
       </main>
       <PacketDrawer />
-      <footer className="site-foot">
-        <div className="site-foot__note">
-          <span className="site-foot__mark">
-            <DishIcon size={16} /> Secure Ground-Link Testbed
-          </span>
-          <p>
-            Emulation only: nothing on this page transmits or receives RF. Attacks are software
-            injectors acting on synthetic frames inside the testbed. {orbitSource()}
-          </p>
-        </div>
-        <div className="site-foot__note">
-          <p>
-            Frames are sealed and verified for real with Web Crypto (HMAC-SHA256, SHA-256 hash chain
-            from a genesis root, Ed25519-signed re-keys); the Isolation Forest is trained in your
-            browser on nominal passes; the physical layer is the digital twin’s chi-square engine,
-            against SGP4 and the ITU-R P.618 link budget. Every figure on the dashboard is measured
-            live.
-          </p>
-          <p className="site-foot__legal">
-            Fonts: Space Grotesk, Inter, JetBrains Mono (SIL OFL 1.1) · Land outlines: Natural Earth
-            (public domain)
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }

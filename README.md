@@ -1,57 +1,57 @@
 # Ground Truth Under Attack — Track 1: Secure Ground-Link Testbed
 
-Protects the radio link that carries data from a satellite down to its ground station, and
-detects when someone interferes with it — including the attacks that encryption alone can't
-see.
+Protects the radio link that carries Earth-observation data from a satellite (TerraSAR-X) down
+to its ground station (Zaghouan, Tunisia), and detects when someone interferes with it,
+including the attacks cryptography alone cannot see. Everything runs locally, offline, on a
+laptop.
 
-**New to the project? Read [docs/START-HERE.md](docs/START-HERE.md) first.**
+| Read | |
+| --- | --- |
+| The report | [docs/report/Secure-Ground-Link-Testbed-Report.pdf](docs/report/Secure-Ground-Link-Testbed-Report.pdf) |
+| A ten-minute introduction | [docs/START-HERE.md](docs/START-HERE.md) |
+| One document per deliverable | [docs/1](docs/1-threat-model.md) · [2](docs/2-architecture-trust-anchor.md) · [3](docs/3-signal-processing.md) · [4](docs/4-detection.md) · [5](docs/5-adversarial-validation.md) · [6](docs/6-datasets-reproducibility.md) |
+| Every measured number | [docs/evaluation-report.md](docs/evaluation-report.md), reproduced in [results/tables.md](results/tables.md) |
 
 ## The idea in one paragraph
 
-Every frame the satellite sends is encrypted and sealed with AES-256-GCM, so any altered,
-forged or replayed frame is rejected. But an attacker can also *forward*, *delay* or *jam*
-genuine frames — every cryptographic check still passes, and the station quietly accepts
-data from a path the attacker controls. So a second, independent layer compares how each
-frame physically arrived (timing, power, Doppler) with what the satellite's orbit predicts,
-and a machine-learning detector flags anything that doesn't fit.
+Every frame the satellite sends carries an HMAC-SHA256 tag, so any altered, forged or replayed
+frame fails the data tier. But an attacker can also relay, delay or jam genuine frames, and
+every cryptographic check still passes. So a physical tier compares how each frame arrived
+(range, Doppler, power, phase) with what the orbit and the link budget predict, in a χ² gate,
+and a statistical tier, an Isolation Forest trained on clean passes, reads what the χ² does not
+test (the constellation's error, lost frames, arrival jitter, failed tags). One decision rule
+turns the three into five outcomes, and no frame is ever accepted silently.
 
-## Quick start
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-python -m groundlink.cli
-python -m pytest
-```
-
-Run the red-team audit and measure the four dashboard attacks
-([evaluation report](docs/evaluation-report.md)):
+## Run it
 
 ```bash
-python -m testbed.validator
+# The live testbed (Node 22): open http://localhost:5173
+cd dashboard && npm ci && npm run dev
+
+# Every table and figure of the report (Python 3.11), checked against the expected hash
+make install
+make eval            # about 8 minutes on 4 cores; make eval-quick: about 3.5
+make test            # 147 Python tests; cd dashboard && npm test: 64
 ```
 
-Run a single attack, or change the attack window and false-alarm target:
+No network is needed: the site flies a built-in orbit snapshot and the evaluation a built-in
+element set. `make docker` runs the evaluation in a container.
 
-```bash
-python -m groundlink.cli --attack relay
-python -m groundlink.cli --attack delay --attack jamming --start 100 --end 150 --pfa 0.005
-```
+## Results at a glance
 
-## Standard scenario — what it shows
+Six seeded runs on TerraSAR-X passes over Zaghouan, ten attacks, 15,000 attack packets a run:
 
-| Attack | Crypto catches | ML catches | Together | False alarms |
-| --- | --- | --- | --- | --- |
-| Tamper | ✅ 100% | ❌ 0% | 100% | 1.2% |
-| Inject | ✅ 100% | ✅ 100% | 100% | 1.2% |
-| Replay | ✅ 100% | ✅ 100% | 100% | 1.2% |
-| Relay | ❌ 0% | ✅ 100% | 100% | 1.2% |
-| Delay | ❌ 0% | ✅ 100% | 100% | 1.2% |
-| Jamming | ❌ 0% | ✅ 100% | 100% | 1.2% |
+| Measure | Result |
+| --- | --- |
+| Attack packets flagged | 90,000 of 90,000, from the first packet of every burst |
+| Corrupted frames reaching the analyst | 0 |
+| Genuine packets not delivered | 1.59 % [1.48, 1.69] (1.30 % through the sample-level receiver) |
+| Hostile telecommands executed | 0 of 900 |
+| Decision time, memory | 0.3 ms a packet; 158 MB (Python), 20.7 MB (browser) |
 
-**These figures are from synthetic traffic** and are not submittable results. The official
-reference datasets must replace the simulator before anything is reported.
+The orbits and the atmosphere are real public data; the frames and the RF are synthetic. The
+official reference datasets had not been published when last checked (3 November 2026); the
+evaluation reads them with `--dataset official --path` when they are.
 
 ## Digital twin — SGP4 orbit, CCSDS packets, three security layers
 
@@ -144,6 +144,18 @@ cache. The HMAC key comes from `GROUNDLINK_HMAC_KEY` (hex) and is random per run
 audit log path from `GROUNDLINK_AUDIT_LOG` (default `security_audit.jsonl`). The orbit is live;
 the RF measurements and attacks are **synthetic**, like the standard scenario above.
 
+## First prototype (`groundlink/`)
+
+The first version of the pipeline (AES-256-GCM sealing, six attacks, a hybrid detector) is kept
+for comparison; it produces none of the reported numbers.
+
+```bash
+pip install -e ".[dev]"
+python -m groundlink.cli
+python -m groundlink.cli --attack relay
+python -m testbed.validator
+```
+
 ## Repository layout
 
 ```
@@ -204,12 +216,17 @@ results/           tables.md and its expected SHA-256 (make eval)
 | 5 | Adversarial Validation & Response | 20 | [docs/5-adversarial-validation.md](docs/5-adversarial-validation.md) |
 | 6 | Documentation & Official Datasets | 5–10 | [docs/6-datasets-reproducibility.md](docs/6-datasets-reproducibility.md) |
 
-Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log](docs/decisions.md) ·
+Also: [start here](docs/START-HERE.md) · [evaluation report](docs/evaluation-report.md) ·
+[evaluation guide](docs/evaluation-guide.md) · [demo script](docs/demo-script.md) ·
+[decision log](docs/decisions.md) · [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) ·
 [working agreement](CONTRIBUTING.md)
 
 ## Live testbed (dashboard)
 
-`dashboard/` is the interactive web testbed, deployed on Vercel from `main`:
+`dashboard/` is the interactive web testbed; it runs locally (`cd dashboard && npm ci && npm run dev`,
+then http://localhost:5173). Every page shares one top bar; the live testbed always fits one
+screen: it is laid out at a one-screen size and scaled to the window, down on a small one, up on a
+large one.
 
 - **Live orbit**: the next real pass of TerraSAR-X (NORAD 31698, 514 km sun-synchronous) over
   the Zaghouan (Tunisia) ground station. `api/tle.ts` relays its latest element set from
@@ -217,8 +234,8 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
   propagates it with SGP4 (satellite.js), picks the next pass that culminates at least 10° high
   and replays it, time-compressed, with its real elevation, range, Doppler and received power.
   Offline it flies the last element set the browser downloaded, and with none, the TerraSAR-X
-  element set built into the site. The header, the orbit readout and the footer say which.
-- **The fleet**: the satellite button in the header opens the whole signal database (167
+  element set built into the site. The status strip and the orbit readout say which.
+- **The fleet**: the satellite button in the status strip opens the whole signal database (167
   Earth-observation satellites) with the live sky over Zaghouan; click any satellite to fly it.
   `/?sat=<NORAD>` flies that satellite's next pass culminating at least 10° high,
   `/?sat=<NORAD>&from=<Unix ms>` the pass under way at that time (`dashboard/src/sim/fleet.ts`).
@@ -276,7 +293,8 @@ Also: [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) · [decision log
 - **Hiding in the noise**, on its own pages linked from the top bar: `/attacks` (three ways an
   attacker imitates natural noise), `/protection` (an interactive stealth budget and the three
   tiers) and
-  `/noise` (a narrated explainer video; source and re-render steps in `dashboard/explainer/`).
+  `/slides` (the explainer as nine still slides, no voice over or captions; source and re-render
+  steps in `dashboard/explainer/`).
 - **trust_anchor.py terminal**: live log of SHA-256 block validations from a genesis root hash,
   HMAC-SHA256 frame seals and Ed25519 signatures on every re-key, all computed with Web Crypto
   in the browser.

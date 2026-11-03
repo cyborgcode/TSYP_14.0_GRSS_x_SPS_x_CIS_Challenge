@@ -331,6 +331,9 @@ function background(ctx, t) {
   }
 }
 
+/** Set while a slide is drawn: its number replaces the timeline at the foot. */
+let SLIDE = null;
+
 function chrome(ctx, t, tl, scene) {
   if (scene.id !== 'intro') {
     text(
@@ -347,6 +350,13 @@ function chrome(ctx, t, tl, scene) {
   const x0 = M;
   const x1 = W - M;
   const y = 1022;
+  if (SLIDE) {
+    ctx.fillStyle = C.line;
+    ctx.fillRect(x0, y, x1 - x0, 1);
+    text(ctx, scene.chapter, x0, y + 40, UI(600, 20), C.text2);
+    text(ctx, SLIDE, x1, y + 40, MONO(500, 20), C.text2, 'right', 2);
+    return;
+  }
   ctx.fillStyle = C.line;
   ctx.fillRect(x0, y, x1 - x0, 4);
   ctx.fillStyle = C.accent;
@@ -1555,6 +1565,12 @@ window.explainer = {
   render: (t) => render(t),
   frameJpeg: (t, q = 0.95) => {
     render(t);
+    return canvas.toDataURL('image/jpeg', q);
+  },
+  slideJpeg: (t, label, q = 0.9) => {
+    SLIDE = label;
+    render(t);
+    SLIDE = null;
     return canvas.toDataURL('image/jpeg', q);
   },
 };

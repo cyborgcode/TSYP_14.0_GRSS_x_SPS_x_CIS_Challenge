@@ -1,5 +1,9 @@
 # Roadmap to Phase 1
 
+> Planning record from the start of the project (September 2026), kept as written. The
+> design and the results as submitted are documented in deliverables 1 to 6 and in
+> [evaluation-report.md](evaluation-report.md).
+
 **Phase 1 deadline: Sunday 8 November 2026 — 51 days from 18 September.**
 Preselection announced 10 November. Phase 2 final deadline 11 December 2026.
 

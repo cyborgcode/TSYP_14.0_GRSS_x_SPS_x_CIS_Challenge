@@ -4,11 +4,20 @@
 // Run from dashboard/ after narrate.py:
 //   node explainer/render.mjs                 full render to public/media/
 //   node explainer/render.mjs --stills 4,30   preview frames to explainer/build/
+//   node explainer/render.mjs --slides        the slides of slides.json to public/media/slides/
 // Env: FFMPEG (ffmpeg with libx264, default "ffmpeg"), CHROMIUM (browser executable, optional),
 //      PLAYWRIGHT (module to import, default "playwright"), WORKERS (default 4), FPS (default 30).
 
 import { spawn } from 'node:child_process';
-import { createReadStream, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -83,6 +92,27 @@ async function main() {
   mkdirSync(OUT, { recursive: true });
 
   try {
+    if (process.argv.includes('--slides')) {
+      // The explainer as still slides (explainer/slides.json): no voice, no captions.
+      const { page } = await openPage(browser, base);
+      const slides = JSON.parse(readFileSync(join(HERE, 'slides.json'), 'utf8'));
+      const dir = join(OUT, 'slides');
+      mkdirSync(dir, { recursive: true });
+      for (const [i, slide] of slides.entries()) {
+        const label = `${i + 1} / ${slides.length}`;
+        const data = await page.evaluate(
+          ([t, l]) => window.explainer.slideJpeg(t, l, 0.9),
+          [slide.t, label],
+        );
+        writeFileSync(
+          join(dir, `slide-${String(i + 1).padStart(2, '0')}.jpg`),
+          Buffer.from(data.split(',')[1], 'base64'),
+        );
+      }
+      console.log(`${slides.length} slides written to ${dir}`);
+      return;
+    }
+
     const stills = opt('--stills');
     if (stills) {
       const { page } = await openPage(browser, base);

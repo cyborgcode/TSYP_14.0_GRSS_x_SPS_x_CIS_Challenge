@@ -1,82 +1,92 @@
-# 4 · AI or Statistical Detection
+# 4 · AI / Statistical Detection
 
-> Phase 1 weight: **20 points** — detector design & evaluation
+> Phase 1 rubric: detector design & evaluation, 20 points.
 
 ## Design
 
-`groundlink/detector.py` — trained on **clean traffic only**. A real station has hours of
-normal contacts and almost no labelled attacks, so the model learns a healthy link and
-flags departures from it. It never sees an attack during training.
+Two tiers judge the RF, and they are built to read **different evidence**.
 
-Two scorers, each covering the other's blind spot:
+**Physical tier** (`security_detector.py`): the χ² gate on the four residuals against the orbit
+and the kinematic range–Doppler test (deliverable 3). Deterministic: its false-alarm rate is
+10⁻⁴ by construction.
 
-| Scorer | Catches | Misses on its own |
+**Statistical tier** (`isolation_forest_detector.SiteFrameForest`, the same detector as the
+site's `linkDetector.ts`): an Isolation Forest of 256 trees, 256 samples a tree, trained on
+3,000 clean frames only, flagging at the 1 % contamination point of its training scores. It
+never sees an attack while training. Its six features are none of the residuals the χ² tests:
+
+| Feature | Definition | What it sees |
 | --- | --- | --- |
-| **Isolation Forest** (200 trees, robust-scaled features) | *Joint* anomalies: several features each slightly off, in a combination never seen clean | A *single* feature far out of range — scores saturate at the training extremes |
-| **Robust per-feature gate** (largest median/IQR deviation) | A single feature far out of range | Subtle multi-feature combinations |
+| EVM residual | measured EVM − the EVM the link budget predicts, percentage points | jamming, interference under a captor |
+| Frame-loss rate | share of the last 10 frame slots with no decoded frame | heavy jamming |
+| Arrival jitter | change of the arrival offset since the last decoded frame, µs | relay, delay and replay onsets |
+| MAC / nonce failure rate | share of the last 10 decoded frames that failed authentication | forging, tampering, injection, replay |
+| Carrier step | change of the carrier residual since the last delivered frame, MHz | hijacking, capture, phase pull |
+| Power step | change of the power residual since the last delivered frame, dB | spoofing, capture, jamming |
 
-The gap is not theoretical. With Isolation Forest alone, the delay attack — latency +80 ms,
-every other feature normal — was caught on only **17–35%** of frames (median 26%, across
-10 training seeds). With the hybrid, 100% on every seed.
+An Isolation Forest cannot split on a feature that never varied in training (no MAC failure
+happens on a clean pass), so the tier also flags any feature beyond the largest value seen in
+training: the training-range check. Scores are computed by walking the 256 trees together
+(`FastForestScorer`), identical to scikit-learn's to 10⁻¹⁵ and about 100 times faster per packet.
 
-## Calibration
+The site adds an anomaly-score gauge: a second forest on six scaled features (Doppler, SNR,
+timing, EVM, frame loss, MAC failures), its 0.60 operating point set at a 0.6 % false-alarm rate
+on 4,000 calibration samples.
 
-Three independent clean passes:
+## Why the statistical tier never rejects alone
 
-1. **Train** — fit the scaler and the forest.
-2. **Calibrate** — normalise each scorer by its own quantile, merge with a max, and set the
-   alarm threshold at the (1 − target Pfa) quantile.
-3. **Test** — the pass that gets attacked.
-
-The false-alarm rate is therefore stated up front and measured on data the model never
-trained on. Tie-breaks in this challenge go to the lower false-alarm rate, so the operating
-point has to be explicit.
+Its false-alarm rate is measured, not designed, so on its own it only holds a frame for review.
+Rejection needs a deterministic tier; quarantine needs two tiers, at least one deterministic.
 
 ## Evaluation protocol
 
-- **Pd** — fraction of attacker-produced or attacker-altered frames that raise an alarm.
-- **Pfa** — fraction of frames in the **quiet period** (outside the attack window) that
-  raise an alarm. Genuine frames *inside* the window are excluded from both rates: their
-  sequence and arrival-gap features are legitimately disturbed by the attacker's
-  interleaved frames, so counting them as false alarms would misstate the detector.
-- **ROC AUC** — threshold-free ranking quality of the detector's score.
+`python -m digital_twin.evaluate`, seeds 1 to 6, TerraSAR-X passes over Zaghouan, one packet a
+second while the link is up. Each run trains on 3,000 nominal packets, then scores 15,600 held-out
+genuine packets mixed with 500 attack bursts (10 attacks × 50 × 30 packets) and 150 bursts of
+three below-the-gate jams. Rates are pooled over the six runs with 95 % Wilson intervals.
 
-## Results — standard scenario (synthetic)
+- **Detection**: an attack packet is flagged when it is anything but delivered clean.
+- **False alarms**: genuine packets whose last 10 frame slots hold no attack frame (54,660), not
+  delivered. The 38,940 genuine packets in the 10 slots after an attack frame are the
+  **hold-over**, reported apart: the failure-rate features still remember the attack there.
+- **ROC curves**: the forest score and the χ² ratio, attack packets against clean ones
+  (`docs/figures/roc_curves.png`).
 
-Attack window 200–260 s of a 600 s pass, target Pfa 1%:
+## Results
 
-| Attack | Crypto Pd | ML Pd | Combined Pd | Combined Pfa | ML AUC | Caught by | Driving feature |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Tamper | 1.000 | 0.000 | 1.000 | 0.012 | 0.512 | crypto | — |
-| Inject | 1.000 | 1.000 | 1.000 | 0.012 | 1.000 | crypto + ML | `doppler_residual_hz` |
-| Replay | 1.000 | 1.000 | 1.000 | 0.012 | 1.000 | crypto + ML | `latency_residual_ms` |
-| Relay | 0.000 | 1.000 | 1.000 | 0.012 | 1.000 | ML | `latency_residual_ms` |
-| Delay | 0.000 | 1.000 | 1.000 | 0.012 | 1.000 | ML | `latency_residual_ms` |
-| Jamming | 0.000 | 1.000 | 1.000 | 0.012 | 1.000 | ML | `inter_arrival_ms` |
-
-Reproduce with `python -m groundlink.cli`.
-
-Read the table by column: **no single layer catches everything.** Tamper is invisible to
-the detector (AUC 0.512 — chance), because it changes bytes, not physics. Relay, delay and
-jamming are invisible to cryptography. Only the combination covers the catalogue.
-
-## Overhead
-
-Indicative, development laptop, per frame:
-
-| Cost | Value |
+| Metric | Measured, 6 seeds |
 | --- | --- |
-| Authentication tag | 16 bytes (16.2% of a 99-byte frame) |
-| Cryptographic processing | ~13 µs |
-| Detector scoring | ~9 µs |
-| Detector training | ~0.3 s for one 6000-frame pass |
-| Model size | ~2.4 MiB |
+| Attack packets flagged | 90,000 of 90,000 (unflagged ≤ 4.3 × 10⁻⁵ at 95 %), from the first packet of every burst |
+| Genuine packets not delivered | 867 of 54,660 = 1.59 % [1.48, 1.69]: 859 held, 4 rejected, 4 quarantined |
+| Genuine packets, hold-over | 48.6 % held, none rejected |
+| χ² fired on genuine packets | 4 of 54,660 = 7.3 × 10⁻⁵ (10⁻⁴ by design) |
+| Tier correlation on genuine packets | statistical 864, physical 9, both 5: φ = 0.056 |
+| Decision time per packet | 0.29–0.30 ms mean, ≤ 0.48 ms p95 |
+| Memory | 158 MB peak (Python), 20.7 MB JavaScript heap (browser) |
 
-At 10 frames/s both layers use well under 0.1% of one core.
+With the sample-level receiver: 90,000 of 90,000 flagged, 1.30 % [1.21, 1.40] of genuine packets
+not delivered, φ = 0.031.
 
-## Honest caveats
+| Traffic | AUC forest | AUC χ² |
+| --- | ---: | ---: |
+| Frequency hijacking, replay, co-channel capture | 1.000 | 1.000 |
+| Stealth spoofing | 0.998 | 1.000 |
+| Noise jamming | 0.997 | 1.000 |
+| Relay | 0.942 | 1.000 |
+| Phase slip | 0.714 | 1.000 |
+| Delay | 0.523 | 1.000 |
+| Data tampering, injection | 0.48–0.53 | 0.50 |
+| Jam at J/N −5.3 dB | 0.779 | 0.977 |
+| Jam at J/N −3.1 dB | 0.980 | 1.000 |
 
-- **These figures are from synthetic traffic** and are not submittable. They show the
-  harness works end to end.
-- Perfect scores mean the attacks are at full strength. Deliverable 5 exists to find where
-  detection breaks.
+Read by column, no tier is enough: the χ² is at chance on tampering and injection, which leave no
+RF trace, and the forest on delay, which only moves the range. Each is caught by the tier that
+reads it (deliverable 5, ablation).
+
+## Run it
+
+```bash
+python -m digital_twin.evaluate --workers 4          # the six seeds, about 1.5 minutes
+python -m digital_twin.evaluate --receiver iq        # the same through the modem
+make eval                                            # every table and figure, with the hash
+```

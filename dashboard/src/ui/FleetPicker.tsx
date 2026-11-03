@@ -100,7 +100,8 @@ export function FleetPicker() {
 
   const fly = (noradId: number) => {
     const pass = data ? currentOrNextPass(data.signals, noradId, now) : null;
-    window.location.assign(pass ? testbedHref(pass) : `/?sat=${noradId}`);
+    // The testbed runs in a frame under the shared top bar: navigate the whole page.
+    (window.top ?? window).location.assign(pass ? testbedHref(pass) : `/?sat=${noradId}`);
   };
 
   return (

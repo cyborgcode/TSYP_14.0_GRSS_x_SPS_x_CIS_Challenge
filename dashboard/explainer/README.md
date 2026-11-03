@@ -1,29 +1,26 @@
-# "Hiding in the noise" explainer
+# "Hiding in the noise" slides
 
-Source of the video on the `/noise` page (`public/media/hiding-in-the-noise.mp4`).
+Source of the slides on the `/slides` page (`public/media/slides/slide-01.jpg` to `slide-09.jpg`):
+the explainer's scenes drawn on a canvas and captured at the moments listed in `slides.json`. The
+site shows them as still slides, with no voice over, captions or transcript.
 
-| File          | What it is                                                                  |
-| ------------- | --------------------------------------------------------------------------- |
-| `script.json` | Narration, scene by scene: `text` is shown in captions, `say` is spoken     |
-| `narrate.py`  | Voice-over with a local Piper voice, scene and caption timings, WebVTT      |
-| `scene.html`  | The animation: every frame drawn on a canvas as a function of time          |
-| `scene.js`    | Scenes, synced to the narration timings in `src/noise/explainer.json`       |
-| `render.mjs`  | Headless Chromium frames, encoded by ffmpeg (libx264), muxed with the voice |
+| File                        | What it is                                                                 |
+| --------------------------- | -------------------------------------------------------------------------- |
+| `scene.html`                | The scenes: every frame drawn on a canvas as a function of time            |
+| `scene.js`                  | The scenes, laid out on the timeline of `src/noise/explainer.json`         |
+| `slides.json`               | The moment of each slide and its text alternative                          |
+| `render.mjs`                | Headless Chromium: `--slides` writes the slides; `--stills t1,t2` previews |
+| `script.json`, `narrate.py` | The scene texts and the tool that wrote the timeline                       |
 
-Figures on screen come from `src/sim/linkFacts.ts` (pinned by `tests/sim.test.ts`) and the
+Figures on the slides come from `src/sim/linkFacts.ts` (pinned by `tests/sim.test.ts`) and the
 natural noise is the dashboard's own model in `src/sim/signals.ts`.
 
 ## Re-render
 
-Requirements: Python with `piper-tts`, a Piper voice (`en-us-lessac-medium.onnx` and its
-`.json`), ffmpeg with libx264 and Playwright's Chromium.
-
 ```bash
 cd dashboard
-python explainer/narrate.py --voice /path/to/en-us-lessac-medium.onnx
-node explainer/render.mjs --stills 4,40,104   # optional preview frames in explainer/build/
-node explainer/render.mjs                     # writes public/media/hiding-in-the-noise.*
+node explainer/render.mjs --slides
 ```
 
-`render.mjs` reads `FFMPEG`, `CHROMIUM`, `PLAYWRIGHT` (module path), `WORKERS` and `FPS` from the
-environment. Intermediate files go to `explainer/build/` (git-ignored).
+`render.mjs` reads `CHROMIUM` and `PLAYWRIGHT` (module path) from the environment. Preview frames
+go to `explainer/build/` (git-ignored).

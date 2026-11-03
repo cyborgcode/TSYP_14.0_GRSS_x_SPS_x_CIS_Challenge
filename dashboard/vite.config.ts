@@ -10,8 +10,11 @@ export default defineConfig({
   build: {
     // three.js + post-processing live in a lazily loaded chunk behind the dashboard.
     chunkSizeWarningLimit: 1300,
-    // The dashboard, and pages.html behind /signal, /attacks, /protection and /noise.
-    rollupOptions: { input: { main: page('index.html'), pages: page('pages.html') } },
+    // The shell (shared top bar, the testbed fitted in a frame), the testbed in that frame, and
+    // pages.html behind /signal, /attacks, /protection and /slides.
+    rollupOptions: {
+      input: { main: page('index.html'), testbed: page('testbed.html'), pages: page('pages.html') },
+    },
   },
   server: {
     port: 5173,

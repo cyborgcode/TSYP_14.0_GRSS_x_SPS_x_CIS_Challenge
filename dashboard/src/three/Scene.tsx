@@ -54,6 +54,17 @@ interface SceneProps {
 type Tier = 0 | 1 | 2;
 
 /** Render quality per tier: low drops the bloom pass, high adds MSAA and a sharper pixel ratio. */
+/** How much the shell's frame scales the testbed up, so the canvas renders at the shown size. */
+function frameZoom(): number {
+  try {
+    const frame = window.frameElement;
+    if (!frame || !window.innerWidth) return 1;
+    return Math.max(1, frame.getBoundingClientRect().width / window.innerWidth);
+  } catch {
+    return 1;
+  }
+}
+
 const TIERS: Record<Tier, { dpr: number; bloom: boolean; samples: number }> = {
   0: { dpr: 0.8, bloom: false, samples: 0 },
   1: { dpr: 1, bloom: true, samples: 0 },
@@ -113,7 +124,10 @@ function Scene(props: SceneProps) {
   return (
     <div ref={wrap} className="scene-root">
       <Canvas
-        dpr={Math.min(window.devicePixelRatio || 1, q.dpr)}
+        dpr={Math.min(
+          (window.devicePixelRatio || 1) * frameZoom(),
+          q.dpr * Math.max(1, frameZoom()),
+        )}
         frameloop={onScreen && !lost ? 'always' : 'never'}
         camera={{
           fov: 38,

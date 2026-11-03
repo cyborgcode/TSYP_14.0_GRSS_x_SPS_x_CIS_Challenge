@@ -1,7 +1,8 @@
 # TSYP 14 Secure Ground-Link Testbed — Evaluation Guide
 
 Run the testbed locally (Node 22, no network needed): `cd dashboard && npm ci && npm run dev`,
-then open <http://localhost:5173>. The dashboard is our
+then open <http://localhost:5173>. Every page shares the same top bar; the live testbed always
+fits one screen, scaled to the window. The dashboard is our
 simulation for TSYP 14 Track 1 (Secure Ground-Link Testbed): satellite-to-ground telemetry,
 real-time threat detection and cryptographic resilience, running entirely in the browser.
 
@@ -11,7 +12,7 @@ real-time threat detection and cryptographic resilience, running entirely in the
   satellite at 514 km, downlinking at X-band (8477.8 MHz) to our ground station in Zaghouan,
   Tunisia (GS-ZAG). The dashboard replays its next real pass over Zaghouan, from CelesTrak's
   latest element set (offline: the last download, then an element set built into the site).
-- **Any satellite**: the satellite button in the header lists the whole signal database (167
+- **Any satellite**: the satellite button in the testbed's status strip lists the whole signal database (167
   Earth-observation satellites from CelesTrak) beside a live sky view of Zaghouan; click one to
   fly its next pass on the testbed. The link `/?sat=39634` flies Sentinel-1A, for instance. The
   name, the identity in every frame, the emulated hardware token and the Ed25519 key follow the
@@ -125,8 +126,8 @@ jamming, fade-mimicking spoofing, bit flips disguised as bit errors). **Protecti
 below the thermal noise before the chi-square engine fires, which costs at most 1.1 dB of SNR;
 at the 2° mask, where the gate widens, 3.1 dB below and 1.7 dB (the old ±4 dB box gate let 4 dB
 go unseen). Its elevation buttons move the budget. Its **Run a below-the-gate jam** button opens the dashboard
-and starts that case live. **Explainer video** (`/noise`) is a 3:15 narrated video with
-chapters, captions and a transcript.
+and starts that case live. **Slides** (`/slides`) is the explainer as nine still slides: arrow keys
+or thumbnails to move, F for full screen.
 
 The browser ports produce the same frame text, HMAC seal and block hashes as the Python modules
 in `testbed/`; both test suites check the same golden vectors.
