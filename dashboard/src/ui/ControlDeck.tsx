@@ -313,7 +313,7 @@ export function ControlDeckPanel() {
 
       <div className="toggles">
         <Toggle
-          label="Auto-response (quarantine + re-key)"
+          label="Auto-response (quarantine; re-key on key-holder evidence)"
           on={engine.autoResponse}
           disabled={engine.demo.active}
           onChange={(v) => (engine.autoResponse = v)}

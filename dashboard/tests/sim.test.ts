@@ -156,11 +156,16 @@ describe('trust anchor (port of trust_anchor.py)', () => {
 
 describe('detector (port of detector.py) and zero trust', () => {
   const detector = new LinkDetector();
+  let clock = 100;
   const rf = (dCarrier: number, dRssi: number) => ({
     carrierMHz: 8477.8 + dCarrier,
     carrierModelMHz: 8477.8,
     rssiDbm: -85 + dRssi,
     rssiModelDbm: -85,
+    evmPct: 17.8,
+    evmModelPct: 17.8,
+    timingUs: 0,
+    t: (clock += 1),
   });
 
   it('keeps the false-alarm rate near the 1% contamination point on unseen passes', () => {
@@ -175,27 +180,38 @@ describe('detector (port of detector.py) and zero trust', () => {
         falseAlarm: 0,
         dopplerPredHz: pass.dopplerHz,
       });
-      const r = d.evaluate(x);
+      const m = { ...x, t: s };
+      const r = d.evaluate(m);
+      d.observe(m, false);
       if (r.anomaly) flagged++;
-      else d.accept(x);
+      else d.accept(m);
       n++;
     }
     expect(flagged / n).toBeLessThan(0.03);
   });
 
   it('flags a +14.2 MHz carrier and a collapsed carrier power with physics reasons', () => {
+    detector.accept(rf(0, 0));
     const hijack = detector.evaluate(rf(14.2, 0));
     expect(hijack.physics).toBe(true);
     expect(hijack.physicsReasons).toContain('carrier offset no orbit can produce');
-    // The forest saturates past the training range, exactly as detector.py's docstring says:
-    // that is what the physics gate is for.
-    expect(hijack.confidence).toBeGreaterThan(0.5);
+    // The carrier jumped since the last accepted frame, far beyond anything seen in training.
+    expect(hijack.forest).toBe(true);
+    expect(hijack.beyondRange).toContain('carrier step');
     const jam = detector.evaluate(rf(0, -11.5));
     expect(jam.physicsReasons).toContain('carrier power outside the link-budget band');
   });
 
+  it('flags the MAC-failure rate after a failed frame, which no clean pass ever shows', () => {
+    const d = new LinkDetector();
+    const first = rf(0, 0);
+    expect(d.evaluate(first).beyondRange).not.toContain('MAC / nonce failure rate');
+    d.observe(first, true);
+    expect(d.evaluate(rf(0, 0)).beyondRange).toContain('MAC / nonce failure rate');
+  });
+
   it('zero trust drops on any failing evidence, whatever the frame claims', () => {
-    const ok = detector.evaluate(rf(0, 0));
+    const ok = new LinkDetector().evaluate(rf(0, 0));
     const claim = { satellite_id: 'TERRASAR-X', hw_token: '0x4FE2' };
     expect(zeroTrust(claim, { ok: true, reason: 'AUTHENTIC' }, ok).allow).toBe(true);
     const forged = zeroTrust(
@@ -496,7 +512,7 @@ describe('engine scenarios', () => {
     expect(engine.handshakes).toBeGreaterThanOrEqual(2);
   });
 
-  it('frequency hijack: escalates, flags proof failures, quarantines and re-keys', async () => {
+  it('frequency hijack: escalates, flags proof failures, quarantines without re-keying', async () => {
     const engine = await Engine.create();
     await runFor(engine, 1);
     engine.trigger('hijack');
@@ -509,7 +525,9 @@ describe('engine scenarios', () => {
     ).toBe(true);
     expect(engine.terminal.some((l) => l.text.includes('PROOF FAIL'))).toBe(true);
     await runFor(engine, 5);
-    expect(engine.keyEpoch).toBe(0x40);
+    // No frame carried a valid tag: no key-holder evidence, so the key epoch stays.
+    expect(engine.keyEpoch).toBe(0x3f);
+    expect(engine.terminal.some((l) => l.text.includes('key epoch unchanged'))).toBe(true);
     expect(engine.ledger.some((r) => r.verdict === 'QUARANTINED')).toBe(true);
     expect(engine.corruptedToAnalyst).toBe(0);
   });
@@ -598,8 +616,10 @@ describe('engine scenarios', () => {
       window.push(!p.auth.ok);
       if (window.length > 10) window.shift();
       if (p.label !== 'tamper') continue;
+      // A failure among the frames before it: the forest's MAC-failure rate flags too.
+      const prior = window.slice(0, -1).some(Boolean);
       const burst = window.filter(Boolean).length >= 3;
-      expect(p.decision.verdict).toBe(burst ? 'QUARANTINED' : 'REJECTED');
+      expect(p.decision.verdict).toBe(burst || prior ? 'QUARANTINED' : 'REJECTED');
     }
     expect(engine.keyEpoch).toBe(0x3f);
     expect(engine.corruptedToAnalyst).toBe(0);

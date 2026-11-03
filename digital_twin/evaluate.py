@@ -57,10 +57,11 @@ import time
 from collections import deque
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import replace
+from functools import partial
 
 import numpy as np
 
-from testbed.ingester import ROGUE_NODE_TOKEN
+from testbed.ingester import ROGUE_NODE_TOKEN, SAT_TOKEN
 from testbed.trust_anchor import ReplayWindow
 
 from .attack_injector import AerospaceAttackInjector
@@ -70,9 +71,14 @@ from .datasets import Record, read_records, write_records
 from .decision import OUTCOMES, BurstMonitor, TierFlags, decide, power_only
 from .ephemeris_loader import EphemerisLoader, parse_tle
 from .fec import frame_error_rate
-from .isolation_forest_detector import SiteFrameForest
+from .iq_receiver import IqReceiver
+from .isolation_forest_detector import RATE_WINDOW, SiteFrameForest, evm_from_snr
 from .physics_validator import MasterTelemetryValidator
-from .security_detector import DEFAULT_RANGE_JERK_BOUND_KM_S3, PhysicsSecurityEngine
+from .security_detector import (
+    DEFAULT_RANGE_JERK_BOUND_KM_S3,
+    PhysicsSecurityEngine,
+    elevation_spread_factor,
+)
 
 SPEED_OF_LIGHT_KM_S = 299_792.458
 
@@ -110,6 +116,9 @@ EVASION = {
     "JAM_AT_MASK_LIMIT": -3.1,
 }
 UPLINK = ("COMMAND_TAMPERING", "COMMAND_INJECTION", "COMMAND_REPLAY")
+#: Genuine packets whose 10-slot look-back still holds an attack frame: the statistical tier's
+#: rate features remember the attack. Counted apart from the false-alarm set.
+HOLDOVER = "NONE_HOLDOVER"
 TIERS = ("data", "statistical", "physical")
 
 #: Dashboard constants (dashboard/src/sim/signals.ts, linkFacts.ts).
@@ -127,6 +136,15 @@ DELAY_S = 0.080
 #: Co-channel capture: on the channel, this far off the Doppler track, this much louder.
 CAPTURE_OFFSET_HZ = 4.0e3
 CAPTURE_EXCESS_DB = 6.0
+#: The measurement model (noise added to the link figures) or the sample-level receiver.
+RECEIVERS = ("model", "iq")
+#: Which frame of a burst gives the constellation figure, and how many of its symbols.
+CONSTELLATION_FRAME = 5
+CONSTELLATION_POINTS = 480
+#: Relative spread of the EVM estimate on one frame (the site's 4 %).
+EVM_SPREAD = 0.04
+#: Digests of the frames received with a valid tag, kept to tell a replay from a key holder.
+SEEN_DIGESTS = 4096
 
 
 def snr_loss_db(jam_to_noise_db: float) -> float:
@@ -194,23 +212,47 @@ class SequenceFreshness:
 class Station:
     """The receiving station: the decoder's output through the three tiers and the rule."""
 
-    def __init__(self, crypto: CryptoIntegrityVerifier, physics: PhysicsSecurityEngine, forest):
+    def __init__(
+        self,
+        crypto: CryptoIntegrityVerifier,
+        physics: PhysicsSecurityEngine,
+        forest,
+        token: str = SAT_TOKEN,
+    ):
         self.crypto = crypto
         self.physics = physics
         self.forest = forest
+        self.token = token
         self.freshness = SequenceFreshness()
         self.burst = BurstMonitor()
+        self.seen: deque[str] = deque(maxlen=SEEN_DIGESTS)
+        self.seen_set: set[str] = set()
+
+    def _remember(self, digest: str) -> None:
+        if digest in self.seen_set:
+            return
+        if len(self.seen) == self.seen.maxlen:
+            self.seen_set.discard(self.seen[0])
+        self.seen.append(digest)
+        self.seen_set.add(digest)
 
     def judge(self, rec: Record) -> dict:
         t0 = time.perf_counter()
         pkt = rec.packet
         decoded = pkt is not None
-        tag_ok = fresh = False
+        tag_ok = token_ok = fresh = key_holder = False
         if decoded:
             tag_ok = self.crypto.verify_packet_integrity(pkt)["integrity_passed"]
+            token_ok = pkt["payload"].get("hw_token", self.token) == self.token
             fresh = self.freshness.fresh(pkt["ccsds_header"]["sequence_count"])
-        authentic = decoded and tag_ok and fresh
-        ml = self.forest.evaluate(rec.link, rec.predicted)
+            if tag_ok:
+                # A valid tag on a foreign token, or on new content under a stale count: only a
+                # key holder can do that. A replay repeats content already received.
+                digest = pkt["sha256_hash"]
+                key_holder = not token_ok or (not fresh and digest not in self.seen_set)
+                self._remember(digest)
+        authentic = decoded and tag_ok and token_ok and fresh
+        ml = self.forest.evaluate(rec.t, rec.link, rec.predicted, decoded)
         physics = self.physics.evaluate_telemetry_physics(
             rec.link, rec.predicted, rec.elevation_deg, rec.t
         )
@@ -221,9 +263,11 @@ class Station:
             physical=physical,
             power_only=physical and power_only(physics),
             auth_failure=decoded and not authentic,
+            key_holder=key_holder,
         )
         burst = self.burst.observe(flags.auth_failure)
         outcome, _ = decide(flags, burst)
+        self.forest.observe(rec.t, rec.link, rec.predicted, decoded, flags.auth_failure)
         if authentic:
             self.freshness.accept(pkt["ccsds_header"]["sequence_count"])
         if outcome == "DELIVERED":
@@ -250,15 +294,23 @@ class Station:
 class TwinSource:
     """The twin flying TerraSAR-X over Zaghouan: what the station receives, packet by packet."""
 
-    def __init__(self, seed: int):
+    def __init__(self, seed: int, receiver: str = "model"):
         logging.disable(logging.CRITICAL)
+        if receiver not in RECEIVERS:
+            raise ValueError(f"receiver {receiver!r}: expected one of {RECEIVERS}")
         self.seed = seed
+        self.receiver = receiver
         self.tle = EphemerisLoader().builtin()
         self.v = MasterTelemetryValidator(seed=seed, tle=self.tle, training_passes=1)
         self.injector: AerospaceAttackInjector = self.v.injector
         self.rng = np.random.default_rng(1000 + seed)
         self.attacker = CryptoIntegrityVerifier(self.rng.bytes(32))
         self.recorded: deque = deque(maxlen=400)
+        self.iq = (
+            IqReceiver(5000 + seed, self.v.link_calc.noise_floor_dbm) if receiver == "iq" else None
+        )
+        #: One frame's constellation per traffic class, when the receiver works on samples.
+        self.constellations: dict[str, list[list[float]]] = {}
         self.clock = self.tle["epoch_unix"]
         self.ticks = self._ticks()
 
@@ -276,11 +328,32 @@ class TwinSource:
         out = []
         for _ in range(n):
             t, vis, true_link = next(self.ticks)
-            measured = self.v.measure(true_link, vis["elevation_deg"])
+            channel = self.v.measure(true_link, vis["elevation_deg"])
+            decoded = bool(self.rng.random() >= frame_error_rate(channel["snr_db"]))
+            measured = self._receive(channel, true_link, "TRAINING")
             out.append(
-                Record(t, vis["elevation_deg"], "NONE", measured, true_link, None, split="train")
+                Record(
+                    t,
+                    vis["elevation_deg"],
+                    "NONE",
+                    measured,
+                    true_link,
+                    None,
+                    split="train",
+                    extra={"decoded": decoded},
+                )
             )
         return out
+
+    def _with_evm(self, link: dict, interference_db: float | None = None) -> dict:
+        """The EVM the receiver reads off the constellation: set by the SNR, and by the
+        signal-to-interference ratio when a second carrier shares the channel."""
+        sinr = 10.0 ** (link["snr_db"] / 10.0)
+        if interference_db is not None:
+            sinr = 1.0 / (1.0 / sinr + 10.0 ** (-interference_db / 10.0))
+        evm = evm_from_snr(10.0 * math.log10(sinr))
+        link["evm_pct"] = evm * (1.0 + EVM_SPREAD * float(self.rng.normal()))
+        return link
 
     def record(self, attack: str, k: int, jam_to_noise_db: float | None = None) -> Record:
         v = self.v
@@ -293,12 +366,35 @@ class TwinSource:
         measured = v.measure(true_link, el)
         if attack == "NONE":
             self.recorded.append((t, sealed, dict(measured)))
-        link, pkt = self._attack(attack, k, t, measured, sealed, jam_to_noise_db)
+        channel, pkt = self._attack(attack, k, t, measured, sealed, jam_to_noise_db)
         # The decoder: below its threshold the frame is lost, never delivered corrupted.
-        if self.rng.random() < frame_error_rate(link["snr_db"]):
+        if self.rng.random() < frame_error_rate(channel["snr_db"]):
             pkt = None
-        extra = {"snr_loss_db": float(measured["snr_db"] - link["snr_db"])}
+        interferer = None
+        if attack == "CO_CHANNEL_CAPTURE":
+            # The genuine carrier is still on the channel, 6 dB under the captor.
+            interferer = {
+                "below_db": CAPTURE_EXCESS_DB,
+                "offset_hz": channel["doppler_shift_hz"] - measured["doppler_shift_hz"],
+            }
+        link = self._receive(channel, true_link, attack, interferer, k)
+        extra = {"snr_loss_db": float(measured["snr_db"] - channel["snr_db"])}
         return Record(t, el, attack, link, true_link, pkt, extra=extra)
+
+    def _receive(self, channel, predicted, label, interferer=None, k: int = 0) -> dict:
+        """What the station measures of what reached the antenna."""
+        if self.iq is None:
+            return self._with_evm(
+                dict(channel), None if interferer is None else interferer["below_db"]
+            )
+        link = self.iq.measure(channel, predicted, interferer)
+        wanted = label == "NONE" or k == CONSTELLATION_FRAME
+        if wanted and label != "TRAINING" and label not in self.constellations:
+            z = self.iq.last_constellation[-CONSTELLATION_POINTS:]
+            self.constellations[label] = [
+                [round(float(v.real), 4), round(float(v.imag), 4)] for v in z
+            ]
+        return link
 
     def _attack(self, attack, k, t, measured, sealed, jam_to_noise_db):
         link = dict(measured)
@@ -423,6 +519,7 @@ def _empty() -> dict:
         "kinematic": 0,
         "decoded": 0,
         "verified": 0,
+        "rekey": 0,
         "snr_loss_db": 0.0,
         **dict.fromkeys(OUTCOMES, 0),
         # Ablation: packets that would reach the analyst unflagged with one tier removed.
@@ -442,6 +539,7 @@ def _count(c: dict, r: dict) -> None:
     c["kinematic"] += r["kinematic"]
     c["decoded"] += r["decoded"]
     c["verified"] += r["verified"]
+    c["rekey"] += f.key_holder
     c["snr_loss_db"] += r["snr_loss_db"]
     c[r["outcome"]] += 1
     for tier in TIERS:
@@ -452,12 +550,27 @@ def _count(c: dict, r: dict) -> None:
     c["scores"]["chi"].append(r["chi_ratio"])
 
 
+def roc_points(negatives: list[float], positives: list[float], n: int = 80) -> list[list[float]]:
+    """(false-alarm rate, detection rate) at n thresholds spread over the scores' quantiles."""
+    neg, pos = np.sort(negatives), np.sort(positives)
+    both = np.concatenate([neg, pos])
+    thresholds = np.unique(np.quantile(both, np.linspace(0.0, 1.0, n)))
+    points = [[1.0, 1.0]]
+    for th in thresholds:
+        fpr = 1.0 - np.searchsorted(neg, th, side="right") / len(neg)
+        tpr = 1.0 - np.searchsorted(pos, th, side="right") / len(pos)
+        points.append([round(float(fpr), 6), round(float(tpr), 6)])
+    points.append([0.0, 0.0])
+    return points
+
+
 def _finish(counts: dict) -> dict:
-    """AUC of each score, attack against clean, then the raw scores are dropped."""
+    """AUC and ROC points of each score, attack against clean, then the raw scores go."""
     clean = counts["NONE"]["scores"]
     for name, c in counts.items():
-        if name != "NONE":
+        if name not in ("NONE", HOLDOVER) and c["n"]:
             c["auc"] = {key: auc(clean[key], c["scores"][key]) for key in ("forest", "chi")}
+            c["roc"] = {key: roc_points(clean[key], c["scores"][key]) for key in ("forest", "chi")}
     for c in counts.values():
         del c["scores"]
     return counts
@@ -466,28 +579,57 @@ def _finish(counts: dict) -> dict:
 # ---------------------------------------------------------------------- one seed
 
 
+def calibrate_sigmas(train: list[Record], engine: PhysicsSecurityEngine) -> dict:
+    """One-sigma spread of each chi-square residual on clean frames, referred to high elevation."""
+    return {
+        name: math.sqrt(
+            statistics.fmean(
+                (float(r.link[name]) - float(r.predicted[name])) ** 2
+                / elevation_spread_factor(r.elevation_deg)
+                for r in train
+            )
+        )
+        for name in engine.sigmas
+    }
+
+
+def _training_rows(train: list[Record]) -> list[tuple]:
+    return [(r.t, r.link, r.predicted, r.extra.get("decoded", True)) for r in train]
+
+
 def run_seed(
     seed: int,
     n_train: int = 3000,
-    n_nominal: int = 6000,
+    n_nominal: int = 12000,
     bursts: int = 50,
     burst_len: int = 30,
     uplink_commands: int = 50,
     export_path: str | None = None,
+    receiver: str = "model",
 ) -> dict:
-    source = TwinSource(seed)
+    source = TwinSource(seed, receiver)
     train = source.training(n_train)
-    forest = SiteFrameForest().fit([(r.t, r.link, r.predicted) for r in train])
+    if receiver == "iq":
+        # The sample-level receiver adds its own estimation noise: the chi-square's spreads
+        # are measured on the training frames, clean traffic only.
+        source.v.physics_engine.sigmas = calibrate_sigmas(train, source.v.physics_engine)
+    forest = SiteFrameForest().fit(_training_rows(train))
     station = Station(source.v.crypto, source.v.physics_engine, forest)
     exported: list[Record] | None = list(train) if export_path else None
 
-    counts = {m: _empty() for m in ("NONE", *ATTACKS, *EVASION)}
+    counts = {m: _empty() for m in ("NONE", HOLDOVER, *ATTACKS, *EVASION)}
     first_flag: dict[str, list[int]] = {m: [] for m in ATTACKS}
     times: list[float] = []
+    since_attack = [RATE_WINDOW]
 
     def one(rec: Record) -> dict:
         r = station.judge(rec)
-        _count(counts[rec.label], r)
+        if rec.label == "NONE":
+            _count(counts[HOLDOVER if since_attack[0] < RATE_WINDOW else "NONE"], r)
+            since_attack[0] += 1
+        else:
+            _count(counts[rec.label], r)
+            since_attack[0] = 0
         times.append(r["ms"])
         if exported is not None:
             exported.append(rec)
@@ -519,6 +661,7 @@ def run_seed(
             "tle_sha256": source.tle["sha256"],
             "seed": seed,
             "hmac_key_hex": source.v.crypto.secret_key.hex(),
+            "hw_token": SAT_TOKEN,
             "range_jerk_bound_km_s3": source.v.physics_engine.range_jerk_bound_km_s3,
             "note": "synthetic run of digital_twin.evaluate, for the adapter's test",
         }
@@ -527,6 +670,9 @@ def run_seed(
     uplink = {threat: source.uplink(threat, uplink_commands) for threat in UPLINK}
     return {
         "seed": seed,
+        "receiver": receiver,
+        "chi_square_sigmas": dict(source.v.physics_engine.sigmas),
+        "constellations": source.constellations,
         "counts": _finish(counts),
         "packets_to_first_flag": {m: statistics.mean(v) for m, v in first_flag.items()},
         "packet_ms": {"mean": statistics.mean(times), "p95": statistics.quantiles(times, n=20)[18]},
@@ -566,19 +712,27 @@ def run_dataset(path: str, key_hex: str | None = None) -> dict:
     train = [r for r in records if r.split == "train"]
     if len(train) < 50:
         raise SystemExit(f"{path}: needs at least 50 records with split 'train'")
-    forest = SiteFrameForest().fit([(r.t, r.link, r.predicted) for r in train])
+    forest = SiteFrameForest().fit(_training_rows(train))
     station = Station(
         CryptoIntegrityVerifier(bytes.fromhex(key)),
         PhysicsSecurityEngine(range_jerk_bound_km_s3=float(bound)),
         forest,
+        token=header.get("hw_token", SAT_TOKEN),
     )
     counts: dict[str, dict] = {}
     times = []
+    since_attack = RATE_WINDOW
     for rec in records:
         if rec.split == "train":
             continue
         r = station.judge(rec)
-        _count(counts.setdefault(rec.label, _empty()), r)
+        name = rec.label
+        if name == "NONE":
+            name = HOLDOVER if since_attack < RATE_WINDOW else "NONE"
+            since_attack += 1
+        else:
+            since_attack = 0
+        _count(counts.setdefault(name, _empty()), r)
         times.append(r["ms"])
     counts.setdefault("NONE", _empty())
     return {
@@ -608,7 +762,7 @@ def pooled(results: list[dict], name: str, key: str) -> tuple[int, int]:
 
 
 def print_summary(results: list[dict]) -> None:
-    names = [n for n in ("NONE", *ATTACKS, *EVASION) if n in results[0]["counts"]]
+    names = [n for n in ("NONE", HOLDOVER, *ATTACKS, *EVASION) if n in results[0]["counts"]]
     names += sorted(set(results[0]["counts"]) - set(names))
     print(f"seeds {[r['seed'] for r in results]}")
     head = f"{'traffic':24}{'pkts/seed':>10}{'data':>14}{'stat':>14}{'phys':>14}"
@@ -642,6 +796,13 @@ def print_summary(results: list[dict]) -> None:
         _, hi = wilson_interval(unflagged_to_analyst, total)
         print(f"  attack packets reaching the analyst unflagged: {unflagged_to_analyst}", end="")
         print(f" (≤ {hi:.2e} at 95 %)")
+    k, n = pooled(results, HOLDOVER, "DELIVERED")
+    if n:
+        print(f"  genuine within {RATE_WINDOW} slots after an attack frame: {n - k}/{n} flagged")
+    print("  re-keys (valid tag from a key holder):", end="")
+    for name in names:
+        print(f" {name} {sum(r['counts'][name]['rekey'] for r in results)}", end="")
+    print()
     k, n = pooled(results, "NONE", "chi_square")
     print(
         f"  chi-square fired on {k} of {n} held-out genuine packets ({k / n:.1e}; 1e-4 by design)"
@@ -654,7 +815,8 @@ def print_summary(results: list[dict]) -> None:
 
     print("\nablation: attack packets reaching the analyst unflagged with one tier removed")
     print(f"{'traffic':24}" + "".join(f"{'no ' + t:>16}" for t in TIERS))
-    for name in names[1:]:
+    scored = [n for n in names if n not in ("NONE", HOLDOVER)]
+    for name in scored:
         line = f"{name:24}"
         for tier in TIERS:
             k = sum(r["counts"][name]["unflagged_without"][tier] for r in results)
@@ -664,7 +826,7 @@ def print_summary(results: list[dict]) -> None:
 
     print("\nROC area, attack against clean (mean over seeds):")
     print(f"{'traffic':24}{'forest':>10}{'chi-square':>12}")
-    for name in names[1:]:
+    for name in scored:
         f = statistics.mean(r["counts"][name]["auc"]["forest"] for r in results)
         c = statistics.mean(r["counts"][name]["auc"]["chi"] for r in results)
         print(f"{name:24}{f:>10.3f}{c:>12.3f}")
@@ -703,6 +865,13 @@ def _phi(both: int, a: int, b: int, n: int) -> float:
     return (both * n - a * b) / denom if denom else 0.0
 
 
+def _plain(value):
+    """numpy scalars as plain numbers, for the JSON file."""
+    if isinstance(value, np.generic):
+        return value.item()
+    raise TypeError(f"{type(value).__name__} is not JSON serialisable")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[3])
     parser.add_argument("--seeds", type=int, nargs="+", default=[1, 2, 3, 4, 5, 6])
@@ -717,6 +886,12 @@ def main() -> None:
     parser.add_argument("--path", help="dataset file in the datasets.py format")
     parser.add_argument("--key-hex", help="HMAC key of the dataset, hex (else its header or env)")
     parser.add_argument("--export", help="write the first seed's synthetic run as a dataset file")
+    parser.add_argument(
+        "--receiver",
+        choices=RECEIVERS,
+        default="model",
+        help="model: noise added to the link figures; iq: QPSK samples through a modem",
+    )
     args = parser.parse_args()
 
     if args.dataset == "official":
@@ -724,15 +899,15 @@ def main() -> None:
             parser.error("--dataset official needs --path")
         results = [run_dataset(args.path, args.key_hex)]
     elif args.export:
-        results = [run_seed(args.seeds[0], export_path=args.export)]
+        results = [run_seed(args.seeds[0], export_path=args.export, receiver=args.receiver)]
     elif args.workers > 1:
         with ProcessPoolExecutor(args.workers) as pool:
-            results = list(pool.map(run_seed, args.seeds))
+            results = list(pool.map(partial(run_seed, receiver=args.receiver), args.seeds))
     else:
-        results = [run_seed(seed) for seed in args.seeds]
+        results = [run_seed(seed, receiver=args.receiver) for seed in args.seeds]
     if args.json:
         with open(args.json, "w") as out:
-            json.dump(results, out, indent=1)
+            json.dump(results, out, indent=1, default=_plain)
     print_summary(results)
     sys.stdout.flush()
 

@@ -84,13 +84,13 @@ export function VideoPage() {
         <div className="npage__card">
           <h2>Our idea</h2>
           <p>
-            Make every imitation either harmless or visible. The physical layer, a χ² engine on
+            Make every imitation either visible, or bounded. The physical layer, a χ² engine on
             range, Doppler, power and phase, caps how much noise can hide (overhead 5.3 dB below the
             thermal noise, at most 1.1 dB of SNR; 1.7 dB at the 2° mask, where the gate widens). The
-            statistical layer, an Isolation Forest, scores the rhythm of each reading, not just its
-            level. And noise cannot forge the data layer’s HMAC-SHA256 tag on every frame: one
-            failure is treated as possibly benign and resent, a burst of 3 within 10 frames
-            quarantines the link.
+            statistical layer, an Isolation Forest, reads what the χ² cannot see: the EVM, lost
+            frames, arrival jitter, failed tags and how fast carrier and power change. And noise
+            cannot forge the data layer’s HMAC-SHA256 tag on every frame: one failure is treated as
+            possibly benign and resent, a burst of 3 within 10 frames quarantines the link.
           </p>
         </div>
       </section>

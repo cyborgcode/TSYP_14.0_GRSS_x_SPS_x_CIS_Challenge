@@ -62,7 +62,7 @@ const LAYERS: { name: string; Icon: ComponentType<{ size?: number }>; body: stri
   {
     name: 'Statistical layer · Isolation Forest',
     Icon: ForestIcon,
-    body: 'Trained on clean passes only, it scores each reading together with how fast it changed since the last accepted one: a disguise has to copy the rhythm of nature, not just its level.',
+    body: 'Trained on clean passes only, it reads what the χ² cannot see: the EVM of the constellation, the frame-loss rate, the jitter of the arrival time, the rate of failed tags, and how fast carrier and power changed since the last accepted frame. A disguise has to copy all of them, not just the level of one.',
   },
   {
     name: 'Physical layer · χ² engine',
@@ -72,7 +72,7 @@ const LAYERS: { name: string; Icon: ComponentType<{ size?: number }>; body: stri
   {
     name: 'Decision and response',
     Icon: ShieldIcon,
-    body: 'Either deterministic layer, data or physical, rejects a frame; the statistical layer alone only holds it for review. A single failure is dropped and resent; two tiers at once, or a burst of 3 authentication failures within 10 frames, quarantine the link. A genuine frame whose only anomaly is its power is delivered flagged as degraded, with a jamming alarm. The key is rotated only after forged frames, never for tampering or jamming.',
+    body: 'Either deterministic layer, data or physical, rejects a frame; the statistical layer alone only holds it for review. A single failure is dropped and resent; two tiers at once (one of them deterministic), or a burst of 3 authentication failures within 10 frames, quarantine the link. A genuine frame whose only anomaly is its power is delivered flagged as degraded, with a jamming alarm. The key is rotated only when the data tier shows a key holder: a valid tag on a foreign hardware token, or on new content under a stale nonce. A rogue carrier, a forged tag, a replay, tampering or jamming never re-keys.',
   },
 ];
 

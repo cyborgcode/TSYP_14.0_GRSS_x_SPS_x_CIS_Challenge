@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useEngine, useEngineCtx } from '../engineContext';
 import { ATTACK_BUTTONS } from '../sim/copy';
 import type { PacketRecord } from '../sim/engine';
-import { FEATURE_NAMES } from '../sim/linkDetector';
+import { FEATURE_NAMES, FEATURE_UNITS } from '../sim/linkDetector';
 import {
   RESIDUAL_LABEL,
   RESIDUALS,
@@ -27,7 +27,7 @@ const AUTH_TEXT: Record<PacketRecord['auth']['reason'], string> = {
   NO_FRAME: 'NO FRAME',
 };
 
-const FEATURE_UNIT = ['MHz', 'dB', 'MHz', 'dB'] as const;
+const FEATURE_UNIT = FEATURE_UNITS;
 
 /** How each residual of the physical layer is read off a link state, and printed. */
 const CLAIM: Record<

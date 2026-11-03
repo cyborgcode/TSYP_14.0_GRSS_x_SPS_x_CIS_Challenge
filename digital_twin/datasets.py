@@ -39,6 +39,9 @@ LINK_FIELDS = (
     "snr_db",
     "received_phase_error_deg",
 )
+#: Written when the receiver measured them: the EVM of the constellation, per cent, and the
+#: frame arrival against the satellite's clock, microseconds.
+OPTIONAL_LINK_FIELDS = ("evm_pct", "light_time_us")
 
 
 @dataclass
@@ -61,7 +64,9 @@ class Record:
             "elevation_deg": self.elevation_deg,
             "label": self.label,
             "split": self.split,
-            "link": {k: self.link[k] for k in LINK_FIELDS},
+            "link": {
+                k: self.link[k] for k in (*LINK_FIELDS, *OPTIONAL_LINK_FIELDS) if k in self.link
+            },
             "predicted": None
             if self.predicted is None
             else {k: self.predicted[k] for k in LINK_FIELDS},

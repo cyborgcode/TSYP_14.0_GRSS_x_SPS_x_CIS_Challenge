@@ -7,7 +7,7 @@ export const PAGES = [
   { path: '/', label: 'Live testbed', title: 'Live testbed' },
   { path: '/signal', label: 'Signals', title: 'The signal database' },
   { path: '/attacks', label: 'Noise attacks', title: 'How an attacker imitates natural noise' },
-  { path: '/protection', label: 'Protection', title: 'Our protection: harmless or visible' },
+  { path: '/protection', label: 'Protection', title: 'Our protection: visible or bounded' },
   { path: '/noise', label: 'Explainer video', title: 'Hiding in the noise' },
 ] as const;
 

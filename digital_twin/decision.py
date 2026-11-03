@@ -13,9 +13,16 @@ Five outcomes, from the three tiers' flags:
   tier's flag does not change this: it reads the same power residual.
 - HELD: the statistical tier alone flags it; it waits for review.
 - REJECTED: the data tier or the physical tier flags it; a retransmission is requested.
-- QUARANTINED: two tiers flag it at once, or it fails authentication during a burst (at least
-  BURST_FAILURES authentication failures within the last BURST_WINDOW frames): the link is
-  isolated.
+- QUARANTINED: two tiers flag it at once, at least one of them deterministic (data or
+  physical: the statistical tier never quarantines on its own), or it fails authentication
+  during a burst (at least BURST_FAILURES authentication failures within the last BURST_WINDOW
+  frames): the link is isolated.
+
+Re-keying is a separate response. It happens only when the data tier shows that someone holds
+the key: a frame whose HMAC tag is valid but whose hardware token is not the satellite's, or
+whose sequence count is stale on content the station never received. A replayed frame (same
+content, stale count), a rogue carrier or a forged tag proves nothing about the key, so the link
+is quarantined and re-acquired with the key epoch unchanged.
 
 Every outcome but DELIVERED raises an alarm. The red-team label never reaches this module.
 """
@@ -47,8 +54,11 @@ class TierFlags:
     #: The physical flag comes from the power residual alone (chi-square without it passes,
     #: kinematic test passes).
     power_only: bool = False
-    #: The frame decoded and failed authentication (tag or sequence count).
+    #: The frame decoded and failed authentication (tag, hardware token or sequence count).
     auth_failure: bool = False
+    #: Evidence of a key holder: a valid tag on a frame with a foreign hardware token, or on
+    #: new content under a stale sequence count.
+    key_holder: bool = False
 
 
 class BurstMonitor:
@@ -74,6 +84,8 @@ def decide(flags: TierFlags, burst: bool = False) -> tuple[str, list[str]]:
     if flags.statistical:
         reasons.append("statistical")
 
+    if flags.key_holder:
+        reasons.append("data: valid tag from a key holder · re-key")
     if burst:
         return "QUARANTINED", [
             f"data: burst · {BURST_FAILURES} authentication failures "
@@ -83,13 +95,19 @@ def decide(flags: TierFlags, burst: bool = False) -> tuple[str, list[str]]:
     if not flags.data and flags.physical and flags.power_only:
         return "DEGRADED", reasons + ["genuine frame on a degraded link: jamming alarm"]
     tiers = flags.data + flags.statistical + flags.physical
-    if tiers >= 2:
+    deterministic = flags.data or flags.physical
+    if tiers >= 2 and deterministic:
         return "QUARANTINED", reasons
     if flags.data or flags.physical:
         return "REJECTED", reasons
     if flags.statistical:
         return "HELD", reasons
     return "DELIVERED", reasons
+
+
+def rekey_required(flags: TierFlags) -> bool:
+    """Re-key only on evidence that the key itself is in other hands."""
+    return flags.key_holder
 
 
 def power_only(physics: dict) -> bool:

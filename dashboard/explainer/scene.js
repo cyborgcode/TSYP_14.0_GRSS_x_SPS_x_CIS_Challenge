@@ -1031,7 +1031,7 @@ function physics(ctx, lt, sc) {
     lt,
     '04',
     'Our idea · Physical layer · χ²',
-    'Make every imitation harmless or visible',
+    'Make every imitation visible, or bounded',
   );
   const c1 = sc.cues[2];
   const c2 = sc.cues[3];
@@ -1074,7 +1074,7 @@ function physics(ctx, lt, sc) {
       );
       ctx.save();
       ctx.globalAlpha *= hid;
-      text(ctx, 'HIDDEN · HARMLESS', X(-13.4), Y(2.6), MONO(700, 26), C.ok, 'left', 2);
+      text(ctx, 'HIDDEN · BOUNDED', X(-13.4), Y(2.6), MONO(700, 26), C.ok, 'left', 2);
       text(
         ctx,
         `at most ${F.stealthLossDb} dB lost · frames verify`,
@@ -1198,13 +1198,7 @@ function physics(ctx, lt, sc) {
 }
 
 function ai(ctx, lt, sc) {
-  heading(
-    ctx,
-    lt,
-    '05',
-    'Statistical layer · AI',
-    'Learn the rhythm of nature, not just its level',
-  );
+  heading(ctx, lt, '05', 'Statistical layer · AI', 'Read what the χ² cannot see');
   const c1 = sc.cues[1];
   rise(ctx, lt, 0.3, () => {
     box(ctx, M, 240, 990, 720);
@@ -1304,7 +1298,7 @@ function ai(ctx, lt, sc) {
     ],
     [
       'What it scores',
-      'carrier and power against the orbit model, and how fast each changed since the last accepted reading',
+      'what the χ² cannot see: EVM, lost frames, arrival jitter, failed tags, and how fast carrier and power changed',
       c1.s,
     ],
     ['AI confidence', 'the share of clean readings that score lower than this one', c1.s + 2],
@@ -1446,7 +1440,7 @@ function crypto(ctx, lt, sc, t) {
 }
 
 function result(ctx, lt, sc) {
-  heading(ctx, lt, '07', 'Result', 'Harmless or visible, every time');
+  heading(ctx, lt, '07', 'Result', 'Visible, or bounded, every time');
   const cards = [
     [
       '100%',
@@ -1462,7 +1456,13 @@ function result(ctx, lt, sc) {
       C.ok,
       sc.cues[0].s + 1.2,
     ],
-    ['≈1%', 'of genuine packets held back', '1.0–1.4%, target under 2%', C.accent, sc.cues[1].s],
+    [
+      '≈1.6%',
+      'of genuine packets held back',
+      '1.57% over 6 seeds, target under 2%',
+      C.accent,
+      sc.cues[1].s,
+    ],
   ];
   cards.forEach(([big, label, sub, color, at], i) =>
     rise(ctx, lt, at, () => {

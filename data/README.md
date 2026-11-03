@@ -7,7 +7,7 @@ scenario. Record each one here as it is obtained:
 
 | Dataset | Source | Version / date | Used for | Local path |
 | --- | --- | --- | --- | --- |
-| Official reference datasets | TSYP14 organisers | not published as of 2 November 2026 | the standard scenario | `data/official.jsonl` |
+| Official reference datasets | TSYP14 organisers | not published as of 3 November 2026 (last checked that day) | the standard scenario | `data/official.jsonl` |
 
 ## Running the evaluation on a dataset
 
@@ -35,11 +35,12 @@ The file is JSON Lines: a header line, then one line per packet as the station r
 | `elevation_deg` | Satellite elevation at the station |
 | `label` | Ground truth for scoring only (`NONE` for genuine traffic); no tier reads it |
 | `split` | `train` for the nominal packets the statistical tier learns from, else `test` |
-| `link` | What the receiver measured: range, Doppler, carrier power, SNR, phase error |
+| `link` | What the receiver measured: range, Doppler, carrier power, SNR, phase error; optionally `evm_pct` (the constellation's EVM) and `light_time_us` (the arrival against the satellite clock), which the statistical tier reads when present |
 | `predicted` | The orbit and link-budget prediction; `null` and the twin computes it from the header's element set with SGP4 |
 | `packet` | The decoded CCSDS packet with its digest and HMAC tag; `null` when the frame did not decode |
 
-The header's `tle_sha256` is checked against the element set before anything is scored.
+The header's `tle_sha256` is checked against the element set before anything is scored; its
+`hw_token` (default `0x4FE2`) is the hardware token the satellite's frames must carry.
 
 `python -m digital_twin.evaluate --export run.jsonl` writes a synthetic run in this format;
 `tests/test_digital_twin.py` reads it back through the adapter and checks it reaches the

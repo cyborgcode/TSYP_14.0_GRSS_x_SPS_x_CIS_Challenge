@@ -51,3 +51,4 @@ coverage/
 # Reference datasets (never commit raw data)
 data/*
 !data/README.md
+results/*.json

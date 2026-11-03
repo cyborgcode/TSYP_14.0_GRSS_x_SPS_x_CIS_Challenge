@@ -9,7 +9,7 @@ const ROWS: { key: StatKey; label: string; title: string; genuine: boolean }[] =
   {
     key: 'genuineUnderAttack',
     label: 'Genuine (attack)',
-    title: 'Genuine frames sent while an attack was running',
+    title: 'Genuine frames sent while an attack was running, or in the 10 frames after it',
     genuine: true,
   },
   { key: 'spoof', label: 'Spoofing', title: ATTACK_BUTTONS.spoof.label, genuine: false },

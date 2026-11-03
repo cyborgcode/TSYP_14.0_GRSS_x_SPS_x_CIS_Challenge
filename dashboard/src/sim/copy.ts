@@ -79,18 +79,23 @@ export function resolvedBanner(
   kind: AttackKind,
   epoch: number,
   handoverS: number | null,
+  rekeyed = false,
 ): BannerCopy {
   const e = `0x${epoch.toString(16).toUpperCase()}`;
   switch (kind) {
     case 'hijack':
       return {
         headline: 'Hijack contained · 0 corrupted frames reached the analyst',
-        detail: `Carrier re-locked on ${SATELLITE} · keys rotated to epoch ${e}`,
+        detail: rekeyed
+          ? `Carrier re-locked on ${SATELLITE} · keys rotated to epoch ${e}`
+          : `Carrier re-locked on ${SATELLITE} · key epoch ${e} unchanged: no valid tag from the rogue`,
       };
     case 'spoof':
       return {
         headline: `Node ${ROGUE_NODE} isolated · spoofed frames quarantined`,
-        detail: `Keys rotated to epoch ${e} · re-key signed with Ed25519`,
+        detail: rekeyed
+          ? `Keys rotated to epoch ${e} · re-key signed with Ed25519`
+          : `Key epoch ${e} unchanged: ${ROGUE_NODE} never produced a valid tag`,
       };
     case 'tamper':
       return {

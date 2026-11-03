@@ -27,6 +27,7 @@ import {
 } from './crypto';
 import {
   LinkDetector,
+  RATE_WINDOW,
   ROGUE_TOKEN,
   SAT_ID,
   SAT_TOKEN,
@@ -78,7 +79,15 @@ import {
 } from './geometry';
 import { DEFAULT_PLAN, loadFlight, type FlightPlan } from './fleet';
 import { clamp, easeInOutCubic, mulberry32, win } from './noise';
-import { envelope, sample, type Attack, type AttackKind, type Sample } from './signals';
+import { stealthBudgetAt } from './linkFacts';
+import {
+  envelope,
+  jamSnrLossDb,
+  sample,
+  type Attack,
+  type AttackKind,
+  type Sample,
+} from './signals';
 
 export const TICK_S = 0.05;
 export const WINDOW_S = 7;
@@ -186,7 +195,10 @@ export interface PacketRecord {
   t: number;
   /** Red-team ground truth, known to the simulator only; no detector reads it. */
   label: FrameLabel;
-  /** An attack was active when the frame arrived (genuine frames included). */
+  /**
+   * An attack was active when the frame arrived, or ended within the last RATE_WINDOW frame slots,
+   * while the forest's failure rates still remember it (genuine frames included).
+   */
   underAttack: boolean;
   source: string;
   /** null when jamming left nothing to decode. */
@@ -259,6 +271,8 @@ export interface Run {
   firstRowId: number;
   demo: boolean;
   firstBlockMs: number | null;
+  /** A frame with a valid tag but a foreign token, or new content under a stale nonce. */
+  keyHolder: boolean;
 }
 
 export type Tone = 'bad' | 'warn' | 'ok';
@@ -424,6 +438,10 @@ export class Engine {
   degradedToAnalyst = 0;
   /** Authentication results of the last BURST_WINDOW decoded frames, for the burst rule. */
   private authWindow: boolean[] = [];
+  /** Frame slots since the last one an attack was active in. */
+  private slotsSinceAttack = Infinity;
+  /** Digests of frames received with a valid tag: a replay repeats one, a key holder does not. */
+  private seenDigests = new Set<string>();
   private burstActive = false;
   chainStatus: ChainStatus | null = null;
   /** Red-team edit of a past ledger block, restored after a few seconds. */
@@ -610,6 +628,7 @@ export class Engine {
       firstRowId: this.rowId + 1,
       demo: Boolean(opts.demo),
       firstBlockMs: null,
+      keyHolder: false,
     };
     for (const d of Object.values(this.detectors)) {
       d.latencyMs = null;
@@ -805,10 +824,16 @@ export class Engine {
           carrierModelMHz: x.carrierModelMHz,
           rssiDbm: x.rssiDbm,
           rssiModelDbm: x.rssiModelDbm,
+          evmPct: x.evmPct,
+          evmModelPct: x.evmModelPct,
+          timingUs: x.timingUs,
+          t: s,
         }
       : null;
     const link = x && x.timingUs !== null ? this.claim(x) : null;
-    const underAttack = this.attack !== null && envelope(this.attack, s) > 0.05;
+    const attacking = this.attack !== null && envelope(this.attack, s) > 0.05;
+    this.slotsSinceAttack = attacking ? 0 : this.slotsSinceAttack + 1;
+    const underAttack = this.slotsSinceAttack <= RATE_WINDOW;
 
     if (x && x.timingUs === null) {
       this.framesLost++;
@@ -827,6 +852,7 @@ export class Engine {
       this.queue = this.queue.then(() => {
         const t0 = performance.now();
         const detection = rf ? this.linkDetector.evaluate(rf) : null;
+        if (rf) this.linkDetector.observe(rf, false);
         this.record({
           t: s,
           label: 'jam',
@@ -915,8 +941,18 @@ export class Engine {
           flipped: { byte, bit },
         });
       } else {
-        // On a jammed link the genuine frames that still decode are the jam's frames.
-        const label: FrameLabel = active && kind === 'jam' ? 'jam' : 'genuine';
+        // On a jammed link the genuine frames that still decode are the jam's frames, while the
+        // jam costs more SNR than the stealth budget at this elevation. Below it the jam is
+        // bounded and hidden by design: its frames count as genuine frames under attack, as the
+        // twin reports its below-the-gate jams apart from the attack packets.
+        const jam = this.attack;
+        const visible =
+          active &&
+          kind === 'jam' &&
+          jam !== null &&
+          envelope(jam, s) * jamSnrLossDb(jam.power(s)) >=
+            stealthBudgetAt(this.pass.elevationDeg).maxSnrLossDb;
+        const label: FrameLabel = visible ? 'jam' : 'genuine';
         await this.verify(frame, mac, genuineSource, label, s, rf, link, underAttack, null);
       }
     });
@@ -956,7 +992,19 @@ export class Engine {
       ? this.physicsEngine.evaluate(link.rx, link.truth, link.elevationDeg, link.tReal)
       : null;
     const detection = rf ? this.linkDetector.evaluate(rf) : null;
+    if (rf) this.linkDetector.observe(rf, !auth.ok || frame.hw_token !== SAT_TOKEN);
     const detectorMs = performance.now() - t0;
+    // Key-holder evidence, the only reason to re-key: a valid tag on a foreign hardware token,
+    // or on content never received before under a stale nonce. A replay repeats a digest.
+    const tagValid = auth.reason !== 'MAC_MISMATCH';
+    const keyHolder =
+      tagValid &&
+      (frame.hw_token !== SAT_TOKEN || (!auth.ok && !this.seenDigests.has(auth.frameDigest)));
+    if (tagValid) this.seenDigests.add(auth.frameDigest);
+    if (keyHolder) {
+      if (this.run) this.run.keyHolder = true;
+      this.log('!! valid tag from a key holder · re-key on response', 'bad');
+    }
     // The burst rule: authentication failures over the last BURST_WINDOW decoded frames.
     this.authWindow.push(!auth.ok);
     if (this.authWindow.length > BURST_WINDOW) this.authWindow.shift();
@@ -1307,15 +1355,28 @@ export class Engine {
     switch (run.kind) {
       case 'hijack':
       case 'spoof':
-        this.keyEpoch += 1;
-        this.keyFlashAt = s;
         this.quarantineUntil = s + 1.7;
-        this.statusLine = `Re-keying · key epoch 0x${this.keyEpoch.toString(16).toUpperCase()}`;
-        this.log(
-          `quarantine: ${this.framesRejected} frames isolated · epoch 0x${this.keyEpoch.toString(16).toUpperCase()}`,
-          'warn',
-        );
-        this.handshake('re-key');
+        if (run.keyHolder) {
+          // Someone holds the key: rotate it.
+          this.keyEpoch += 1;
+          this.keyFlashAt = s;
+          this.statusLine = `Re-keying · key epoch 0x${this.keyEpoch.toString(16).toUpperCase()}`;
+          this.log(
+            `quarantine: ${this.framesRejected} frames isolated · epoch 0x${this.keyEpoch.toString(16).toUpperCase()}`,
+            'warn',
+          );
+          this.handshake('re-key');
+        } else {
+          // No frame carried a valid tag: the attacker never had the key. Isolate and re-lock.
+          this.statusLine =
+            run.kind === 'hijack'
+              ? `Carrier re-locked on ${copy.SATELLITE} · link quarantined`
+              : `Node ${copy.ROGUE_NODE} isolated · link quarantined`;
+          this.log(
+            `quarantine: ${this.framesRejected} frames isolated · key epoch unchanged: no valid tag from the attacker`,
+            'warn',
+          );
+        }
         break;
       case 'tamper':
         // The relay never had the key: no re-key needed, just drop and re-request.
@@ -1356,7 +1417,7 @@ export class Engine {
         3,
       );
     }
-    const resolved = copy.resolvedBanner(run.kind, this.keyEpoch, handoverS);
+    const resolved = copy.resolvedBanner(run.kind, this.keyEpoch, handoverS, run.keyHolder);
     this.banner = { kind: run.kind, tone: 'ok', ...resolved, shownAt: s, hideAt: s + 1.4 };
     this.recoveringUntil = s + 1.1;
     this.emit();

@@ -760,10 +760,13 @@ def test_the_seeded_evaluation_flags_every_attack_packet(tmp_path):
     # Genuine frames verify, and the forest alone only ever holds them.
     assert counts["NONE"]["data"] == 0
     assert counts["NONE"]["REJECTED"] + counts["NONE"]["QUARANTINED"] <= 1
-    # A burst of authentication failures: two frames rejected, then the link quarantined.
+    # Failing authentication: the first frames rejected, then the link quarantined, by the
+    # forest's MAC-failure rate or the burst rule, by the third frame at the latest.
     for attack in ("DATA_TAMPERING", "INJECTION"):
-        assert counts[attack]["REJECTED"] == 4, attack
-        assert counts[attack]["QUARANTINED"] == 16, attack
+        assert counts[attack]["REJECTED"] + counts[attack]["QUARANTINED"] == 20, attack
+        assert counts[attack]["QUARANTINED"] >= 16, attack
+    # Nothing here holds the key: no re-key.
+    assert all(c["rekey"] == 0 for c in counts.values())
     # Below the gate the jam costs little SNR and every frame still verifies.
     demo = counts["JAM_BELOW_GATE_DEMO"]
     assert demo["verified"] == demo["n"]
@@ -804,3 +807,104 @@ def test_the_decision_rule():
         for _ in range(4)
     ]
     assert outcomes == ["REJECTED", "REJECTED", "QUARANTINED", "QUARANTINED"]
+
+
+def test_the_fast_forest_scorer_matches_scikit_learn():
+    from sklearn.ensemble import IsolationForest
+
+    from digital_twin.isolation_forest_detector import FastForestScorer
+
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=(1000, 6))
+    x[:, 3] = 0.0
+    model = IsolationForest(n_estimators=64, max_samples=256, random_state=1).fit(x)
+    scorer = FastForestScorer(model)
+    probe = rng.normal(size=(200, 6)) * 2.0
+    expected = model.decision_function(probe)
+    assert np.allclose([scorer.decision(row) for row in probe], expected, atol=1e-12)
+
+
+def test_the_forest_reads_a_mac_failure_rate_no_clean_pass_shows():
+    from digital_twin.evaluate import TwinSource, _training_rows
+    from digital_twin.isolation_forest_detector import SiteFrameForest
+
+    source = TwinSource(4)
+    forest = SiteFrameForest().fit(_training_rows(source.training(400)))
+    rec = source.record("NONE", 0)
+    assert (
+        "mac_failure_rate"
+        not in forest.evaluate(rec.t, rec.link, rec.predicted)["beyond_training_range"]
+    )
+    forest.observe(rec.t, rec.link, rec.predicted, True, True)
+    nxt = source.record("NONE", 0)
+    result = forest.evaluate(nxt.t, nxt.link, nxt.predicted)
+    assert "mac_failure_rate" in result["beyond_training_range"]
+    assert result["threat_detected"]
+
+
+def test_re_keying_needs_evidence_of_a_key_holder():
+    import copy
+
+    from digital_twin.evaluate import Station, TwinSource, _training_rows, _unsealed
+    from digital_twin.isolation_forest_detector import SiteFrameForest
+    from testbed.ingester import ROGUE_NODE_TOKEN
+
+    source = TwinSource(5)
+    forest = SiteFrameForest().fit(_training_rows(source.training(400)))
+    station = Station(source.v.crypto, source.v.physics_engine, forest)
+    genuine = [source.record("NONE", 0) for _ in range(5)]
+    for rec in genuine:
+        assert station.judge(rec)["outcome"] == "DELIVERED"
+    for rec in genuine:
+        replay = station.judge(copy.deepcopy(rec))["flags"]
+        assert replay.data and not replay.key_holder
+    # A forged tag (hijack): no key, no re-key.
+    hijack = source.record("FREQUENCY_HIJACKING", 0)
+    assert not station.judge(hijack)["flags"].key_holder
+    # A leaked key: a valid tag on a rogue node's token. Re-key.
+    leak = source.record("NONE", 0)
+    forged = _unsealed(leak.packet)
+    forged["payload"] = {**forged["payload"], "hw_token": ROGUE_NODE_TOKEN}
+    leak.packet = source.v.crypto.seal_packet(source.v.framer.rebuild(forged))
+    flags = station.judge(leak)["flags"]
+    assert flags.key_holder and flags.data
+    # New content under a stale count, with a valid tag: also a key holder.
+    stale = source.record("NONE", 0)
+    forged = _unsealed(stale.packet)
+    forged["ccsds_header"] = dict(genuine[0].packet["ccsds_header"])
+    forged["payload"] = {**forged["payload"], "mode": "SAFE_HOLD"}
+    stale.packet = source.v.crypto.seal_packet(source.v.framer.rebuild(forged))
+    assert station.judge(stale)["flags"].key_holder
+
+
+def test_the_statistical_tier_never_quarantines_alone():
+    from digital_twin.decision import TierFlags, decide, rekey_required
+
+    assert decide(TierFlags(False, True, False))[0] == "HELD"
+    assert decide(TierFlags(True, True, False))[0] == "QUARANTINED"
+    assert not rekey_required(TierFlags(True, True, True))
+    assert rekey_required(TierFlags(True, False, False, key_holder=True))
+
+
+def test_the_iq_receiver_measures_what_the_channel_carries():
+    from digital_twin.iq_receiver import IqReceiver
+
+    rx = IqReceiver(3, -110.0)
+    predicted = {"doppler_shift_hz": 1.2e5, "slant_range_km": 1500.0, "snr_db": 15.0}
+    link = dict(
+        predicted,
+        doppler_shift_hz=1.2e5 + 9.0,
+        slant_range_km=1500.6,
+        snr_db=15.0,
+        received_phase_error_deg=3.0,
+    )
+    rows = [rx.measure(link, predicted) for _ in range(40)]
+    mean = {k: float(np.mean([r[k] for r in rows])) for k in rows[0] if k in link or k == "evm_pct"}
+    assert abs(mean["doppler_shift_hz"] - link["doppler_shift_hz"]) < 1.0
+    assert abs(mean["slant_range_km"] - link["slant_range_km"]) < 0.1  # 0.3 us
+    assert abs(mean["received_phase_error_deg"] - 3.0) < 1.0
+    assert abs(mean["snr_db"] - 15.0) < 0.3
+    assert abs(mean["evm_pct"] - 100.0 / np.sqrt(10**1.5)) < 1.0
+    # A second carrier 6 dB under the first, 4 kHz away: the constellation smears.
+    captured = rx.measure(link, predicted, {"below_db": 6.0, "offset_hz": 4000.0})
+    assert captured["evm_pct"] > 2 * mean["evm_pct"]

@@ -121,11 +121,11 @@ spoofer, the jammer and the noise floor. Every satellite is received on the stat
 (8477.8 MHz) through the same link budget, so the signals differ by their geometry.
 **Noise attacks** (`/attacks`) shows three ways an attacker imitates natural noise (noise-shaped
 jamming, fade-mimicking spoofing, bit flips disguised as bit errors). **Protection**
-(`/protection`) shows why each is either harmless or visible: overhead a jammer must stay 5.3 dB
+(`/protection`) shows why each is either visible or bounded: overhead a jammer must stay 5.3 dB
 below the thermal noise before the chi-square engine fires, which costs at most 1.1 dB of SNR;
 at the 2° mask, where the gate widens, 3.1 dB below and 1.7 dB (the old ±4 dB box gate let 4 dB
 go unseen). Its elevation buttons move the budget. Its **Run a below-the-gate jam** button opens the dashboard
-and starts that case live. **Explainer video** (`/noise`) is a 3:06 narrated video with
+and starts that case live. **Explainer video** (`/noise`) is a 3:15 narrated video with
 chapters, captions and a transcript.
 
 The browser ports produce the same frame text, HMAC seal and block hashes as the Python modules

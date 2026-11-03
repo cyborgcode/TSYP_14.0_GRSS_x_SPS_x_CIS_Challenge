@@ -104,10 +104,27 @@ The evaluation behind the report, `python -m digital_twin.evaluate`, runs the th
 decoder and the decision rule of `decision.py` (the site's too) against ten attacks (the four of
 the live demo, the twin's meaconing, phase slip and sequence hijack, replay, delay and a co-channel
 capture), three below-the-gate jams and three uplink threats, over six seeds: all 90,000 attack
-packets are flagged from the first packet of each burst, 98.8 % of the 46,800 genuine packets are
-delivered clean, and 0 of 900 hostile telecommands execute
-([docs/evaluation-report.md](docs/evaluation-report.md)). `--dataset official --path` runs the
-same evaluation on the official reference data ([data/README.md](data/README.md)).
+packets are flagged from the first packet of each burst, 98.4 % of the 54,660 genuine packets are
+delivered clean (1.57 % held for review), and 0 of 900 hostile telecommands execute
+([docs/evaluation-report.md](docs/evaluation-report.md)). `--receiver iq` runs it again with the
+sample-level receiver (QPSK through a modem: 98.7 % delivered clean, the same 90,000 flagged).
+`--dataset official --path` runs the same evaluation on the official reference data
+([data/README.md](data/README.md)).
+
+## Reproducing every table
+
+```bash
+make install      # the pinned environment: requirements-lock.txt
+make eval         # seeds 1-6, both receivers, the adaptive attacker, the figures
+make eval-quick   # seeds 1 and 2, a lighter attacker
+make test
+```
+
+`make eval` writes `results/tables.md` (every number the report quotes), the JSON behind it and
+`docs/figures/*.png`, then checks the SHA-256 of `results/tables.md` against
+`results/EXPECTED_SHA256`: a match means the run reproduced the report's numbers exactly. It takes
+about 8 minutes on 4 cores; everything is seeded and offline. Without Python on the machine:
+`make docker` (or `docker build -t ground-link-testbed . && docker run --rm ground-link-testbed`).
 
 **Live orbit.** The twin flies TerraSAR-X (NORAD 31698), an X-band radar satellite on a 514 km
 sun-synchronous orbit, on its current orbit: its latest element set is downloaded from
@@ -162,13 +179,18 @@ digital_twin/      SGP4 digital twin of the ground link, 13 modules
   fec.py                        CCSDS rate-1/2 decoder: frames lost below 4.4 dB
   decision.py                   five outcomes, burst rule, degraded delivery
   datasets.py                   dataset adapter: synthetic or official, one format
+  iq_receiver.py                QPSK samples through a modem: correlator, PLL, M2M4, EVM
   evaluate.py                   seeded evaluation: 10 attacks, 6 seeds, ablation, ROC, memory
+  adaptive_attacker.py          an attacker tuning power, Doppler and timing under the gates
+  figures.py                    the report's figures from the evaluation's JSON
+  reproduce.py                  every table and figure in one run, with the expected hash
   api_gateway.py                FastAPI service
   dashboard_ui.py               Streamlit causal-chain inspector
-tests/             142 tests
+tests/             147 tests
 docs/              one document per deliverable, plus roadmap and decisions
 dashboard/         React app — the Phase 2 live-demo surface
 data/              official datasets (gitignored)
+results/           tables.md and its expected SHA-256 (make eval)
 ```
 
 ## Deliverables
