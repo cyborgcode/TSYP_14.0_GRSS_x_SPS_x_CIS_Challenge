@@ -70,7 +70,8 @@ as still slides). Press **Play demo** on the testbed to see the four downlink at
 
 The measured numbers are in [evaluation-report.md](evaluation-report.md); a guided tour of the site
 in [evaluation-guide.md](evaluation-guide.md); the seven-minute demo in
-[demo-script.md](demo-script.md).
+[demo-script.md](demo-script.md). All of these documents, with the dataset format and the README,
+are also in one PDF: `docs/Secure-Ground-Link-Testbed-Documentation.pdf`.
 
 ## 5. The numbers that matter
 

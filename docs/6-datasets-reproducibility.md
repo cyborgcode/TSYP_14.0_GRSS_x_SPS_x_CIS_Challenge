@@ -83,6 +83,7 @@ npm test           # 64 tests
 | [evaluation-report.md](evaluation-report.md) | Every measured number, with intervals |
 | [evaluation-guide.md](evaluation-guide.md) | A guided tour of the site for evaluators |
 | [demo-script.md](demo-script.md) | The seven-minute demo, with prepared answers |
+| `Secure-Ground-Link-Testbed-Documentation.pdf` | All the documents above, with the dataset format, in one PDF |
 
 ## Anonymity
 

@@ -8,6 +8,7 @@ laptop.
 | Read | |
 | --- | --- |
 | The report | [docs/report/Secure-Ground-Link-Testbed-Report.pdf](docs/report/Secure-Ground-Link-Testbed-Report.pdf) |
+| All the documentation in one PDF | [docs/Secure-Ground-Link-Testbed-Documentation.pdf](docs/Secure-Ground-Link-Testbed-Documentation.pdf) |
 | A ten-minute introduction | [docs/START-HERE.md](docs/START-HERE.md) |
 | One document per deliverable | [docs/1](docs/1-threat-model.md) · [2](docs/2-architecture-trust-anchor.md) · [3](docs/3-signal-processing.md) · [4](docs/4-detection.md) · [5](docs/5-adversarial-validation.md) · [6](docs/6-datasets-reproducibility.md) |
 | Every measured number | [docs/evaluation-report.md](docs/evaluation-report.md), reproduced in [results/tables.md](results/tables.md) |
@@ -199,7 +200,9 @@ digital_twin/      SGP4 digital twin of the ground link, 13 modules
   api_gateway.py                FastAPI service
   dashboard_ui.py               Streamlit causal-chain inspector
 tests/             147 tests
-docs/              one document per deliverable, plus roadmap and decisions
+docs/              one document per deliverable, plus roadmap and decisions;
+                   all of them in one PDF (Secure-Ground-Link-Testbed-Documentation.pdf),
+                   the report in report/
 dashboard/         React app — the Phase 2 live-demo surface
 data/              official datasets (gitignored)
 results/           tables.md and its expected SHA-256 (make eval)
@@ -219,7 +222,8 @@ results/           tables.md and its expected SHA-256 (make eval)
 Also: [start here](docs/START-HERE.md) · [evaluation report](docs/evaluation-report.md) ·
 [evaluation guide](docs/evaluation-guide.md) · [demo script](docs/demo-script.md) ·
 [decision log](docs/decisions.md) · [team roles](docs/roles.md) · [roadmap](docs/roadmap.md) ·
-[working agreement](CONTRIBUTING.md)
+[working agreement](CONTRIBUTING.md) · all in one PDF:
+[docs/Secure-Ground-Link-Testbed-Documentation.pdf](docs/Secure-Ground-Link-Testbed-Documentation.pdf)
 
 ## Live testbed (dashboard)
 
