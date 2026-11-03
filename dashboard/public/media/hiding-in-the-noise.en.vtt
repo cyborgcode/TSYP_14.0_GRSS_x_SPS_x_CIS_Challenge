@@ -76,4 +76,4 @@ In our tests, every attack packet was denied, and no corrupted frame reached the
 About one percent of genuine packets were held back.
 
 00:02:58.264 --> 00:03:00.424
-Try it live at tsyp-pi.vercel.app.
+Try it live on the testbed, in the dashboard folder of our code.

@@ -1,6 +1,7 @@
 # TSYP 14 Secure Ground-Link Testbed — Evaluation Guide
 
-Open the live testbed: <https://tsyp-pi.vercel.app>. The dashboard is our
+Run the testbed locally (Node 22, no network needed): `cd dashboard && npm ci && npm run dev`,
+then open <http://localhost:5173>. The dashboard is our
 simulation for TSYP 14 Track 1 (Secure Ground-Link Testbed): satellite-to-ground telemetry,
 real-time threat detection and cryptographic resilience, running entirely in the browser.
 
@@ -37,12 +38,12 @@ appears during command injection and replay.
 Trigger each scenario from the **Simulate attack** panel. Each one opens the packet inspection
 drawer on the live frames (section 5).
 
-| Scenario | What happens | System response |
-|---|---|---|
-| **Frequency Hijacking** | A rogue carrier sweeping around +14.2 MHz, outside the 6 MHz channel, offers frames to the station; its 40 MHz wideband spectrum monitor sees it. | The carrier chart jumps to ~8492 MHz, the beam turns red with a rapid oscillation, and the ledger logs `PROOF FAIL` for every rogue frame. Keys are rotated after quarantine. |
-| **Stealth Spoofing** | Node `0x99A2` injects frames with forged MAC headers and cryptographic nonces. The carrier stays on the Doppler track and the power inside a ±4 dB band, only 3.2 dB low. | The beam turns amber, the carrier power drops 3.2 dB, the banner reads *Quarantine protocols engaged*. All three tiers fire: the data layer (forged MAC, reused nonces, wrong emulated hardware token), the physical layer (3.2 dB is 14σ below the link budget for the chi-square engine) and the statistical layer. |
-| **Data Tampering** | A relay between TerraSAR-X and Zaghouan flips one payload bit after the satellite sealed the frame. The RF is untouched. | The beam turns pink, the physical and statistical layers see nothing, and the data layer logs `HASH MISMATCH` for every altered frame. Each failed frame is dropped and resent; 3 failures within 10 frames quarantine the link (the burst rule). Keys are not rotated, since the relay never had them. |
-| **Noise Jamming** | Broadband Gaussian white noise at J/N +9.1 dB saturates the receiver. | The beam turns purple with high-frequency static, the SNR drops 9.6 dB and the carrier power estimate falls to −96.5 dBm. Where the SNR left is below the decoder's 4.4 dB threshold (low elevation) frames go missing; the others decode, verify, and arrive flagged `DEGRADED` with a jamming alarm. Fallback routing to GS-MAT (Matera, Italy) is forced about 2.8 s after the jam starts. |
+| Scenario                | What happens                                                                                                                                                              | System response                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Frequency Hijacking** | A rogue carrier sweeping around +14.2 MHz, outside the 6 MHz channel, offers frames to the station; its 40 MHz wideband spectrum monitor sees it.                         | The carrier chart jumps to ~8492 MHz, the beam turns red with a rapid oscillation, and the ledger logs `PROOF FAIL` for every rogue frame. Keys are rotated after quarantine.                                                                                                                                                                                                                 |
+| **Stealth Spoofing**    | Node `0x99A2` injects frames with forged MAC headers and cryptographic nonces. The carrier stays on the Doppler track and the power inside a ±4 dB band, only 3.2 dB low. | The beam turns amber, the carrier power drops 3.2 dB, the banner reads _Quarantine protocols engaged_. All three tiers fire: the data layer (forged MAC, reused nonces, wrong emulated hardware token), the physical layer (3.2 dB is 14σ below the link budget for the chi-square engine) and the statistical layer.                                                                         |
+| **Data Tampering**      | A relay between TerraSAR-X and Zaghouan flips one payload bit after the satellite sealed the frame. The RF is untouched.                                                  | The beam turns pink, the physical and statistical layers see nothing, and the data layer logs `HASH MISMATCH` for every altered frame. Each failed frame is dropped and resent; 3 failures within 10 frames quarantine the link (the burst rule). Keys are not rotated, since the relay never had them.                                                                                       |
+| **Noise Jamming**       | Broadband Gaussian white noise at J/N +9.1 dB saturates the receiver.                                                                                                     | The beam turns purple with high-frequency static, the SNR drops 9.6 dB and the carrier power estimate falls to −96.5 dBm. Where the SNR left is below the decoder's 4.4 dB threshold (low elevation) frames go missing; the others decode, verify, and arrive flagged `DEGRADED` with a jamming alarm. Fallback routing to GS-MAT (Matera, Italy) is forced about 2.8 s after the jam starts. |
 
 The attack-power slider changes the jammer power and the hijacker's excess power live.
 **Play demo** runs all four scenarios back to back, including a false alarm that only the
@@ -53,21 +54,22 @@ control seals every command with HMAC-SHA256 under the uplink key; on board, the
 in constant time, then the sequence count must be newer than the last one executed. The live
 uplink Doppler is shown under the buttons.
 
-| Scenario | What happens | System response |
-|---|---|---|
+| Scenario              | What happens                                                                                                                                                | System response                                                                                                 |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | **Command Tampering** | Genuine commands are caught in flight and rewritten to `DISABLE_TRANSMITTER X-BAND`; the checksum and SHA-256 are recomputed, the original tag rides along. | The tag no longer matches: every rewritten command is rejected on board (`MAC ✗`) and the transmitter stays on. |
-| **Command Injection** | A rogue uplink station forges `DISABLE_TRANSMITTER` commands with a tag computed under a guessed key. | Rejected on board (`MAC ✗`); mission control's routine commands keep executing. |
-| **Command Replay** | Genuine commands recorded off the air are transmitted again. | The tag is genuine but the count is old: the anti-replay check rejects each one (`REPLAY`). |
+| **Command Injection** | A rogue uplink station forges `DISABLE_TRANSMITTER` commands with a tag computed under a guessed key.                                                       | Rejected on board (`MAC ✗`); mission control's routine commands keep executing.                                 |
+| **Command Replay**    | Genuine commands recorded off the air are transmitted again.                                                                                                | The tag is genuine but the count is old: the anti-replay check rejects each one (`REPLAY`).                     |
 
 The ledger's **Uplink commands** view lists every command the satellite received, newest
 first, with its sequence count, source and verdict; its footer counts the hostile commands
 executed, which stays at 0.
 
 The **Three-tier threat matrix** panel shows the three tiers live, in the digital twin's order:
+
 1. data layer (HMAC-SHA256 tag and nonce of the last frame), 2. statistical layer (Isolation
-Forest score against its 0.60 operating point), 3. physical layer (chi-square against its gate
-at the current elevation, and the kinematic coupling in sigma). Either deterministic layer
-rejects a frame; the forest alone holds it; two tiers at once escalate.
+   Forest score against its 0.60 operating point), 3. physical layer (chi-square against its gate
+   at the current elevation, and the kinematic coupling in sigma). Either deterministic layer
+   rejects a frame; the forest alone holds it; two tiers at once escalate.
 
 ## 4. Cryptographic ledger and telemetry verification
 
@@ -83,7 +85,7 @@ rejects a frame; the forest alone holds it; two tiers at once escalate.
 
 ## 5. Packet inspection and resilience metrics
 
-- **Packet inspection drawer** (*Inspect packets*, or any scenario button; Esc closes it): the
+- **Packet inspection drawer** (_Inspect packets_, or any scenario button; Esc closes it): the
   newest frames with their trust-anchor verdict, AI confidence and access decision. Selecting
   one shows the raw frame and payload hexdump (bits flipped in transit are highlighted against
   what the satellite sealed), the MAC received against the HMAC-SHA256 recomputed by the
@@ -92,11 +94,11 @@ rejects a frame; the forest alone holds it; two tiers at once escalate.
   against the SGP4 and ITU-R P.618 prediction, each gap in sigma, the chi-square against its
   gate and the kinematic coupling; the Isolation Forest features, score, threshold and
   confidence; and the `decision.py` decision (`ACCEPTED`, `DEGRADED`, `HELD`, `REJECTED` or
-  `QUARANTINED`) with its reasons. *Live* / *Paused*
+  `QUARANTINED`) with its reasons. _Live_ / _Paused_
   freezes the list. The red-team label is shown for the jury only; the pipeline never reads it.
 - **Resilience & trust metrics**: frames authenticated, rejected (MAC or nonce), held on RF
   evidence and corrupted frames that reached the analyst (0). `verify_chain()` re-checks the
-  ledger every 5 s; *Verify* re-checks it from the genesis block, and *Edit block* lets the red
+  ledger every 5 s; _Verify_ re-checks it from the genesis block, and _Edit block_ lets the red
   team change a verdict recorded in a past block, which the next check reports by index before
   the block is restored. The matrix gives, per scenario, the share of frames flagged by each
   tier (data, physical, statistical) and the share flagged (held, rejected, quarantined, or

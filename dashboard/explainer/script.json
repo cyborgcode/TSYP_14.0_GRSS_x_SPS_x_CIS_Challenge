@@ -150,7 +150,7 @@
           "text": "About one percent of genuine packets were held back."
         },
         {
-          "text": "Try it live at tsyp-pi.vercel.app.",
+          "text": "Try it live on the testbed, in the dashboard folder of our code.",
           "say": "Try it live, on our testbed."
         }
       ]
