@@ -101,8 +101,9 @@ async function main() {
       for (const [i, slide] of slides.entries()) {
         const label = `${i + 1} / ${slides.length}`;
         const data = await page.evaluate(
-          ([t, l]) => window.explainer.slideJpeg(t, l, 0.9),
-          [slide.t, label],
+          ([t, sc, l]) =>
+            sc ? window.explainer.stillJpeg(sc, l, 0.9) : window.explainer.slideJpeg(t, l, 0.9),
+          [slide.t, slide.scene ?? null, label],
         );
         writeFileSync(
           join(dir, `slide-${String(i + 1).padStart(2, '0')}.jpg`),

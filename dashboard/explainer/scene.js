@@ -1450,7 +1450,7 @@ function crypto(ctx, lt, sc, t) {
 }
 
 function result(ctx, lt, sc) {
-  heading(ctx, lt, '07', 'Result', 'Visible, or bounded, every time');
+  heading(ctx, lt, '09', 'Result', 'Visible, or bounded, every time');
   const cards = [
     [
       '100%',
@@ -1497,6 +1497,123 @@ function result(ctx, lt, sc) {
     );
   });
 }
+
+// ---------------------------------------------------------------- uplink (still slides only)
+
+function arrow(ctx, x0, y0, x1, y1, color, lw = 3) {
+  const a = Math.atan2(y1 - y0, x1 - x0);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1 - 14 * Math.cos(a), y1 - 14 * Math.sin(a));
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x1 - 18 * Math.cos(a - 0.4), y1 - 18 * Math.sin(a - 0.4));
+  ctx.lineTo(x1 - 18 * Math.cos(a + 0.4), y1 - 18 * Math.sin(a + 0.4));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function uplinkThreats(ctx, lt) {
+  heading(ctx, lt, '07', 'Uplink · Telecommands', 'One forged command could silence the satellite');
+  rise(ctx, lt, 0.3, () => {
+    dish(ctx, 250, 420, 1.1, C.text0);
+    text(ctx, 'Mission control · Zaghouan', 250, 500, MONO(500, 20), C.text1, 'center');
+    satellite(ctx, 1660, 330, -0.35, 1);
+    text(ctx, 'TerraSAR-X', 1660, 420, MONO(500, 20), C.text1, 'center');
+    arrow(ctx, 330, 395, 1570, 345, C.warn, 4);
+    text(ctx, 'S-BAND UPLINK · 2050 MHz · EVERY COMMAND SEALED WITH HMAC-SHA256', 950, 330, MONO(700, 20), C.warn, 'center', 2);
+    dashed(ctx, 960, 520, 960, 384, C.bad, 2.5);
+    ctx.fillStyle = C.bad;
+    ctx.beginPath();
+    ctx.arc(960, 532, 9, 0, Math.PI * 2);
+    ctx.fill();
+    text(ctx, 'rogue uplink · Gulf of Gabès', 990, 540, MONO(700, 22), C.bad);
+  });
+  const cards = [
+    ['Command tampering', 'genuine commands rewritten in flight', 'DISABLE_TRANSMITTER X-BAND', 'checksum and SHA-256 recomputed, the original tag kept', 'MAC ✗ · rejected on board'],
+    ['Command injection', 'a rogue station forges its own commands', 'DISABLE_TRANSMITTER', 'tag computed under a guessed key', 'MAC ✗ · rejected on board'],
+    ['Command replay', 'genuine commands recorded and sent again', 'a real, sealed command', 'the tag is genuine, the sequence count is old', 'REPLAY · rejected on board'],
+  ];
+  cards.forEach(([title, sub, cmd, how, verdict], i) =>
+    rise(ctx, lt, 0.6 + i * 0.25, () => {
+      const x = M + i * 568;
+      box(ctx, x, 600, 544, 360);
+      box(ctx, x + 28, 626, 44, 44, { fill: hexA(C.bad, 0.16), stroke: C.bad, r: 8, lw: 2 });
+      text(ctx, String(i + 1), x + 50, 657, MONO(700, 24), C.bad, 'center');
+      text(ctx, title, x + 92, 658, UI(600, 30), C.text0);
+      text(ctx, sub, x + 28, 714, UI(400, 23), C.text1);
+      box(ctx, x + 28, 740, 488, 56, { fill: C.bg1, stroke: C.line, r: 8 });
+      text(ctx, cmd, x + 48, 777, MONO(700, 22), C.tamper);
+      para(ctx, how, x + 28, 836, 488, 32, UI(400, 22), C.text1);
+      chip(ctx, verdict, x + 28, 932, C.ok, { size: 22 });
+    }),
+  );
+}
+
+function uplinkBoard(ctx, lt) {
+  heading(ctx, lt, '08', 'Uplink · On board', 'Executed only if sealed, and only once');
+  const steps = [
+    ['MISSION CONTROL', 'seals each command', 'HMAC-SHA256 · uplink key', C.warn],
+    ['TAG CHECK', 'on board, constant time', 'edited or forged → MAC ✗', C.accent],
+    ['COUNT CHECK', 'newer than the last executed', 'recorded copy → REPLAY', C.accent],
+    ['EXECUTE', 'sealed and fresh only', 'every verdict in the ledger', C.ok],
+  ];
+  steps.forEach(([title, a, b, color], i) =>
+    rise(ctx, lt, 0.3 + i * 0.2, () => {
+      const x = M + i * 430;
+      box(ctx, x, 260, 380, 170, { fill: C.bg2, stroke: color, lw: 2 });
+      text(ctx, title, x + 28, 306, MONO(700, 24), color, 'left', 2);
+      text(ctx, a, x + 28, 356, UI(400, 24), C.text0);
+      text(ctx, b, x + 28, 398, MONO(500, 20), C.text1);
+      if (i < 3) arrow(ctx, x + 388, 345, x + 424, 345, C.text2, 3);
+    }),
+  );
+  rise(ctx, lt, 1.2, () => {
+    text(ctx, 'COMMANDS AS THEY ARRIVE ON BOARD', M, 500, MONO(500, 20), C.text2, 'left', 2);
+    const seq = ['ok', 'ok', 'mac', 'ok', 'mac', 'mac', 'ok', 'replay', 'ok', 'replay', 'ok', 'mac', 'ok', 'ok', 'replay', 'ok', 'ok', 'mac', 'ok', 'ok'];
+    seq.forEach((k, j) => {
+      const x = M + j * 62;
+      const bad = k !== 'ok';
+      box(ctx, x, 522, 50, 46, { fill: hexA(bad ? C.bad : C.ok, 0.22), stroke: bad ? C.bad : C.ok, r: 8, lw: 2 });
+      if (bad) cross(ctx, x + 25, 545, 26, C.bad);
+      else check(ctx, x + 25, 545, 26, C.ok);
+    });
+    text(ctx, 'mission control’s commands: executed', M, 610, MONO(700, 20), C.ok);
+    text(ctx, 'tampered, injected, replayed: rejected', M + 11 * 62, 610, MONO(700, 20), C.bad);
+  });
+  rise(ctx, lt, 1.6, () => {
+    box(ctx, M, 660, 760, 300);
+    ctx.fillStyle = C.ok;
+    ctx.fillRect(M, 690, 5, 240);
+    text(ctx, '0 / 900', M + 44, 830, DISPLAY(700, 140), C.text0);
+    para(ctx, 'hostile telecommands executed', M + 44, 890, 680, 40, UI(600, 30), C.text0);
+    text(ctx, '6 seeds · 150 commands per run under attack', M + 44, 935, MONO(500, 20), C.text2);
+  });
+  rise(ctx, lt, 1.9, () => {
+    box(ctx, 920, 660, 880, 300);
+    text(ctx, 'The uplink also carries the re-key', 956, 716, UI(600, 30), C.text0);
+    para(
+      ctx,
+      'Only when someone is shown to hold the downlink key: the new epoch goes up sealed under the uplink key, the spacecraft signs it with Ed25519 and the station checks the signature before switching. A forged tag, a replay or jamming never re-keys.',
+      956,
+      764,
+      810,
+      36,
+      UI(400, 24),
+      C.text1,
+    );
+  });
+}
+
+/** Scenes drawn only as still slides: not on the explainer's timeline. */
+const STILLS = {
+  uplinkThreats: { id: 'uplinkThreats', chapter: 'Uplink · Telecommands', draw: uplinkThreats },
+  uplinkBoard: { id: 'uplinkBoard', chapter: 'Uplink · On board', draw: uplinkBoard },
+};
 
 const SCENES = { intro, signal, natural, imitate, physics, ai, crypto, result };
 
@@ -1570,6 +1687,15 @@ window.explainer = {
   slideJpeg: (t, label, q = 0.9) => {
     SLIDE = label;
     render(t);
+    SLIDE = null;
+    return canvas.toDataURL('image/jpeg', q);
+  },
+  stillJpeg: (id, label, q = 0.9) => {
+    const sc = STILLS[id];
+    SLIDE = label;
+    background(ctx, 0);
+    sc.draw(ctx, 99, { dur: 99, cues: [] }, 0);
+    chrome(ctx, 0, TL, sc);
     SLIDE = null;
     return canvas.toDataURL('image/jpeg', q);
   },

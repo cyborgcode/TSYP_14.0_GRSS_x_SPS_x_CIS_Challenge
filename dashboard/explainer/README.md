@@ -1,10 +1,8 @@
-# "Hiding in the noise" explainer
+# "Hiding in the noise" slides
 
-> The `/slides` page now shows the pitch deck (`public/media/slides/slide-01.jpg` to
-> `slide-14.jpg`). Running `render.mjs --slides` overwrites them with the explainer's nine slides.
-
-Source of the slides on the `/slides` page (`public/media/slides/slide-01.jpg` to `slide-09.jpg`):
-the explainer's scenes drawn on a canvas and captured at the moments listed in `slides.json`. The
+Source of the slides on the `/slides` page (`public/media/slides/slide-01.jpg` to `slide-11.jpg`):
+the explainer's scenes drawn on a canvas and captured at the moments listed in `slides.json`; the
+two uplink slides are still scenes (`"scene"` in `slides.json`) drawn only as slides. The
 site shows them as still slides, with no voice over, captions or transcript.
 
 | File                        | What it is                                                                 |

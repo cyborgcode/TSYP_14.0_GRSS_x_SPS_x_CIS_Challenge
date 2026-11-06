@@ -54,8 +54,8 @@ element set.
 
 On the site, every page shares the same top bar: **Live testbed** (the whole ground link on one
 screen, scaled to the window), **Signals** (167 satellites and their passes over Zaghouan),
-**Noise attacks**, **Protection** (the stealth budget by elevation) and **Slides** (the
-14-slide pitch deck). Press **Play demo** on the testbed to see the four downlink attacks in 48 s.
+**Noise attacks**, **Protection** (the stealth budget by elevation) and **Slides** (the explainer
+and the uplink as still slides). Press **Play demo** on the testbed to see the four downlink attacks in 48 s.
 
 ## 4. Where everything is documented
 

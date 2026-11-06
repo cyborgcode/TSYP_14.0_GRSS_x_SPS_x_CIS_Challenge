@@ -32,6 +32,14 @@
     "alt": "The data layer: noise cannot forge an HMAC-SHA256 tag; one failure is resent, two tiers at once quarantine the link"
   },
   {
+    "scene": "uplinkThreats",
+    "alt": "The uplink is a target too: command tampering, injection and replay on the S-band telecommand channel, each rejected on board"
+  },
+  {
+    "scene": "uplinkBoard",
+    "alt": "Every command checked on board, tag then sequence count: 0 of 900 hostile telecommands executed; the uplink also carries the Ed25519-confirmed re-key"
+  },
+  {
     "t": 192.6,
     "alt": "Result: every attack packet flagged, no corrupted frame reached the analyst, about 1.6% of genuine packets held for review"
   }
