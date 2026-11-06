@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { SLIDES } from '../noise/slides';
 import { DocPage } from './DocPage';
 
-/** The explainer as still slides: arrows or the thumbnails to move, F for full screen. */
+/** The pitch deck as still slides: arrows or the thumbnails to move, F for full screen. */
 export function SlidesPage() {
   const [at, setAt] = useState(0);
   const stage = useRef<HTMLDivElement>(null);
@@ -34,13 +34,13 @@ export function SlidesPage() {
       eyebrow={`Slides · ${SLIDES.length}`}
       lead={
         <>
-          How an attacker can imitate the natural noise on the TerraSAR-X downlink, and the idea
-          that keeps the ground link safe anyway, in {SLIDES.length} slides. Use the arrow keys or
-          the thumbnails; F shows them full screen.
+          The pitch, in {SLIDES.length} slides: the silent failure, the ten downlink attacks and the
+          uplink threats, the three tiers, and the measured results. Use the arrow keys or the
+          thumbnails; F shows them full screen.
         </>
       }
     >
-      <section className="slides" aria-roledescription="carousel" aria-label="Hiding in the noise">
+      <section className="slides" aria-roledescription="carousel" aria-label="The pitch deck">
         <div className="slides__stage" ref={stage}>
           <img
             className="slides__image"

@@ -297,8 +297,7 @@ large one.
 - **Hiding in the noise**, on its own pages linked from the top bar: `/attacks` (three ways an
   attacker imitates natural noise), `/protection` (an interactive stealth budget and the three
   tiers) and
-  `/slides` (the explainer as nine still slides, no voice over or captions; source and re-render
-  steps in `dashboard/explainer/`).
+  `/slides` (the 14-slide pitch deck, uplink included, as still slides).
 - **trust_anchor.py terminal**: live log of SHA-256 block validations from a genesis root hash,
   HMAC-SHA256 frame seals and Ed25519 signatures on every re-key, all computed with Web Crypto
   in the browser.

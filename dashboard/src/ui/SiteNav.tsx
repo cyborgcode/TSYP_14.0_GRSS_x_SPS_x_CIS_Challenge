@@ -8,7 +8,7 @@ export const PAGES = [
   { path: '/signal', label: 'Signals', title: 'The signal database' },
   { path: '/attacks', label: 'Noise attacks', title: 'How an attacker imitates natural noise' },
   { path: '/protection', label: 'Protection', title: 'Our protection: visible or bounded' },
-  { path: '/slides', label: 'Slides', title: 'Hiding in the noise' },
+  { path: '/slides', label: 'Slides', title: 'The pitch deck' },
 ] as const;
 
 export type PagePath = (typeof PAGES)[number]['path'];
