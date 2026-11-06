@@ -898,7 +898,8 @@ function imitate(ctx, lt, sc, t) {
   const q = Math.floor(t * 12);
   cards.forEach(([title, sub, color, foot], i) => {
     const cue = sc.cues[i];
-    const active = lt >= cue.s && (i === 2 || lt < sc.cues[i + 1].s);
+    // On a still slide all three are shown at once; in the video one is lit at a time.
+    const active = SLIDE ? lt >= cue.s : lt >= cue.s && (i === 2 || lt < sc.cues[i + 1].s);
     const x = M + i * 568;
     rise(ctx, lt, cue.s - 0.2, () => {
       ctx.save();
