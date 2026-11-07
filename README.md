@@ -9,6 +9,7 @@ laptop.
 | --- | --- |
 | The report | [docs/report/Secure-Ground-Link-Testbed-Report.pdf](docs/report/Secure-Ground-Link-Testbed-Report.pdf) |
 | All the documentation in one PDF | [docs/Secure-Ground-Link-Testbed-Documentation.pdf](docs/Secure-Ground-Link-Testbed-Documentation.pdf) |
+| Simple Jury Q&A playbook | [docs/TSYP14-Jury-QA-Playbook-Simple-English.pdf](docs/TSYP14-Jury-QA-Playbook-Simple-English.pdf) |
 | A ten-minute introduction | [docs/START-HERE.md](docs/START-HERE.md) |
 | One document per deliverable | [docs/1](docs/1-threat-model.md) · [2](docs/2-architecture-trust-anchor.md) · [3](docs/3-signal-processing.md) · [4](docs/4-detection.md) · [5](docs/5-adversarial-validation.md) · [6](docs/6-datasets-reproducibility.md) |
 | Every measured number | [docs/evaluation-report.md](docs/evaluation-report.md), reproduced in [results/tables.md](results/tables.md) |

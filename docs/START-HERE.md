@@ -3,6 +3,8 @@
 A ten-minute introduction: what the testbed is, how it decides, how to run it, and where each
 part of the work is documented.
 
+For jury questions, see the [simple-English Jury Q&A playbook](TSYP14-Jury-QA-Playbook-Simple-English.pdf).
+
 ## 1. What it is
 
 TSYP14 Track 1, the **Secure Ground-Link Testbed**. A satellite, TerraSAR-X, sends its telemetry
