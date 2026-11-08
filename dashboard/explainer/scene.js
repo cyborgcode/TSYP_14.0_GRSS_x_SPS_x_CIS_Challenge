@@ -1631,10 +1631,84 @@ function uplinkBoard(ctx, lt) {
   });
 }
 
+
+/** QR code of https://tsyp-pi.vercel.app/ (error correction M), one string per row of modules. */
+const DASHBOARD_QR = [
+  "11111110010000100111101111111",
+  "10000010010100001010001000001",
+  "10111010001000110110101011101",
+  "10111010000111001010001011101",
+  "10111010010000000010001011101",
+  "10000010110010011001001000001",
+  "11111110101010101010101111111",
+  "00000000011111011110100000000",
+  "10010110100100101000010100000",
+  "11111000101001011110111101001",
+  "11000111001011110011011011110",
+  "00101101110001001000100000110",
+  "10001111001000110100111101011",
+  "01110100000001111111100000000",
+  "10011110010101100110001011111",
+  "01110001110110010100010111010",
+  "00111011101111000111010100010",
+  "00000001101101111100011101001",
+  "10000111010000111100000100011",
+  "00111100010100100110101100011",
+  "10010110011100010110111110100",
+  "00000000110010110001100010111",
+  "11111110001010001100101010010",
+  "10000010110110110100100011101",
+  "10111010010010001000111110000",
+  "10111010100011010100111011101",
+  "10111010011011111111000011101",
+  "10000010000001001110101100010",
+  "11111110111100111010101110010"
+];
+
+function dashboard(ctx, lt) {
+  heading(ctx, lt, '10', 'Try it live', 'Try the dashboard');
+  rise(ctx, lt, 0.3, () => {
+    para(
+      ctx,
+      'Scan the code to open the live testbed and watch the attacks being caught: TerraSAR-X’s next real pass over Zaghouan, attacked and defended in the browser.',
+      M,
+      330,
+      820,
+      52,
+      UI(400, 36),
+      C.text0,
+    );
+    text(ctx, 'tsyp-pi.vercel.app', M, 600, MONO(700, 40), C.accent);
+    const tabs = ['Live testbed', 'Signals', 'Noise attacks', 'Protection', 'Slides'];
+    let x = M;
+    for (const t of tabs) x += chip(ctx, t, x, 720, C.text2, { size: 22 }) + 14;
+    text(ctx, 'Runs offline too: cd dashboard && npm ci && npm run dev', M, 820, MONO(500, 22), C.text2);
+  });
+  rise(ctx, lt, 0.5, () => {
+    const n = DASHBOARD_QR.length;
+    const quiet = 4;
+    const size = 600;
+    const cell = Math.floor(size / (n + 2 * quiet));
+    const side = cell * (n + 2 * quiet);
+    const x0 = W - M - side;
+    const y0 = 250;
+    box(ctx, x0 - 24, y0 - 24, side + 48, side + 48, { fill: C.bg2, stroke: C.line, r: 18 });
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(x0, y0, side, side);
+    ctx.fillStyle = '#000000';
+    DASHBOARD_QR.forEach((row, r) => {
+      for (let c = 0; c < n; c++) {
+        if (row[c] === '1') ctx.fillRect(x0 + (c + quiet) * cell, y0 + (r + quiet) * cell, cell, cell);
+      }
+    });
+  });
+}
+
 /** Scenes drawn only as still slides: not on the explainer's timeline. */
 const STILLS = {
   uplinkThreats: { id: 'uplinkThreats', chapter: 'Uplink · Telecommands', draw: uplinkThreats },
   uplinkBoard: { id: 'uplinkBoard', chapter: 'Uplink · On board', draw: uplinkBoard },
+  dashboard: { id: 'dashboard', chapter: 'Try it live', draw: dashboard },
 };
 
 const SCENES = { intro, signal, natural, imitate, physics, ai, crypto, result };

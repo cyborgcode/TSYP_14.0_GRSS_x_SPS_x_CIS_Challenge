@@ -1,6 +1,6 @@
 # "Hiding in the noise" slides
 
-Source of the slides on the `/slides` page (`public/media/slides/slide-01.jpg` to `slide-11.jpg`):
+Source of the slides on the `/slides` page (`public/media/slides/slide-01.jpg` to `slide-12.jpg`):
 the explainer's scenes drawn on a canvas and captured at the moments listed in `slides.json`; the
 two uplink slides are still scenes (`"scene"` in `slides.json`) drawn only as slides. The
 site shows them as still slides, with no voice over, captions or transcript.

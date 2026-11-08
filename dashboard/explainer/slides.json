@@ -42,5 +42,9 @@
   {
     "t": 192.6,
     "alt": "Result: every attack packet flagged, no corrupted frame reached the analyst, about 1.6% of genuine packets held for review"
+  },
+  {
+    "scene": "dashboard",
+    "alt": "Try the dashboard: a QR code to tsyp-pi.vercel.app, the live testbed"
   }
 ]
