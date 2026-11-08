@@ -25,6 +25,26 @@ const C = {
   gold: '#D9A441',
 };
 
+/** White theme for the slides (window.explainer.light()): same layout, dark ink on white. */
+const LIGHT_C = {
+  bg0: '#FFFFFF',
+  bg1: '#F2F5F8',
+  bg2: '#F7F9FB',
+  line: '#D3DCE5',
+  text0: '#0B1320',
+  text1: '#3A4556',
+  text2: '#5B6573',
+  text3: '#AAB4C0',
+  accent: '#0A7FB0',
+  ok: '#0E9F6E',
+  warn: '#B97F00',
+  bad: '#D7263D',
+  jam: '#7C5CD6',
+  tamper: '#D63F8C',
+  gold: '#A8781A',
+};
+let LIGHT = false;
+
 const DISPLAY = (w, s) => `${w} ${s}px "Space Grotesk", sans-serif`;
 const UI = (w, s) => `${w} ${s}px Inter, sans-serif`;
 const MONO = (w, s) => `${w} ${s}px "JetBrains Mono", monospace`;
@@ -317,6 +337,7 @@ function tile(ctx, x, y, w, h, title, value, sub, color = C.accent) {
 function background(ctx, t) {
   ctx.fillStyle = C.bg0;
   ctx.fillRect(0, 0, W, H);
+  if (LIGHT) return;
   const g = ctx.createRadialGradient(1560, 60, 0, 1560, 60, 1400);
   g.addColorStop(0, 'rgba(32,70,104,0.42)');
   g.addColorStop(1, 'rgba(4,7,12,0)');
@@ -490,9 +511,9 @@ function intro(ctx, lt, sc, t) {
   ctx.beginPath();
   ctx.arc(cx, cy, R, 0, Math.PI * 2);
   const eg = ctx.createRadialGradient(cx + 300, cy - R, 40, cx, cy, R);
-  eg.addColorStop(0, '#16405F');
-  eg.addColorStop(0.5, '#0B2033');
-  eg.addColorStop(1, '#050C14');
+  eg.addColorStop(0, LIGHT ? '#E3EEF7' : '#16405F');
+  eg.addColorStop(0.5, LIGHT ? '#CFE0EE' : '#0B2033');
+  eg.addColorStop(1, LIGHT ? '#BCD3E6' : '#050C14');
   ctx.fillStyle = eg;
   ctx.fill();
   ctx.clip();
@@ -1690,6 +1711,10 @@ window.explainer = {
     render(t);
     SLIDE = null;
     return canvas.toDataURL('image/jpeg', q);
+  },
+  light: () => {
+    LIGHT = true;
+    Object.assign(C, LIGHT_C);
   },
   stillJpeg: (id, label, q = 0.9) => {
     const sc = STILLS[id];

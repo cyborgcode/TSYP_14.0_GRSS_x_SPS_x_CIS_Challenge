@@ -96,6 +96,8 @@ async function main() {
       // The explainer as still slides (explainer/slides.json): no voice, no captions.
       const { page } = await openPage(browser, base);
       const slides = JSON.parse(readFileSync(join(HERE, 'slides.json'), 'utf8'));
+      // The slides are drawn in the white theme.
+      await page.evaluate(() => window.explainer.light());
       const dir = join(OUT, 'slides');
       mkdirSync(dir, { recursive: true });
       for (const [i, slide] of slides.entries()) {
